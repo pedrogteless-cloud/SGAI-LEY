@@ -17,7 +17,7 @@ const COLUNAS = [
 
 const EXEMPLO = [
   COLUNAS.join(','),
-  'Matelassê Gribetz 4000,Matelassê,Eusébio,Matelassê,Gribetz,GX-4000,SN-88213,2018,2019-03-15,180000,A,Galpão 2 linha B,380,3,25,34.5,3x50A,Comprada usada',
+  'Bordadeira de Tampo HC3200,Bordadeira de Tampo,Eusébio,Matelassê,,HC3200,,,,,A,Galpão 2 linha B,380,3,,,,',
   'Compressor Parafuso 50CV,Compressor,Eusébio,Utilidades,Atlas Copco,GA37,AC-7781,2020,2020-08-01,80000,A,Casa de máquinas,380,3,50,68.5,3x100A,',
 ].join('\n')
 

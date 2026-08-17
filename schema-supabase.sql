@@ -1858,6 +1858,7 @@ on conflict (nome) do nothing;
 insert into categorias_ativo (nome, sigla, grupo) values
   ('Máquina de Corte',        'COR', 'producao'),
   ('Matelassê',               'MAT', 'producao'),
+  ('Bordadeira de Tampo',     'BOR', 'producao'),
   ('Máquina de Molas',        'MOL', 'producao'),
   ('Máquina de Costura',      'COS', 'producao'),
   ('Prensa',                  'PRE', 'producao'),

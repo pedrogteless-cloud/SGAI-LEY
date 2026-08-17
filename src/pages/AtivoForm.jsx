@@ -166,7 +166,7 @@ export default function AtivoForm() {
               value={form.nome}
               onChange={mudar('nome')}
               required
-              placeholder="Ex.: Matelassê Gribetz 4000"
+              placeholder="Ex.: Bordadeira de Tampo HC3200"
             />
           </Campo>
 
