@@ -98,7 +98,7 @@ Nada disso depende do frontend — vale para qualquer cliente que acesse o Postg
 O banco já vem com as duas unidades, 22 categorias de ativo, os setores de Eusébio e
 dois templates de preventiva (Compressor e Quadro Elétrico).
 
-Para criar um usuário, no Supabase → Authentication → Add user, e depois defina o papel:
+Para criar um usuário: **Supabase → Authentication → Add user**, e depois defina o papel:
 
 ```sql
 update perfis set papel = 'gestor' where email = 'fulano@leycolchoes.com.br';
@@ -106,6 +106,11 @@ update perfis set papel = 'gestor' where email = 'fulano@leycolchoes.com.br';
 ```
 
 Todo usuário novo entra como `operador` até alguém promover.
+
+> **Não crie usuário por `insert` direto em `auth.users` sem ler a seção 8.1 do
+> `schema-supabase.sql`.** As colunas de token precisam ser string vazia, não `NULL`,
+> senão o login falha com *"Database error querying schema"*. O painel faz isso certo;
+> o `insert` manual, não. O arquivo tem o modelo correto e o comando de conserto.
 
 ## Cadastrando as máquinas da mudança
 
