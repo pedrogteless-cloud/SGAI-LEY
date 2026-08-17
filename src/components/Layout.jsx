@@ -8,12 +8,12 @@ import { useAuth } from '../hooks/useAuth'
 import { useTabela } from '../hooks/useDados'
 
 const ITENS = [
-  { para: '/', rotulo: 'Painel', icone: LayoutDashboard, fim: true },
-  { para: '/solicitacoes', rotulo: 'Solicitações', icone: Inbox, contador: 'solicitacoes' },
-  { para: '/os', rotulo: 'Ordens de Serviço', icone: ClipboardList, contador: 'os' },
-  { para: '/ativos', rotulo: 'Ativos', icone: Package },
-  { para: '/almoxarifado', rotulo: 'Almoxarifado', icone: Boxes, contador: 'estoque' },
-  { para: '/preventiva', rotulo: 'Preventiva', icone: CalendarClock },
+  { para: '/', rotulo: 'Resumo', icone: LayoutDashboard, fim: true },
+  { para: '/solicitacoes', rotulo: 'Avisos', icone: Inbox, contador: 'solicitacoes' },
+  { para: '/os', rotulo: 'Serviços', icone: ClipboardList, contador: 'os' },
+  { para: '/ativos', rotulo: 'Máquinas', icone: Package },
+  { para: '/almoxarifado', rotulo: 'Peças', icone: Boxes, contador: 'estoque' },
+  { para: '/preventiva', rotulo: 'Revisões', icone: CalendarClock },
   { para: '/fornecedores', rotulo: 'Fornecedores', icone: Truck },
 ]
 

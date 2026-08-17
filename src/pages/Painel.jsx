@@ -68,38 +68,38 @@ export default function Painel() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-xl font-bold text-slate-900">Painel</h1>
-        <p className="text-sm text-slate-500">Visão geral do parque de máquinas</p>
+        <h1 className="text-xl font-bold text-slate-900">Resumo</h1>
+        <p className="text-sm text-slate-500">Como está a manutenção hoje</p>
       </div>
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Indicador
           icone={Wallet}
-          rotulo="Custo de manutenção (12 meses)"
+          rotulo="Gasto no último ano"
           valor={moeda(totais.custo12m)}
-          detalhe={`${totais.ativos} ativos cadastrados`}
+          detalhe={`${totais.ativos} máquinas cadastradas`}
         />
         <Indicador
           icone={ClipboardList}
-          rotulo="OS em aberto"
+          rotulo="Serviços em aberto"
           valor={totais.osAbertas}
-          detalhe={`${solicitacoes.data?.length || 0} solicitações na fila`}
+          detalhe={`${solicitacoes.data?.length || 0} avisos esperando`}
           cor="text-indigo-600"
           para="/os"
         />
         <Indicador
           icone={AlertTriangle}
-          rotulo="OS atrasadas"
+          rotulo="Serviços atrasados"
           valor={atrasadas.length}
-          detalhe="acima do prazo da prioridade"
+          detalhe={`${numero(totais.paradaHoras, 1)} h de máquina parada`}
           cor="text-red-600"
           para="/os"
         />
         <Indicador
           icone={PackageX}
-          rotulo="Peças abaixo do mínimo"
+          rotulo="Peças acabando"
           valor={estoqueBaixo.data?.length || 0}
-          detalhe={`${numero(totais.paradaHoras, 1)} h de parada no período`}
+          detalhe="abaixo do mínimo"
           cor="text-amber-600"
           para="/almoxarifado"
         />
@@ -107,13 +107,13 @@ export default function Painel() {
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Cartao>
-          <CartaoTitulo>Custo por mês</CartaoTitulo>
+          <CartaoTitulo>Quanto gastamos por mês</CartaoTitulo>
           <div className="p-4">
             {porMes.length === 0 ? (
               <Vazio
                 icone={TrendingUp}
-                titulo="Ainda sem custo lançado"
-                descricao="Os valores aparecem assim que a primeira OS for concluída."
+                titulo="Ainda não tem gasto lançado"
+                descricao="Os valores aparecem quando o primeiro serviço for concluído."
               />
             ) : (
               <ResponsiveContainer width="100%" height={240}>
@@ -133,7 +133,7 @@ export default function Painel() {
                     axisLine={false}
                   />
                   <Tooltip
-                    formatter={(v) => [moeda(v), 'Custo']}
+                    formatter={(v) => [moeda(v), 'Gasto']}
                     labelFormatter={mesLabel}
                     contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid #e2e8f0' }}
                   />
@@ -154,18 +154,18 @@ export default function Painel() {
           <CartaoTitulo
             acao={
               <Link to="/ativos" className="text-xs font-medium text-sky-600 hover:text-sky-700">
-                ver ativos
+                ver máquinas
               </Link>
             }
           >
-            Máquinas mais caras (12 meses)
+            Máquinas que mais deram gasto (último ano)
           </CartaoTitulo>
           <div className="p-4">
             {topRanking.length === 0 ? (
               <Vazio
                 icone={TrendingUp}
-                titulo="Sem ranking ainda"
-                descricao="Assim que houver custo por máquina, o ranking aparece aqui."
+                titulo="Ainda não dá pra comparar"
+                descricao="Quando houver gasto lançado, a lista aparece aqui."
               />
             ) : (
               <ResponsiveContainer width="100%" height={240}>
@@ -191,7 +191,7 @@ export default function Painel() {
                     axisLine={false}
                   />
                   <Tooltip
-                    formatter={(v) => [moeda(v), 'Custo 12m']}
+                    formatter={(v) => [moeda(v), 'Gasto no ano']}
                     contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid #e2e8f0' }}
                   />
                   <Bar dataKey="custo" fill="#0284c7" radius={[0, 4, 4, 0]} />
@@ -209,25 +209,25 @@ export default function Painel() {
               to="/os"
               className="inline-flex items-center gap-1 text-xs font-medium text-sky-600 hover:text-sky-700"
             >
-              todas as OS <ArrowRight size={13} />
+              ver todos <ArrowRight size={13} />
             </Link>
           }
         >
-          Backlog — OS em aberto
+          Serviços em aberto
         </CartaoTitulo>
         {backlog.isLoading ? (
           <Carregando />
         ) : (backlog.data || []).length === 0 ? (
-          <Vazio titulo="Nenhuma OS em aberto" descricao="Tudo em dia por aqui." />
+          <Vazio titulo="Nenhum serviço em aberto" descricao="Tudo em dia por aqui." />
         ) : (
           <Tabela>
             <thead>
               <tr>
-                <Th>OS</Th>
-                <Th>Ativo</Th>
-                <Th>Prioridade</Th>
-                <Th>Aberta há</Th>
-                <Th className="text-right">Custo</Th>
+                <Th>Serviço</Th>
+                <Th>Máquina</Th>
+                <Th>Urgência</Th>
+                <Th>Aberto há</Th>
+                <Th className="text-right">Gasto</Th>
               </tr>
             </thead>
             <tbody>
@@ -243,7 +243,7 @@ export default function Painel() {
                     <span className="text-slate-700">{o.ativo_nome}</span>
                     <p className="text-xs text-slate-400">
                       {o.setor || o.unidade}
-                      {o.criticidade && ` · criticidade ${o.criticidade}`}
+                      {o.criticidade && ` · importância ${o.criticidade}`}
                     </p>
                   </Td>
                   <Td>
@@ -266,16 +266,16 @@ export default function Painel() {
 
       {(unidades.data || []).length > 1 && (
         <Cartao>
-          <CartaoTitulo>Comparativo entre unidades</CartaoTitulo>
+          <CartaoTitulo>Eusébio x Timon</CartaoTitulo>
           <Tabela>
             <thead>
               <tr>
                 <Th>Unidade</Th>
-                <Th className="text-right">Ativos</Th>
-                <Th className="text-right">Críticos A</Th>
-                <Th className="text-right">OS abertas</Th>
+                <Th className="text-right">Máquinas</Th>
+                <Th className="text-right">Importância A</Th>
+                <Th className="text-right">Em aberto</Th>
                 <Th className="text-right">Parada (h)</Th>
-                <Th className="text-right">Custo 12m</Th>
+                <Th className="text-right">Gasto no ano</Th>
               </tr>
             </thead>
             <tbody>

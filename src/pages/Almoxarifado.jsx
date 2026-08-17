@@ -114,7 +114,7 @@ export default function Almoxarifado() {
         peca_id: '', unidade_id: '', tipo: 'entrada', quantidade: '',
         custo_unitario: '', documento: '', fornecedor_id: '', observacao: '',
       })
-      avisar('Movimento registrado. Custo médio atualizado.')
+      avisar('Anotado. Preço médio recalculado.')
     } catch (e) {
       setErro(e)
     }
@@ -130,7 +130,7 @@ export default function Almoxarifado() {
       })
       setFormMinimo(null)
       invalidar('estoque')
-      avisar('Ponto de reposição salvo.')
+      avisar('Pronto, vou te avisar quando chegar nesse nível.')
     } catch (e) {
       setErro(e)
     }
@@ -140,9 +140,9 @@ export default function Almoxarifado() {
     <div className="space-y-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold text-slate-900">Almoxarifado</h1>
+          <h1 className="text-xl font-bold text-slate-900">Peças</h1>
           <p className="text-sm text-slate-500">
-            {linhasEstoque.length} itens · {moeda(valorTotal)} em estoque
+            {linhasEstoque.length} peças · {moeda(valorTotal)} parados na prateleira
           </p>
         </div>
         <div className="flex gap-2">
@@ -153,7 +153,7 @@ export default function Almoxarifado() {
               setModal('peca')
             }}
           >
-            <Plus size={15} /> Peça
+            <Plus size={15} /> Nova peça
           </Botao>
           {ehGestor && (
             <Botao
@@ -166,7 +166,7 @@ export default function Almoxarifado() {
                 setModal('movimento')
               }}
             >
-              <ArrowDownUp size={15} /> Movimentar
+              <ArrowDownUp size={15} /> Entrada / saída
             </Botao>
           )}
         </div>
@@ -177,8 +177,7 @@ export default function Almoxarifado() {
           <AlertTriangle size={17} className="mt-0.5 shrink-0 text-amber-600" />
           <div>
             <p className="font-medium text-amber-900">
-              {baixo.data.length} {baixo.data.length === 1 ? 'peça está' : 'peças estão'} abaixo do
-              ponto de reposição
+              {baixo.data.length} {baixo.data.length === 1 ? 'peça está' : 'peças estão'} acabando
             </p>
             <p className="text-amber-700">
               {baixo.data
@@ -193,8 +192,8 @@ export default function Almoxarifado() {
 
       <div className="flex gap-1 border-b border-slate-200">
         {[
-          ['estoque', 'Estoque'],
-          ['movimentos', 'Movimentos'],
+          ['estoque', 'O que tem'],
+          ['movimentos', 'Entradas e saídas'],
         ].map(([v, l]) => (
           <button
             key={v}
@@ -219,7 +218,7 @@ export default function Almoxarifado() {
                 <Entrada
                   value={busca}
                   onChange={(e) => setBusca(e.target.value)}
-                  placeholder="Código ou nome da peça…"
+                  placeholder="Procurar peça…"
                   className="pl-9"
                 />
               </div>
@@ -230,7 +229,7 @@ export default function Almoxarifado() {
                   onChange={(e) => setSoAbaixoMinimo(e.target.checked)}
                   className="size-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
                 />
-                Só abaixo do mínimo
+                Só o que está acabando
               </label>
             </div>
           </Cartao>
@@ -241,19 +240,19 @@ export default function Almoxarifado() {
             ) : linhasEstoque.length === 0 ? (
               <Vazio
                 icone={Boxes}
-                titulo="Estoque vazio"
-                descricao="Cadastre a peça e registre a primeira entrada — o custo médio é calculado sozinho."
+                titulo="Nenhuma peça cadastrada"
+                descricao="Cadastre a peça e lance a primeira compra — o preço médio o sistema calcula sozinho."
               />
             ) : (
               <Tabela>
                 <thead>
                   <tr>
                     <Th>Peça</Th>
-                    <Th>Unidade</Th>
-                    <Th className="text-right">Saldo</Th>
+                    <Th>Fábrica</Th>
+                    <Th className="text-right">Tem quantos</Th>
                     <Th className="text-right">Mínimo</Th>
-                    <Th className="text-right">Custo médio</Th>
-                    <Th className="text-right">Valor</Th>
+                    <Th className="text-right">Preço médio</Th>
+                    <Th className="text-right">Total</Th>
                     <Th />
                   </tr>
                 </thead>
@@ -312,11 +311,11 @@ export default function Almoxarifado() {
         </>
       ) : (
         <Cartao>
-          <CartaoTitulo>Últimos 100 movimentos</CartaoTitulo>
+          <CartaoTitulo>Últimas 100 entradas e saídas</CartaoTitulo>
           {movimentos.isLoading ? (
             <Carregando />
           ) : (movimentos.data || []).length === 0 ? (
-            <Vazio titulo="Nenhum movimento" descricao="Entradas, saídas e ajustes aparecem aqui." />
+            <Vazio titulo="Nada movimentado ainda" descricao="Compras, saídas e acertos de contagem aparecem aqui." />
           ) : (
             <Tabela>
               <thead>
@@ -325,9 +324,9 @@ export default function Almoxarifado() {
                   <Th>Peça</Th>
                   <Th>Tipo</Th>
                   <Th className="text-right">Qtd</Th>
-                  <Th className="text-right">Custo un.</Th>
-                  <Th className="text-right">Saldo depois</Th>
-                  <Th>Documento</Th>
+                  <Th className="text-right">Preço da un.</Th>
+                  <Th className="text-right">Ficou com</Th>
+                  <Th>Nota</Th>
                 </tr>
               </thead>
               <tbody>
@@ -374,7 +373,7 @@ export default function Almoxarifado() {
       <Modal
         aberto={modal === 'peca'}
         aoFechar={() => setModal(null)}
-        titulo="Nova peça"
+        titulo="Cadastrar peça"
         rodape={
           <>
             <Botao variante="secundario" onClick={() => setModal(null)}>
@@ -399,7 +398,7 @@ export default function Almoxarifado() {
                 placeholder="Ex.: ROL-6205"
               />
             </Campo>
-            <Campo rotulo="Unidade de medida">
+            <Campo rotulo="Conta em">
               <Selecao
                 value={formPeca.unidade_medida}
                 onChange={(e) => setFormPeca((f) => ({ ...f, unidade_medida: e.target.value }))}
@@ -420,7 +419,7 @@ export default function Almoxarifado() {
             />
           </Campo>
           <div className="grid gap-4 sm:grid-cols-2">
-            <Campo rotulo="Fabricante">
+            <Campo rotulo="Marca">
               <Entrada
                 value={formPeca.fabricante}
                 onChange={(e) => setFormPeca((f) => ({ ...f, fabricante: e.target.value }))}
@@ -434,7 +433,7 @@ export default function Almoxarifado() {
               />
             </Campo>
           </div>
-          <Campo rotulo="Fornecedor padrão">
+          <Campo rotulo="Onde costuma comprar">
             <Selecao
               value={formPeca.fornecedor_padrao_id}
               onChange={(e) =>
@@ -457,9 +456,9 @@ export default function Almoxarifado() {
               className="mt-0.5 size-4 rounded border-slate-300 text-red-600 focus:ring-red-500"
             />
             <span className="text-sm">
-              <span className="font-medium text-red-800">Peça crítica</span>
+              <span className="font-medium text-red-800">Peça que não pode faltar</span>
               <span className="block text-xs text-red-600">
-                Se faltar, para linha de produção.
+                Se acabar, a produção para.
               </span>
             </span>
           </label>
@@ -470,7 +469,7 @@ export default function Almoxarifado() {
       <Modal
         aberto={modal === 'movimento'}
         aoFechar={() => setModal(null)}
-        titulo="Movimentar estoque"
+        titulo="Entrada ou saída de peça"
         rodape={
           <>
             <Botao variante="secundario" onClick={() => setModal(null)}>
@@ -490,7 +489,7 @@ export default function Almoxarifado() {
       >
         <div className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-2">
-            <Campo rotulo="Peça *">
+            <Campo rotulo="Qual peça *">
               <Selecao
                 value={formMov.peca_id}
                 onChange={(e) => setFormMov((f) => ({ ...f, peca_id: e.target.value }))}
@@ -504,7 +503,7 @@ export default function Almoxarifado() {
                 ))}
               </Selecao>
             </Campo>
-            <Campo rotulo="Unidade *">
+            <Campo rotulo="Qual fábrica *">
               <Selecao
                 value={formMov.unidade_id}
                 onChange={(e) => setFormMov((f) => ({ ...f, unidade_id: e.target.value }))}
@@ -519,7 +518,7 @@ export default function Almoxarifado() {
             </Campo>
           </div>
 
-          <Campo rotulo="Tipo">
+          <Campo rotulo="O que aconteceu">
             <Selecao
               value={formMov.tipo}
               onChange={(e) => setFormMov((f) => ({ ...f, tipo: e.target.value }))}
@@ -534,8 +533,8 @@ export default function Almoxarifado() {
 
           <div className="grid gap-4 sm:grid-cols-2">
             <Campo
-              rotulo="Quantidade *"
-              dica={formMov.tipo === 'ajuste' ? 'No ajuste, informe o saldo final contado' : undefined}
+              rotulo="Quantas *"
+              dica={formMov.tipo === 'ajuste' ? 'No acerto, coloque quanto você contou na prateleira' : undefined}
             >
               <Entrada
                 type="number"
@@ -546,11 +545,11 @@ export default function Almoxarifado() {
               />
             </Campo>
             <Campo
-              rotulo="Custo unitário (R$)"
+              rotulo="Preço da unidade (R$)"
               dica={
                 formMov.tipo === 'saida'
-                  ? 'Vazio usa o custo médio atual'
-                  : 'Entra no cálculo do custo médio'
+                  ? 'Deixe vazio pra usar o preço médio de hoje'
+                  : 'Entra na conta do preço médio'
               }
             >
               <Entrada
@@ -565,7 +564,7 @@ export default function Almoxarifado() {
 
           {formMov.tipo === 'entrada' && (
             <div className="grid gap-4 sm:grid-cols-2">
-              <Campo rotulo="Fornecedor">
+              <Campo rotulo="Comprou de quem">
                 <Selecao
                   value={formMov.fornecedor_id}
                   onChange={(e) => setFormMov((f) => ({ ...f, fornecedor_id: e.target.value }))}
@@ -602,7 +601,7 @@ export default function Almoxarifado() {
       <Modal
         aberto={Boolean(formMinimo)}
         aoFechar={() => setFormMinimo(null)}
-        titulo="Ponto de reposição"
+        titulo="Quando avisar que está acabando"
         largura="max-w-sm"
         rodape={
           <>
@@ -617,7 +616,7 @@ export default function Almoxarifado() {
       >
         <div className="space-y-4">
           <p className="text-sm text-slate-600">{formMinimo?.nome}</p>
-          <Campo rotulo="Estoque mínimo" dica="Abaixo disso o sistema avisa">
+          <Campo rotulo="Avisar quando tiver menos de" dica="O sistema te avisa quando o saldo cair abaixo disso">
             <Entrada
               type="number"
               step="0.001"
@@ -627,7 +626,7 @@ export default function Almoxarifado() {
               autoFocus
             />
           </Campo>
-          <Campo rotulo="Localização na prateleira">
+          <Campo rotulo="Onde fica guardada">
             <Entrada
               value={formMinimo?.localizacao ?? ''}
               onChange={(e) => setFormMinimo((f) => ({ ...f, localizacao: e.target.value }))}

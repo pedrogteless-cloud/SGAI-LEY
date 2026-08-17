@@ -27,7 +27,7 @@ export default function ReportarQR() {
       if (!vivo) return
       if (error) setErro(new Error(error.message))
       else if (!data || data.length === 0)
-        setErro(new Error('QR code não encontrado. Confira se o adesivo está legível.'))
+        setErro(new Error('Não achei essa máquina. Veja se a etiqueta está rasgada ou suja.'))
       else setAtivo(data[0])
       setCarregando(false)
     })()
@@ -54,7 +54,7 @@ export default function ReportarQR() {
   if (carregando)
     return (
       <div className="flex min-h-screen items-center justify-center">
-        <Carregando texto="Lendo o QR…" />
+        <Carregando texto="Só um instante…" />
       </div>
     )
 
@@ -63,7 +63,7 @@ export default function ReportarQR() {
       <div className="flex min-h-screen items-center justify-center bg-slate-100 px-4">
         <div className="w-full max-w-sm rounded-xl border border-slate-200 bg-white p-6 text-center">
           <AlertTriangle size={28} className="mx-auto mb-3 text-amber-500" />
-          <p className="font-semibold text-slate-800">Não foi possível abrir</p>
+          <p className="font-semibold text-slate-800">Não deu certo</p>
           <p className="mt-1 text-sm text-slate-500">{erro?.message}</p>
         </div>
       </div>
@@ -74,9 +74,9 @@ export default function ReportarQR() {
       <div className="flex min-h-screen items-center justify-center bg-slate-100 px-4">
         <div className="w-full max-w-sm rounded-xl border border-slate-200 bg-white p-8 text-center">
           <CheckCircle2 size={40} className="mx-auto mb-4 text-emerald-500" />
-          <p className="text-lg font-semibold text-slate-800">Problema registrado</p>
+          <p className="text-lg font-semibold text-slate-800">Avisado!</p>
           <p className="mt-1 text-sm text-slate-500">
-            A manutenção já foi avisada. Guarde o protocolo:
+            A manutenção já recebeu. Anote o número:
           </p>
           <p className="mt-3 font-mono text-base font-bold text-slate-900">{protocolo}</p>
           <p className="mt-5 text-sm text-slate-500">
@@ -93,7 +93,7 @@ export default function ReportarQR() {
               setParada(false)
             }}
           >
-            Reportar outro problema
+            Avisar outro problema
           </Botao>
         </div>
       </div>
@@ -127,8 +127,8 @@ export default function ReportarQR() {
 
         <form onSubmit={enviar} className="space-y-4 rounded-xl border border-slate-200 bg-white p-5">
           <div>
-            <h1 className="text-base font-semibold text-slate-900">Reportar problema</h1>
-            <p className="text-sm text-slate-500">Descreva o que está acontecendo.</p>
+            <h1 className="text-base font-semibold text-slate-900">Avisar um problema</h1>
+            <p className="text-sm text-slate-500">Conte o que está acontecendo com a máquina.</p>
           </div>
 
           <Campo rotulo="O que está acontecendo? *">
@@ -139,7 +139,7 @@ export default function ReportarQR() {
               required
               minLength={5}
               autoFocus
-              placeholder="Ex.: está fazendo barulho no rolamento do lado direito e esquentando"
+              placeholder="Ex.: está fazendo barulho do lado direito e esquentando muito"
             />
           </Campo>
 
@@ -151,15 +151,15 @@ export default function ReportarQR() {
               className="mt-0.5 size-4 rounded border-slate-300 text-red-600 focus:ring-red-500"
             />
             <span className="text-sm">
-              <span className="font-medium text-red-800">A máquina está parada</span>
+              <span className="font-medium text-red-800">A máquina parou de trabalhar</span>
               <span className="block text-xs text-red-600">
-                Marque só se a produção realmente parou — isso vira prioridade alta.
+                Marque só se ela parou mesmo. Assim a manutenção vem correndo.
               </span>
             </span>
           </label>
 
-          <Campo rotulo="Seu nome" dica="Opcional, ajuda a manutenção a te procurar">
-            <Entrada value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Opcional" />
+          <Campo rotulo="Seu nome" dica="Não é obrigatório, mas ajuda a manutenção a te achar">
+            <Entrada value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Se quiser colocar" />
           </Campo>
 
           <Erro erro={erro} />
@@ -171,7 +171,7 @@ export default function ReportarQR() {
             carregando={enviando}
             disabled={descricao.trim().length < 5}
           >
-            Enviar para a manutenção
+            Avisar a manutenção
           </Botao>
         </form>
 

@@ -154,14 +154,14 @@ export default function AtivoForm() {
           </Botao>
         </Link>
         <h1 className="text-xl font-bold text-slate-900">
-          {editando ? 'Editar ativo' : 'Novo ativo'}
+          {editando ? 'Editar máquina' : 'Nova máquina'}
         </h1>
       </div>
 
       <Cartao>
-        <CartaoTitulo>Identificação</CartaoTitulo>
+        <CartaoTitulo>O que é</CartaoTitulo>
         <div className="grid gap-4 p-4 sm:grid-cols-2">
-          <Campo rotulo="Nome do equipamento *" className="sm:col-span-2">
+          <Campo rotulo="Nome da máquina *" className="sm:col-span-2">
             <Entrada
               value={form.nome}
               onChange={mudar('nome')}
@@ -211,11 +211,11 @@ export default function AtivoForm() {
           </Campo>
 
           <Campo
-            rotulo="Componente de qual máquina?"
-            dica="Deixe vazio se for uma máquina. Use para motor, inversor, redutor."
+            rotulo="É peça de outra máquina?"
+            dica="Deixe vazio se for uma máquina inteira. Use para motor, inversor, redutor."
           >
             <Selecao value={form.ativo_pai_id} onChange={mudar('ativo_pai_id')}>
-              <option value="">— é uma máquina —</option>
+              <option value="">— é uma máquina inteira —</option>
               {(maquinas.data || [])
                 .filter((m) => m.id !== id)
                 .map((m) => (
@@ -226,7 +226,7 @@ export default function AtivoForm() {
             </Selecao>
           </Campo>
 
-          <Campo rotulo="Criticidade" dica="A para a linha, B atrapalha, C contornável">
+          <Campo rotulo="Importância" dica="O quanto dói se essa máquina parar">
             <Selecao value={form.criticidade} onChange={mudar('criticidade')}>
               {CRITICIDADES.map((c) => (
                 <option key={c.valor} value={c.valor}>
@@ -236,7 +236,7 @@ export default function AtivoForm() {
             </Selecao>
           </Campo>
 
-          <Campo rotulo="Situação">
+          <Campo rotulo="Como está">
             <Selecao value={form.situacao} onChange={mudar('situacao')}>
               {SITUACOES_ATIVO.map((s) => (
                 <option key={s.valor} value={s.valor}>
@@ -246,7 +246,7 @@ export default function AtivoForm() {
             </Selecao>
           </Campo>
 
-          <Campo rotulo="Localização no chão de fábrica" className="sm:col-span-2">
+          <Campo rotulo="Onde fica na fábrica" className="sm:col-span-2">
             <Entrada
               value={form.localizacao}
               onChange={mudar('localizacao')}
@@ -257,9 +257,9 @@ export default function AtivoForm() {
       </Cartao>
 
       <Cartao>
-        <CartaoTitulo>Fabricação e aquisição</CartaoTitulo>
+        <CartaoTitulo>Marca e compra</CartaoTitulo>
         <div className="grid gap-4 p-4 sm:grid-cols-3">
-          <Campo rotulo="Fabricante">
+          <Campo rotulo="Marca">
             <Entrada value={form.fabricante} onChange={mudar('fabricante')} />
           </Campo>
           <Campo rotulo="Modelo">
@@ -277,10 +277,10 @@ export default function AtivoForm() {
               onChange={mudar('ano_fabricacao')}
             />
           </Campo>
-          <Campo rotulo="Data de aquisição">
+          <Campo rotulo="Quando foi comprada">
             <Entrada type="date" value={form.data_aquisicao} onChange={mudar('data_aquisicao')} />
           </Campo>
-          <Campo rotulo="Valor de aquisição (R$)" dica="Usado no cálculo do RAV%">
+          <Campo rotulo="Quanto custou (R$)" dica="Serve pra comparar o gasto com o valor da máquina">
             <Entrada
               type="number"
               step="0.01"
@@ -300,7 +300,7 @@ export default function AtivoForm() {
       </Cartao>
 
       <Cartao>
-        <CartaoTitulo>Ficha elétrica</CartaoTitulo>
+        <CartaoTitulo>Parte elétrica</CartaoTitulo>
         <div className="grid gap-4 p-4 sm:grid-cols-3">
           <Campo rotulo="Tensão (V)">
             <Entrada type="number" step="0.01" value={ficha.tensao_v} onChange={mudarFicha('tensao_v')} />
@@ -353,7 +353,7 @@ export default function AtivoForm() {
               ))}
             </Selecao>
           </Campo>
-          <Campo rotulo="Quadro que alimenta" dica="Base da análise de dependência elétrica">
+          <Campo rotulo="Quadro que alimenta" dica="Serve pra saber o que para se esse quadro cair">
             <Selecao value={ficha.quadro_id} onChange={mudarFicha('quadro_id')}>
               <option value="">—</option>
               {(quadros.data || []).map((q) => (
@@ -377,7 +377,7 @@ export default function AtivoForm() {
             rows={3}
             value={form.observacoes}
             onChange={mudar('observacoes')}
-            placeholder="Histórico, particularidades, cuidados na manutenção…"
+            placeholder="Manias da máquina, cuidados na hora de mexer, o que já deu problema…"
           />
         </div>
       </Cartao>
@@ -391,7 +391,7 @@ export default function AtivoForm() {
           </Botao>
         </Link>
         <Botao type="submit" carregando={salvando}>
-          <Save size={15} /> {editando ? 'Salvar alterações' : 'Cadastrar ativo'}
+          <Save size={15} /> {editando ? 'Salvar' : 'Cadastrar máquina'}
         </Botao>
       </div>
     </form>

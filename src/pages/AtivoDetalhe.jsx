@@ -90,7 +90,7 @@ export default function AtivoDetalhe() {
         p_copiar_componentes: true,
       })
       setModalClone(false)
-      avisar('Ativo clonado. Ajuste o que muda.')
+      avisar('Máquina copiada. Agora ajuste o que muda.')
       invalidar('ativos')
       navegar(`/ativos/${novoId}/editar`)
     } catch (e) {
@@ -113,7 +113,7 @@ export default function AtivoDetalhe() {
             <div className="flex flex-wrap items-center gap-2">
               <h1 className="text-xl font-bold text-slate-900">{a.nome}</h1>
               <Etiqueta cor={M_CRITICIDADE[a.criticidade]?.cor}>
-                Criticidade {a.criticidade}
+                Importância {a.criticidade}
               </Etiqueta>
               <Etiqueta cor={M_SITUACAO[a.situacao]?.cor}>{M_SITUACAO[a.situacao]?.label}</Etiqueta>
             </div>
@@ -121,7 +121,7 @@ export default function AtivoDetalhe() {
               {a.codigo}
               {a.pai && (
                 <>
-                  {' · componente de '}
+                  {' · é peça de '}
                   <Link to={`/ativos/${a.pai.id}`} className="text-sky-600 hover:underline">
                     {a.pai.nome}
                   </Link>
@@ -133,7 +133,7 @@ export default function AtivoDetalhe() {
 
         <div className="flex flex-wrap gap-2">
           <Botao variante="secundario" onClick={() => setModalQR(true)}>
-            <QrCode size={15} /> QR code
+            <QrCode size={15} /> Etiqueta QR
           </Botao>
           <Botao
             variante="secundario"
@@ -143,7 +143,7 @@ export default function AtivoDetalhe() {
               setModalClone(true)
             }}
           >
-            <Copy size={15} /> Clonar
+            <Copy size={15} /> Copiar
           </Botao>
           <Link to={`/ativos/${id}/editar`}>
             <Botao>
@@ -155,11 +155,11 @@ export default function AtivoDetalhe() {
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Cartao className="p-4">
-          <p className="text-xs text-slate-500">Custo 12 meses</p>
+          <p className="text-xs text-slate-500">Gasto no último ano</p>
           <p className="mt-1 text-xl font-bold text-slate-900">{moeda(k?.custo_12m)}</p>
         </Cartao>
         <Cartao className="p-4">
-          <p className="text-xs text-slate-500">RAV%</p>
+          <p className="text-xs text-slate-500">Gasto x valor da máquina</p>
           <p className="mt-1 text-xl font-bold text-slate-900">
             {r?.rav_pct != null ? `${numero(r.rav_pct, 2)}%` : '—'}
           </p>
@@ -174,22 +174,22 @@ export default function AtivoDetalhe() {
               }`}
             >
               {r.sinal === 'avaliar_substituicao'
-                ? 'avaliar substituição'
+                ? 'já vale trocar de máquina'
                 : r.sinal === 'atencao'
-                  ? 'atenção'
-                  : 'saudável'}
+                  ? 'começando a pesar'
+                  : 'gasto normal'}
             </p>
           )}
         </Cartao>
         <Cartao className="p-4">
-          <p className="text-xs text-slate-500">MTTR</p>
+          <p className="text-xs text-slate-500">Tempo médio de conserto</p>
           <p className="mt-1 text-xl font-bold text-slate-900">
             {m?.mttr_horas != null ? `${numero(m.mttr_horas, 1)} h` : '—'}
           </p>
-          <p className="mt-0.5 text-xs text-slate-400">{m?.falhas_12m || 0} falhas em 12m</p>
+          <p className="mt-0.5 text-xs text-slate-400">{m?.falhas_12m || 0} quebras no ano</p>
         </Cartao>
         <Cartao className="p-4">
-          <p className="text-xs text-slate-500">Parada acumulada</p>
+          <p className="text-xs text-slate-500">Tempo total parada</p>
           <p className="mt-1 text-xl font-bold text-slate-900">
             {duracao(k?.parada_total_min || 0)}
           </p>
@@ -198,23 +198,23 @@ export default function AtivoDetalhe() {
 
       <div className="grid gap-4 lg:grid-cols-3">
         <Cartao className="lg:col-span-1">
-          <CartaoTitulo>Ficha do equipamento</CartaoTitulo>
+          <CartaoTitulo>Dados da máquina</CartaoTitulo>
           <dl className="px-4 py-2">
             <Linha rotulo="Categoria" valor={a.categoria?.nome} />
             <Linha rotulo="Unidade" valor={a.unidade?.nome} />
             <Linha rotulo="Setor" valor={a.setor?.nome} />
-            <Linha rotulo="Local" valor={a.localizacao} />
-            <Linha rotulo="Fabricante" valor={a.fabricante} />
+            <Linha rotulo="Onde fica" valor={a.localizacao} />
+            <Linha rotulo="Marca" valor={a.fabricante} />
             <Linha rotulo="Modelo" valor={a.modelo} />
             <Linha rotulo="Nº de série" valor={a.numero_serie} />
             <Linha rotulo="Ano" valor={a.ano_fabricacao} />
-            <Linha rotulo="Aquisição" valor={data(a.data_aquisicao)} />
+            <Linha rotulo="Comprada em" valor={data(a.data_aquisicao)} />
             <Linha
-              rotulo="Valor de aquisição"
+              rotulo="Quanto custou"
               valor={a.valor_aquisicao ? moeda(a.valor_aquisicao) : null}
             />
             <Linha
-              rotulo="Horímetro"
+              rotulo="Horas de uso"
               valor={a.horimetro_atual ? `${numero(a.horimetro_atual, 1)} h` : null}
             />
           </dl>
@@ -223,14 +223,14 @@ export default function AtivoDetalhe() {
         <Cartao className="lg:col-span-2">
           <CartaoTitulo>
             <span className="inline-flex items-center gap-1.5">
-              <Zap size={14} className="text-amber-500" /> Ficha elétrica
+              <Zap size={14} className="text-amber-500" /> Parte elétrica
             </span>
           </CartaoTitulo>
           {!fe ? (
             <Vazio
               icone={Zap}
-              titulo="Ficha elétrica não preenchida"
-              descricao="Sem ela não dá pra saber o que para se o quadro cair."
+              titulo="Parte elétrica não preenchida"
+              descricao="Sem isso não dá pra saber o que para se o quadro cair."
               acao={
                 <Link to={`/ativos/${id}/editar`}>
                   <Botao variante="secundario" tamanho="sm">
@@ -260,7 +260,7 @@ export default function AtivoDetalhe() {
                 }
               />
               <Linha
-                rotulo="Corrente nominal"
+                rotulo="Corrente"
                 valor={fe.corrente_nominal_a ? `${numero(fe.corrente_nominal_a, 2)} A` : null}
               />
               <Linha rotulo="Disjuntor" valor={fe.disjuntor} />
@@ -282,14 +282,14 @@ export default function AtivoDetalhe() {
 
       {(componentes.data || []).length > 0 && (
         <Cartao>
-          <CartaoTitulo>Componentes</CartaoTitulo>
+          <CartaoTitulo>Peças cadastradas separado</CartaoTitulo>
           <Tabela>
             <thead>
               <tr>
                 <Th>Código</Th>
-                <Th>Componente</Th>
-                <Th>Criticidade</Th>
-                <Th>Situação</Th>
+                <Th>Peça</Th>
+                <Th>Importância</Th>
+                <Th>Como está</Th>
               </tr>
             </thead>
             <tbody>
@@ -322,23 +322,23 @@ export default function AtivoDetalhe() {
       <Cartao>
         <CartaoTitulo>
           <span className="inline-flex items-center gap-1.5">
-            <Wrench size={14} className="text-slate-400" /> Histórico de manutenção
+            <Wrench size={14} className="text-slate-400" /> Tudo que já foi feito nela
           </span>
         </CartaoTitulo>
         {ordens.isLoading ? (
           <Carregando />
         ) : (ordens.data || []).length === 0 ? (
-          <Vazio titulo="Sem manutenção registrada" descricao="Nenhuma OS foi aberta para este ativo." />
+          <Vazio titulo="Nada registrado ainda" descricao="Nenhum serviço foi aberto para esta máquina." />
         ) : (
           <Tabela>
             <thead>
               <tr>
-                <Th>OS</Th>
+                <Th>Serviço</Th>
                 <Th>Serviço</Th>
                 <Th>Status</Th>
-                <Th>Aberta</Th>
+                <Th>Quando</Th>
                 <Th>Parada</Th>
-                <Th className="text-right">Custo</Th>
+                <Th className="text-right">Gasto</Th>
               </tr>
             </thead>
             <tbody>
@@ -374,16 +374,16 @@ export default function AtivoDetalhe() {
         <CartaoTitulo
           acao={
             <span className="text-xs text-slate-400">
-              plaqueta, diagrama, manual, laudo, certificado
+              foto da máquina, plaqueta, diagrama, manual, laudo
             </span>
           }
         >
-          Galeria e documentos
+          Fotos e documentos
         </CartaoTitulo>
         {(midias.data || []).length === 0 ? (
           <Vazio
             icone={Imagem}
-            titulo="Nenhum arquivo anexado"
+            titulo="Nenhuma foto ou documento"
             descricao="Cadastre as URLs dos arquivos em Editar → foto de capa, ou suba para o Storage do Supabase."
           />
         ) : (
@@ -414,7 +414,7 @@ export default function AtivoDetalhe() {
       <Modal
         aberto={modalQR}
         aoFechar={() => setModalQR(false)}
-        titulo="QR code do ativo"
+        titulo="Etiqueta QR da máquina"
         largura="max-w-sm"
         rodape={
           <>
@@ -437,7 +437,7 @@ export default function AtivoDetalhe() {
           <p className="text-sm text-slate-600">{a.nome}</p>
           <p className="mt-3 text-xs break-all text-slate-400">{linkQR}</p>
           <p className="mt-3 text-xs text-slate-500">
-            Cole o adesivo na máquina. O operador escaneia e reporta o problema sem precisar de login.
+            Imprima e cole na máquina. Quem estiver operando lê com a câmera do celular e avisa o problema — não precisa de senha.
           </p>
         </div>
       </Modal>
@@ -446,7 +446,7 @@ export default function AtivoDetalhe() {
       <Modal
         aberto={modalClone}
         aoFechar={() => setModalClone(false)}
-        titulo="Clonar ativo"
+        titulo="Copiar máquina"
         rodape={
           <>
             <Botao variante="secundario" onClick={() => setModalClone(false)}>
@@ -457,16 +457,16 @@ export default function AtivoDetalhe() {
               carregando={clonar.isPending}
               disabled={!nomeClone.trim()}
             >
-              <Copy size={15} /> Clonar
+              <Copy size={15} /> Copiar
             </Botao>
           </>
         }
       >
         <div className="space-y-4">
           <p className="text-sm text-slate-500">
-            Copia ficha técnica, ficha elétrica e componentes. Depois é só ajustar o que muda.
+            Copia todos os dados, inclusive a parte elétrica. Depois é só trocar o que muda.
           </p>
-          <Campo rotulo="Nome do novo ativo">
+          <Campo rotulo="Nome da nova máquina">
             <Entrada value={nomeClone} onChange={(e) => setNomeClone(e.target.value)} autoFocus />
           </Campo>
           <Campo rotulo="Nº de série" dica="Deixe vazio se ainda não souber">

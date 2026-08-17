@@ -86,14 +86,14 @@ export default function OSDetalhe() {
   const o = os.data
 
   if (os.isLoading) return <Carregando />
-  if (os.error || !o) return <Erro erro={os.error || new Error('OS não encontrada.')} />
+  if (os.error || !o) return <Erro erro={os.error || new Error('Serviço não encontrado.')} />
 
   const mudarStatus = async (novo) => {
     setErro(null)
     try {
       await atualizarOS.mutateAsync({ id, status: novo })
       invalidar('ordens_servico', 'os_historico')
-      avisar('Status atualizado.')
+      avisar('Pronto, atualizei.')
     } catch (e) {
       setErro(e)
     }
@@ -104,7 +104,7 @@ export default function OSDetalhe() {
     try {
       await aprovar.mutateAsync({ p_os: id })
       invalidar('ordens_servico', 'os_historico')
-      avisar('OS aprovada.')
+      avisar('Gasto liberado.')
     } catch (e) {
       setErro(e)
     }
@@ -122,7 +122,7 @@ export default function OSDetalhe() {
       })
       setModal(null)
       setFormPeca({ peca_id: '', quantidade: '1', observacao: '' })
-      avisar('Peça lançada e baixada do estoque.')
+      avisar('Peça lançada e tirada do estoque.')
     } catch (e) {
       setErro(e)
     }
@@ -144,7 +144,7 @@ export default function OSDetalhe() {
       setFormServico({
         fornecedor_id: '', tipo_servico: 'torno', descricao: '', valor: '', nota_fiscal: '',
       })
-      avisar('Serviço externo lançado.')
+      avisar('Serviço de fora lançado.')
     } catch (e) {
       setErro(e)
     }
@@ -202,29 +202,29 @@ export default function OSDetalhe() {
   if (ehGestor && ['aberta', 'pausada'].includes(o.status))
     acoes.push(
       <Botao key="ap" variante="sucesso" onClick={aprovarOS} carregando={aprovar.isPending}>
-        <ThumbsUp size={15} /> Aprovar custo
+        <ThumbsUp size={15} /> Liberar o gasto
       </Botao>
     )
   if (['aprovada', 'pausada'].includes(o.status))
     acoes.push(
       <Botao key="ex" onClick={() => mudarStatus('em_execucao')}>
-        <Play size={15} /> Iniciar execução
+        <Play size={15} /> Começar
       </Botao>
     )
   if (o.status === 'em_execucao') {
     acoes.push(
       <Botao key="pa" variante="secundario" onClick={() => mudarStatus('pausada')}>
-        <Pause size={15} /> Pausar
+        <Pause size={15} /> Parar no meio
       </Botao>,
       <Botao key="co" variante="sucesso" onClick={() => mudarStatus('concluida')}>
-        <CircleCheck size={15} /> Concluir
+        <CircleCheck size={15} /> Terminei
       </Botao>
     )
   }
   if (ehGestor && !['concluida', 'cancelada'].includes(o.status))
     acoes.push(
       <Botao key="ca" variante="secundario" onClick={() => mudarStatus('cancelada')}>
-        Cancelar OS
+        Cancelar serviço
       </Botao>
     )
 
@@ -267,19 +267,19 @@ export default function OSDetalhe() {
           <p className="mt-1 text-lg font-bold text-slate-900">{moeda(o.custo_pecas)}</p>
         </Cartao>
         <Cartao className="p-4">
-          <p className="text-xs text-slate-500">Serviço externo</p>
+          <p className="text-xs text-slate-500">Serviço de fora</p>
           <p className="mt-1 text-lg font-bold text-slate-900">{moeda(o.custo_servicos)}</p>
         </Cartao>
         <Cartao className="p-4">
-          <p className="text-xs text-slate-500">Mão de obra</p>
+          <p className="text-xs text-slate-500">Horas da equipe</p>
           <p className="mt-1 text-lg font-bold text-slate-900">{moeda(o.custo_mao_obra)}</p>
         </Cartao>
         <Cartao className="border-sky-200 bg-sky-50 p-4">
-          <p className="text-xs text-sky-700">Custo total</p>
+          <p className="text-xs text-sky-700">Gasto total</p>
           <p className="mt-1 text-lg font-bold text-sky-900">{moeda(o.custo_total)}</p>
           {o.orcamento_previsto != null && (
             <p className="mt-0.5 text-xs text-sky-600">
-              orçado {moeda(o.orcamento_previsto)}
+              estava previsto {moeda(o.orcamento_previsto)}
             </p>
           )}
         </Cartao>
@@ -291,14 +291,14 @@ export default function OSDetalhe() {
             <CartaoTitulo
               acao={
                 <Botao tamanho="sm" variante="secundario" onClick={() => setModal('tarefa')}>
-                  <Plus size={14} /> Tarefa
+                  <Plus size={14} /> Passo
                 </Botao>
               }
             >
-              Tarefas {totalTarefas > 0 && `(${tarefasFeitas}/${totalTarefas})`}
+              Passo a passo {totalTarefas > 0 && `(${tarefasFeitas}/${totalTarefas})`}
             </CartaoTitulo>
             {totalTarefas === 0 ? (
-              <Vazio titulo="Sem tarefas" descricao="Quebre o serviço em passos para não esquecer nada." />
+              <Vazio titulo="Sem passos anotados" descricao="Anote passo a passo pra não esquecer nada." />
             ) : (
               <ul className="divide-y divide-slate-100">
                 {tarefas.data.map((t) => (
@@ -339,18 +339,18 @@ export default function OSDetalhe() {
               }
             >
               <span className="inline-flex items-center gap-1.5">
-                <Package size={14} className="text-slate-400" /> Peças do almoxarifado
+                <Package size={14} className="text-slate-400" /> Peças usadas
               </span>
             </CartaoTitulo>
             {(pecasOS.data || []).length === 0 ? (
-              <Vazio titulo="Nenhuma peça lançada" descricao="A baixa do estoque é automática." />
+              <Vazio titulo="Nenhuma peça usada" descricao="Ao lançar aqui, sai do estoque sozinho." />
             ) : (
               <Tabela>
                 <thead>
                   <tr>
                     <Th>Peça</Th>
                     <Th className="text-right">Qtd</Th>
-                    <Th className="text-right">Custo un.</Th>
+                    <Th className="text-right">Preço da un.</Th>
                     <Th className="text-right">Total</Th>
                     <Th />
                   </tr>
@@ -392,11 +392,11 @@ export default function OSDetalhe() {
               }
             >
               <span className="inline-flex items-center gap-1.5">
-                <Wrench size={14} className="text-slate-400" /> Serviço externo
+                <Wrench size={14} className="text-slate-400" /> Serviço de fora
               </span>
             </CartaoTitulo>
             {(servicos.data || []).length === 0 ? (
-              <Vazio titulo="Nenhum serviço externo" descricao="Torno, retífica, solda, laudo…" />
+              <Vazio titulo="Nada mandado pra fora" descricao="Torno, retífica, solda, rebobinamento, laudo…" />
             ) : (
               <Tabela>
                 <thead>
@@ -445,16 +445,16 @@ export default function OSDetalhe() {
               }
             >
               <span className="inline-flex items-center gap-1.5">
-                <Clock size={14} className="text-slate-400" /> Mão de obra interna
+                <Clock size={14} className="text-slate-400" /> Horas da equipe
               </span>
             </CartaoTitulo>
             {(maoObra.data || []).length === 0 ? (
-              <Vazio titulo="Nenhuma hora lançada" descricao="Registre quem trabalhou e quanto tempo." />
+              <Vazio titulo="Nenhuma hora lançada" descricao="Anote quem mexeu e quanto tempo levou." />
             ) : (
               <Tabela>
                 <thead>
                   <tr>
-                    <Th>Técnico</Th>
+                    <Th>Quem fez</Th>
                     <Th className="text-right">Horas</Th>
                     <Th className="text-right">R$/h</Th>
                     <Th className="text-right">Total</Th>
@@ -487,16 +487,16 @@ export default function OSDetalhe() {
 
         <div className="space-y-4">
           <Cartao>
-            <CartaoTitulo>Dados da OS</CartaoTitulo>
+            <CartaoTitulo>Dados do serviço</CartaoTitulo>
             <dl className="space-y-2 px-4 py-3 text-sm">
               {[
-                ['Responsável', o.responsavel?.nome],
-                ['Aberta em', dataHora(o.aberta_em)],
-                ['Aprovada em', o.aprovada_em ? dataHora(o.aprovada_em) : null],
-                ['Aprovada por', o.aprovador?.nome],
-                ['Iniciada em', o.iniciada_em ? dataHora(o.iniciada_em) : null],
-                ['Concluída em', o.concluida_em ? dataHora(o.concluida_em) : null],
-                ['Tempo de parada', o.tempo_parada_min ? duracao(o.tempo_parada_min) : null],
+                ['Quem faz', o.responsavel?.nome],
+                ['Aberto em', dataHora(o.aberta_em)],
+                ['Liberado em', o.aprovada_em ? dataHora(o.aprovada_em) : null],
+                ['Liberado por', o.aprovador?.nome],
+                ['Começou em', o.iniciada_em ? dataHora(o.iniciada_em) : null],
+                ['Terminou em', o.concluida_em ? dataHora(o.concluida_em) : null],
+                ['Máquina ficou parada', o.tempo_parada_min ? duracao(o.tempo_parada_min) : null],
               ]
                 .filter(([, v]) => v)
                 .map(([r, v]) => (
@@ -508,19 +508,19 @@ export default function OSDetalhe() {
             </dl>
             {o.descricao && (
               <div className="border-t border-slate-100 px-4 py-3">
-                <p className="mb-1 text-xs font-medium text-slate-500">Descrição</p>
+                <p className="mb-1 text-xs font-medium text-slate-500">Detalhes</p>
                 <p className="text-sm text-slate-700">{o.descricao}</p>
               </div>
             )}
             {o.solicitacao && (
               <div className="border-t border-slate-100 px-4 py-3">
                 <p className="mb-1 text-xs font-medium text-slate-500">
-                  Origem · {o.solicitacao.numero}
+                  Veio do aviso {o.solicitacao.numero}
                 </p>
                 <p className="text-sm text-slate-700">{o.solicitacao.descricao}</p>
                 {o.solicitacao.solicitante_nome && (
                   <p className="mt-1 text-xs text-slate-400">
-                    reportado por {o.solicitacao.solicitante_nome}
+                    avisado por {o.solicitacao.solicitante_nome}
                   </p>
                 )}
               </div>
@@ -528,7 +528,7 @@ export default function OSDetalhe() {
           </Cartao>
 
           <Cartao>
-            <CartaoTitulo>Linha do tempo</CartaoTitulo>
+            <CartaoTitulo>O que aconteceu</CartaoTitulo>
             <ul className="space-y-3 px-4 py-3">
               {(historico.data || []).map((h) => (
                 <li key={h.id} className="flex gap-3 text-sm">
@@ -537,7 +537,7 @@ export default function OSDetalhe() {
                     <p className="text-slate-700">
                       {h.status_de
                         ? `${M_STATUS_OS[h.status_de]?.label} → ${M_STATUS_OS[h.status_para]?.label}`
-                        : `OS aberta`}
+                        : `Serviço aberto`}
                     </p>
                     <p className="text-xs text-slate-400">
                       {dataHora(h.criado_em)}
@@ -555,7 +555,7 @@ export default function OSDetalhe() {
       <Modal
         aberto={modal === 'peca'}
         aoFechar={() => setModal(null)}
-        titulo="Lançar peça"
+        titulo="Lançar peça usada"
         rodape={
           <>
             <Botao variante="secundario" onClick={() => setModal(null)}>
@@ -566,13 +566,13 @@ export default function OSDetalhe() {
               carregando={inserirPeca.isPending}
               disabled={!formPeca.peca_id || !(Number(formPeca.quantidade) > 0)}
             >
-              Lançar e baixar do estoque
+              Lançar e tirar do estoque
             </Botao>
           </>
         }
       >
         <div className="space-y-4">
-          <Campo rotulo="Peça *">
+          <Campo rotulo="Qual peça *">
             <Selecao
               value={formPeca.peca_id}
               onChange={(e) => setFormPeca((f) => ({ ...f, peca_id: e.target.value }))}
@@ -590,7 +590,7 @@ export default function OSDetalhe() {
             rotulo="Quantidade *"
             dica={
               pecaSelecionada
-                ? `Custo unitário virá do custo médio do estoque (${pecaSelecionada.unidade_medida})`
+                ? `O preço sai sozinho do custo médio do estoque (${pecaSelecionada.unidade_medida})`
                 : undefined
             }
           >
@@ -615,7 +615,7 @@ export default function OSDetalhe() {
       <Modal
         aberto={modal === 'servico'}
         aoFechar={() => setModal(null)}
-        titulo="Lançar serviço externo"
+        titulo="Lançar serviço de fora"
         rodape={
           <>
             <Botao variante="secundario" onClick={() => setModal(null)}>
@@ -632,7 +632,7 @@ export default function OSDetalhe() {
         }
       >
         <div className="space-y-4">
-          <Campo rotulo="Tipo de serviço">
+          <Campo rotulo="Que serviço foi">
             <Selecao
               value={formServico.tipo_servico}
               onChange={(e) => setFormServico((f) => ({ ...f, tipo_servico: e.target.value }))}
@@ -657,7 +657,7 @@ export default function OSDetalhe() {
               ))}
             </Selecao>
           </Campo>
-          <Campo rotulo="Valor (R$) *">
+          <Campo rotulo="Quanto pagou (R$) *">
             <Entrada
               type="number"
               step="0.01"
@@ -686,7 +686,7 @@ export default function OSDetalhe() {
       <Modal
         aberto={modal === 'mao_obra'}
         aoFechar={() => setModal(null)}
-        titulo="Lançar mão de obra"
+        titulo="Lançar horas da equipe"
         rodape={
           <>
             <Botao variante="secundario" onClick={() => setModal(null)}>
@@ -703,7 +703,7 @@ export default function OSDetalhe() {
         }
       >
         <div className="space-y-4">
-          <Campo rotulo="Técnico">
+          <Campo rotulo="Quem fez">
             <Selecao
               value={formMO.tecnico_id}
               onChange={(e) => {
@@ -724,7 +724,7 @@ export default function OSDetalhe() {
             </Selecao>
           </Campo>
           <div className="grid gap-4 sm:grid-cols-2">
-            <Campo rotulo="Horas *">
+            <Campo rotulo="Quantas horas *">
               <Entrada
                 type="number"
                 step="0.25"
@@ -733,7 +733,7 @@ export default function OSDetalhe() {
                 onChange={(e) => setFormMO((f) => ({ ...f, horas: e.target.value }))}
               />
             </Campo>
-            <Campo rotulo="Custo por hora (R$)">
+            <Campo rotulo="Valor da hora (R$)">
               <Entrada
                 type="number"
                 step="0.01"
@@ -750,7 +750,7 @@ export default function OSDetalhe() {
       <Modal
         aberto={modal === 'tarefa'}
         aoFechar={() => setModal(null)}
-        titulo="Nova tarefa"
+        titulo="Novo passo"
         rodape={
           <>
             <Botao variante="secundario" onClick={() => setModal(null)}>
@@ -772,7 +772,7 @@ export default function OSDetalhe() {
               value={formTarefa}
               onChange={(e) => setFormTarefa(e.target.value)}
               autoFocus
-              placeholder="Ex.: desmontar o cabeçote e medir folga"
+              placeholder="Ex.: desmontar o cabeçote e medir a folga"
             />
           </Campo>
           <Erro erro={erro} />

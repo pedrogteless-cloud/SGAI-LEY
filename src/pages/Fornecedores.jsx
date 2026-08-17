@@ -95,7 +95,7 @@ export default function Fornecedores() {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold text-slate-900">Fornecedores</h1>
-          <p className="text-sm text-slate-500">{lista.length} cadastrados</p>
+          <p className="text-sm text-slate-500">Quem faz serviço e vende peça pra gente</p>
         </div>
         <Botao onClick={() => abrir()}>
           <Plus size={15} /> Novo fornecedor
@@ -108,7 +108,7 @@ export default function Fornecedores() {
           <Entrada
             value={busca}
             onChange={(e) => setBusca(e.target.value)}
-            placeholder="Nome, CNPJ, cidade…"
+            placeholder="Procurar por nome, CNPJ ou cidade…"
             className="pl-9"
           />
         </div>
@@ -121,7 +121,7 @@ export default function Fornecedores() {
           <Vazio
             icone={Truck}
             titulo="Nenhum fornecedor"
-            descricao="Cadastre quem faz torno, retífica, solda e venda de peça."
+            descricao="Cadastre quem faz torno, retífica, solda, rebobinamento e quem vende peça."
             acao={
               <Botao onClick={() => abrir()}>
                 <Plus size={15} /> Cadastrar
@@ -133,11 +133,11 @@ export default function Fornecedores() {
             <thead>
               <tr>
                 <Th>Fornecedor</Th>
-                <Th>Serviços</Th>
+                <Th>O que faz</Th>
                 <Th>Contato</Th>
-                <Th className="text-right">Serviços prestados</Th>
-                <Th className="text-right">Gasto total</Th>
-                <Th className="text-right">Última</Th>
+                <Th className="text-right">Serviços feitos</Th>
+                <Th className="text-right">Já pagamos</Th>
+                <Th className="text-right">Última vez</Th>
                 <Th />
               </tr>
             </thead>
@@ -226,7 +226,7 @@ export default function Fornecedores() {
                 onChange={(e) => setForm((f) => ({ ...f, cnpj: e.target.value }))}
               />
             </Campo>
-            <Campo rotulo="Pessoa de contato">
+            <Campo rotulo="Com quem falar">
               <Entrada
                 value={form.contato}
                 onChange={(e) => setForm((f) => ({ ...f, contato: e.target.value }))}
@@ -262,7 +262,7 @@ export default function Fornecedores() {
             </div>
           </div>
 
-          <Campo rotulo="Tipos de serviço">
+          <Campo rotulo="O que ele faz">
             <div className="flex flex-wrap gap-1.5">
               {TIPOS_SERVICO.map((t) => (
                 <button
@@ -281,7 +281,7 @@ export default function Fornecedores() {
             </div>
           </Campo>
 
-          <Campo rotulo="Observações">
+          <Campo rotulo="Anotações">
             <Area
               rows={2}
               value={form.observacoes}

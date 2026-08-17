@@ -60,13 +60,13 @@ export default function ImportarAtivos() {
       linhas.map((l, i) => {
         const problemas = []
         const nome = String(l.nome || '').trim()
-        if (!nome) problemas.push('nome vazio')
+        if (!nome) problemas.push('faltou o nome')
 
         const unidadeId = indices.unidades[semAcento(l.unidade)]
-        if (!unidadeId) problemas.push(`unidade "${l.unidade || ''}" não existe`)
+        if (!unidadeId) problemas.push(`unidade "${l.unidade || ''}" não existe aqui no sistema`)
 
         const categoriaId = indices.categorias[semAcento(l.categoria)]
-        if (!categoriaId) problemas.push(`categoria "${l.categoria || ''}" não existe`)
+        if (!categoriaId) problemas.push(`categoria "${l.categoria || ''}" não existe aqui no sistema`)
 
         let setorId = null
         if (String(l.setor || '').trim() && unidadeId) {
@@ -75,7 +75,7 @@ export default function ImportarAtivos() {
         }
 
         const criticidade = String(l.criticidade || 'B').trim().toUpperCase()
-        if (!['A', 'B', 'C'].includes(criticidade)) problemas.push('criticidade deve ser A, B ou C')
+        if (!['A', 'B', 'C'].includes(criticidade)) problemas.push('a importância tem que ser A, B ou C')
 
         return { linha: i + 2, dados: l, nome, unidadeId, categoriaId, setorId, criticidade, problemas }
       }),
@@ -173,7 +173,7 @@ export default function ImportarAtivos() {
     invalidar('ativos', 'vw_kpi_custo_por_ativo')
     setResultado({ inseridos, erros })
     setImportando(false)
-    if (inseridos > 0) avisar(`${inseridos} ativos cadastrados.`)
+    if (inseridos > 0) avisar(`${inseridos} máquinas cadastradas.`)
   }
 
   if (unidades.isLoading || categorias.isLoading) return <Carregando />
@@ -187,9 +187,9 @@ export default function ImportarAtivos() {
           </Botao>
         </Link>
         <div>
-          <h1 className="text-xl font-bold text-slate-900">Importar ativos por planilha</h1>
+          <h1 className="text-xl font-bold text-slate-900">Cadastrar máquinas pela planilha</h1>
           <p className="text-sm text-slate-500">
-            Cadastre dezenas de máquinas de uma vez, sem digitar uma por uma
+            Traga várias máquinas de uma vez, sem digitar uma por uma
           </p>
         </div>
       </div>
@@ -198,18 +198,18 @@ export default function ImportarAtivos() {
         <CartaoTitulo
           acao={
             <Botao variante="secundario" tamanho="sm" onClick={baixarModelo}>
-              <Download size={14} /> Modelo CSV
+              <Download size={14} /> Baixar modelo
             </Botao>
           }
         >
-          1. Prepare o arquivo
+          1. Prepare a planilha
         </CartaoTitulo>
         <div className="space-y-3 p-4 text-sm text-slate-600">
           <p>
             Baixe o modelo, preencha no Excel e salve como <strong>CSV (separado por vírgula)</strong>.
             Só <code className="rounded bg-slate-100 px-1">nome</code>,{' '}
             <code className="rounded bg-slate-100 px-1">categoria</code> e{' '}
-            <code className="rounded bg-slate-100 px-1">unidade</code> são obrigatórios.
+            <code className="rounded bg-slate-100 px-1">unidade</code> você é obrigado a preencher. O resto é opcional.
           </p>
           <div className="flex flex-wrap gap-1.5">
             {COLUNAS.map((c) => (
@@ -217,14 +217,15 @@ export default function ImportarAtivos() {
             ))}
           </div>
           <p className="text-xs text-slate-400">
-            Categoria, unidade e setor precisam existir no sistema — o nome é comparado ignorando
-            acento e maiúscula. O código do ativo e o QR são gerados automaticamente.
+            Categoria, unidade e setor precisam já existir aqui no sistema. Pode escrever com ou sem
+            acento, maiúscula ou minúscula, que o sistema entende. O código e a etiqueta QR de
+            cada máquina saem prontos.
           </p>
         </div>
       </Cartao>
 
       <Cartao>
-        <CartaoTitulo>2. Envie o arquivo</CartaoTitulo>
+        <CartaoTitulo>2. Mande a planilha</CartaoTitulo>
         <div className="p-4">
           <label
             className="flex cursor-pointer flex-col items-center justify-center rounded-lg
@@ -233,10 +234,10 @@ export default function ImportarAtivos() {
           >
             <Upload size={24} className="mb-2 text-slate-400" />
             <span className="text-sm font-medium text-slate-700">
-              {arquivo || 'Clique para escolher o arquivo CSV'}
+              {arquivo || 'Clique aqui para escolher a planilha'}
             </span>
             <span className="mt-0.5 text-xs text-slate-400">
-              {linhas.length > 0 ? `${linhas.length} linhas lidas` : 'nenhum arquivo selecionado'}
+              {linhas.length > 0 ? `${linhas.length} linhas lidas` : 'nenhuma planilha escolhida'}
             </span>
             <input type="file" accept=".csv,text/csv" onChange={lerArquivo} className="hidden" />
           </label>
@@ -248,20 +249,20 @@ export default function ImportarAtivos() {
           <CartaoTitulo
             acao={
               <Botao onClick={importar} carregando={importando} disabled={validas.length === 0}>
-                Importar {validas.length} {validas.length === 1 ? 'ativo' : 'ativos'}
+                Cadastrar {validas.length} {validas.length === 1 ? 'máquina' : 'máquinas'}
               </Botao>
             }
           >
-            3. Confira antes de gravar
+            3. Confira antes de salvar
           </CartaoTitulo>
 
           <div className="flex gap-4 border-b border-slate-100 px-4 py-3 text-sm">
             <span className="inline-flex items-center gap-1.5 text-emerald-700">
-              <CheckCircle2 size={15} /> {validas.length} prontas
+              <CheckCircle2 size={15} /> {validas.length} certas
             </span>
             {invalidas.length > 0 && (
               <span className="inline-flex items-center gap-1.5 text-red-700">
-                <AlertTriangle size={15} /> {invalidas.length} com problema
+                <AlertTriangle size={15} /> {invalidas.length} com erro
               </span>
             )}
           </div>
@@ -272,9 +273,9 @@ export default function ImportarAtivos() {
                 <Th>Linha</Th>
                 <Th>Nome</Th>
                 <Th>Categoria</Th>
-                <Th>Unidade / Setor</Th>
-                <Th>Crit.</Th>
-                <Th>Situação</Th>
+                <Th>Fábrica / Setor</Th>
+                <Th>Import.</Th>
+                <Th>Está certo?</Th>
               </tr>
             </thead>
             <tbody>
@@ -309,10 +310,10 @@ export default function ImportarAtivos() {
 
       {resultado && (
         <Cartao>
-          <CartaoTitulo>Resultado</CartaoTitulo>
+          <CartaoTitulo>Pronto</CartaoTitulo>
           <div className="space-y-3 p-4">
             <p className="text-sm text-slate-700">
-              <strong className="text-emerald-700">{resultado.inseridos}</strong> ativos cadastrados.
+              <strong className="text-emerald-700">{resultado.inseridos}</strong> máquinas cadastradas.
               {(resultado.erros.length > 0 || invalidas.length > 0) && (
                 <>
                   {' '}
@@ -335,7 +336,7 @@ export default function ImportarAtivos() {
             )}
 
             <div className="flex gap-2 pt-1">
-              <Botao onClick={() => navegar('/ativos')}>Ver ativos</Botao>
+              <Botao onClick={() => navegar('/ativos')}>Ver as máquinas</Botao>
               <Botao
                 variante="secundario"
                 onClick={() => {
@@ -344,7 +345,7 @@ export default function ImportarAtivos() {
                   setResultado(null)
                 }}
               >
-                Importar outra planilha
+                Mandar outra planilha
               </Botao>
             </div>
           </div>

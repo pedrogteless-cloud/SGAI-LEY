@@ -89,7 +89,7 @@ export default function OrdensServico() {
       })
       setNova(false)
       invalidar('ordens_servico')
-      avisar(`OS ${os.numero} aberta.`)
+      avisar(`Serviço ${os.numero} aberto.`)
     } catch (e) {
       setErro(e)
     }
@@ -101,14 +101,14 @@ export default function OrdensServico() {
     <div className="space-y-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold text-slate-900">Ordens de Serviço</h1>
+          <h1 className="text-xl font-bold text-slate-900">Serviços</h1>
           <p className="text-sm text-slate-500">
-            {lista.length} {lista.length === 1 ? 'OS' : 'OS'} · {moeda(totalAberto)} em custo
+            {lista.length} {lista.length === 1 ? 'serviço' : 'serviços'} · {moeda(totalAberto)} em gasto
           </p>
         </div>
         {ehGestor && (
           <Botao onClick={abrirNova}>
-            <Plus size={15} /> Nova OS
+            <Plus size={15} /> Novo serviço
           </Botao>
         )}
       </div>
@@ -120,13 +120,13 @@ export default function OrdensServico() {
             <Entrada
               value={busca}
               onChange={(e) => setBusca(e.target.value)}
-              placeholder="Nº da OS, título, máquina…"
+              placeholder="Procurar por número, nome ou máquina…"
               className="pl-9"
             />
           </div>
           <Selecao value={status} onChange={(e) => setStatus(e.target.value)}>
-            <option value="abertas">Em aberto</option>
-            <option value="todas">Todas</option>
+            <option value="abertas">Só os em aberto</option>
+            <option value="todas">Todos</option>
             {STATUS_OS.map((s) => (
               <option key={s.valor} value={s.valor}>
                 {s.label}
@@ -134,7 +134,7 @@ export default function OrdensServico() {
             ))}
           </Selecao>
           <Selecao value={tipo} onChange={(e) => setTipo(e.target.value)}>
-            <option value="">Todos os tipos</option>
+            <option value="">Qualquer tipo</option>
             {TIPOS_OS.map((t) => (
               <option key={t.valor} value={t.valor}>
                 {t.label}
@@ -142,7 +142,7 @@ export default function OrdensServico() {
             ))}
           </Selecao>
           <Selecao value={unidade} onChange={(e) => setUnidade(e.target.value)}>
-            <option value="">Todas as unidades</option>
+            <option value="">Eusébio e Timon</option>
             {(unidades.data || []).map((u) => (
               <option key={u.id} value={u.id}>
                 {u.nome}
@@ -158,21 +158,21 @@ export default function OrdensServico() {
         ) : lista.length === 0 ? (
           <Vazio
             icone={ClipboardList}
-            titulo="Nenhuma OS encontrada"
-            descricao="Ajuste os filtros ou converta uma solicitação da fila."
+            titulo="Nenhum serviço encontrado"
+            descricao="Mude os filtros, ou abra um serviço a partir de um aviso da produção."
           />
         ) : (
           <Tabela>
             <thead>
               <tr>
-                <Th>OS</Th>
-                <Th>Ativo</Th>
+                <Th>Serviço</Th>
+                <Th>Máquina</Th>
                 <Th>Status</Th>
-                <Th>Prioridade</Th>
-                <Th>Responsável</Th>
-                <Th>Aberta</Th>
+                <Th>Urgência</Th>
+                <Th>Quem faz</Th>
+                <Th>Aberto em</Th>
                 <Th>Parada</Th>
-                <Th className="text-right">Custo</Th>
+                <Th className="text-right">Gasto</Th>
               </tr>
             </thead>
             <tbody>
@@ -219,7 +219,7 @@ export default function OrdensServico() {
       <Modal
         aberto={nova}
         aoFechar={() => setNova(false)}
-        titulo="Nova Ordem de Serviço"
+        titulo="Novo serviço"
         rodape={
           <>
             <Botao variante="secundario" onClick={() => setNova(false)}>
@@ -230,13 +230,13 @@ export default function OrdensServico() {
               carregando={criar.isPending}
               disabled={!form.ativo_id || !form.titulo.trim()}
             >
-              Abrir OS
+              Abrir serviço
             </Botao>
           </>
         }
       >
         <div className="space-y-4">
-          <Campo rotulo="Ativo *">
+          <Campo rotulo="Máquina *">
             <Selecao
               value={form.ativo_id}
               onChange={(e) => setForm((f) => ({ ...f, ativo_id: e.target.value }))}
@@ -250,16 +250,16 @@ export default function OrdensServico() {
             </Selecao>
           </Campo>
 
-          <Campo rotulo="Título *">
+          <Campo rotulo="O que precisa ser feito *">
             <Entrada
               value={form.titulo}
               onChange={(e) => setForm((f) => ({ ...f, titulo: e.target.value }))}
-              placeholder="Ex.: Troca de rolamento do eixo principal"
+              placeholder="Ex.: Trocar rolamento do eixo principal"
             />
           </Campo>
 
           <div className="grid gap-4 sm:grid-cols-2">
-            <Campo rotulo="Tipo">
+            <Campo rotulo="Que tipo de serviço">
               <Selecao
                 value={form.tipo}
                 onChange={(e) => setForm((f) => ({ ...f, tipo: e.target.value }))}
@@ -271,7 +271,7 @@ export default function OrdensServico() {
                 ))}
               </Selecao>
             </Campo>
-            <Campo rotulo="Prioridade">
+            <Campo rotulo="Urgência">
               <Selecao
                 value={form.prioridade}
                 onChange={(e) => setForm((f) => ({ ...f, prioridade: e.target.value }))}
@@ -285,12 +285,12 @@ export default function OrdensServico() {
             </Campo>
           </div>
 
-          <Campo rotulo="Responsável">
+          <Campo rotulo="Quem vai fazer">
             <Selecao
               value={form.responsavel_id}
               onChange={(e) => setForm((f) => ({ ...f, responsavel_id: e.target.value }))}
             >
-              <option value="">— definir depois —</option>
+              <option value="">— decido depois —</option>
               {(tecnicos.data || []).map((t) => (
                 <option key={t.id} value={t.id}>
                   {t.nome}
@@ -299,7 +299,7 @@ export default function OrdensServico() {
             </Selecao>
           </Campo>
 
-          <Campo rotulo="Descrição">
+          <Campo rotulo="Detalhes">
             <Area
               rows={3}
               value={form.descricao}

@@ -55,20 +55,20 @@ export default function Ativos() {
     <div className="space-y-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold text-slate-900">Ativos</h1>
+          <h1 className="text-xl font-bold text-slate-900">Máquinas</h1>
           <p className="text-sm text-slate-500">
-            {lista.length} {lista.length === 1 ? 'equipamento' : 'equipamentos'}
+            {lista.length} {lista.length === 1 ? 'máquina cadastrada' : 'máquinas cadastradas'}
           </p>
         </div>
         <div className="flex gap-2">
           <Link to="/ativos/importar">
             <Botao variante="secundario">
-              <Upload size={15} /> Importar planilha
+              <Upload size={15} /> Cadastrar pela planilha
             </Botao>
           </Link>
           <Link to="/ativos/novo">
             <Botao>
-              <Plus size={15} /> Novo ativo
+              <Plus size={15} /> Nova máquina
             </Botao>
           </Link>
         </div>
@@ -81,7 +81,7 @@ export default function Ativos() {
             <Entrada
               value={busca}
               onChange={(e) => setBusca(e.target.value)}
-              placeholder="Código, nome, fabricante…"
+              placeholder="Procurar por código, nome ou marca…"
               className="pl-9"
             />
           </div>
@@ -92,7 +92,7 @@ export default function Ativos() {
               setSetor('')
             }}
           >
-            <option value="">Todas as unidades</option>
+            <option value="">Eusébio e Timon</option>
             {(unidades.data || []).map((u) => (
               <option key={u.id} value={u.id}>
                 {u.nome}
@@ -117,7 +117,7 @@ export default function Ativos() {
           </Selecao>
           <div className="grid grid-cols-2 gap-2">
             <Selecao value={criticidade} onChange={(e) => setCriticidade(e.target.value)}>
-              <option value="">Crit.</option>
+              <option value="">Importância</option>
               {CRITICIDADES.map((c) => (
                 <option key={c.valor} value={c.valor}>
                   {c.valor}
@@ -125,7 +125,7 @@ export default function Ativos() {
               ))}
             </Selecao>
             <Selecao value={situacao} onChange={(e) => setSituacao(e.target.value)}>
-              <option value="">Situação</option>
+              <option value="">Como está</option>
               {SITUACOES_ATIVO.map((s) => (
                 <option key={s.valor} value={s.valor}>
                   {s.label}
@@ -142,12 +142,12 @@ export default function Ativos() {
         ) : lista.length === 0 ? (
           <Vazio
             icone={Package}
-            titulo="Nenhum ativo encontrado"
-            descricao="Cadastre o primeiro equipamento ou importe a planilha da mudança."
+            titulo="Nenhuma máquina encontrada"
+            descricao="Cadastre a primeira máquina, ou traga todas de uma vez pela planilha."
             acao={
               <Link to="/ativos/novo">
                 <Botao>
-                  <Plus size={15} /> Cadastrar ativo
+                  <Plus size={15} /> Cadastrar máquina
                 </Botao>
               </Link>
             }
@@ -157,11 +157,11 @@ export default function Ativos() {
             <thead>
               <tr>
                 <Th>Código</Th>
-                <Th>Equipamento</Th>
-                <Th>Local</Th>
-                <Th>Crit.</Th>
-                <Th>Situação</Th>
-                <Th className="text-right">Custo 12m</Th>
+                <Th>Máquina</Th>
+                <Th>Onde fica</Th>
+                <Th>Importância</Th>
+                <Th>Como está</Th>
+                <Th className="text-right">Gasto no ano</Th>
               </tr>
             </thead>
             <tbody>

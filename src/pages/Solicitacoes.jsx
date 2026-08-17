@@ -59,7 +59,7 @@ export default function Solicitacoes() {
         p_responsavel: responsavel || null,
       })
       setTriagem(null)
-      avisar('Ordem de Serviço aberta.')
+      avisar('Serviço aberto.')
       invalidar('solicitacoes_servico', 'ordens_servico')
       navegar(`/os/${osId}`)
     } catch (e) {
@@ -73,7 +73,7 @@ export default function Solicitacoes() {
       await rejeitar.mutateAsync({ p_solicitacao: rejeicao.id, p_motivo: motivo.trim() })
       setRejeicao(null)
       setMotivo('')
-      avisar('Solicitação rejeitada.')
+      avisar('Aviso recusado.')
     } catch (e) {
       setErro(e)
     }
@@ -85,9 +85,9 @@ export default function Solicitacoes() {
     <div className="space-y-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold text-slate-900">Solicitações</h1>
+          <h1 className="text-xl font-bold text-slate-900">Avisos de problema</h1>
           <p className="text-sm text-slate-500">
-            O que o chão de fábrica reportou pelo QR — você decide o que vira OS
+            O que a produção avisou pelo QR — você decide o que vira serviço
           </p>
         </div>
         <Selecao
@@ -95,8 +95,8 @@ export default function Solicitacoes() {
           onChange={(e) => setFiltro(e.target.value)}
           className="w-auto min-w-44"
         >
-          <option value="pendentes">Aguardando triagem</option>
-          <option value="todas">Todas</option>
+          <option value="pendentes">Esperando você olhar</option>
+          <option value="todas">Todos</option>
         </Selecao>
       </div>
 
@@ -106,8 +106,8 @@ export default function Solicitacoes() {
         <Cartao>
           <Vazio
             icone={Inbox}
-            titulo="Nada na fila"
-            descricao="Quando alguém escanear o QR de uma máquina e reportar um problema, ele aparece aqui."
+            titulo="Nada esperando"
+            descricao="Quando alguém ler o QR de uma máquina e avisar um problema, aparece aqui."
           />
         </Cartao>
       ) : (
@@ -148,7 +148,7 @@ export default function Solicitacoes() {
                   </p>
                   {s.motivo_rejeicao && (
                     <p className="mt-2 rounded-md bg-slate-50 px-2 py-1.5 text-xs text-slate-500">
-                      Rejeitada: {s.motivo_rejeicao}
+                      Recusado: {s.motivo_rejeicao}
                     </p>
                   )}
                 </div>
@@ -157,7 +157,7 @@ export default function Solicitacoes() {
               {['aberta', 'em_triagem'].includes(s.status) && (
                 <div className="mt-3 flex gap-2 border-t border-slate-100 pt-3">
                   <Botao tamanho="sm" onClick={() => abrirTriagem(s)}>
-                    Abrir OS <ArrowRight size={14} />
+                    Virar serviço <ArrowRight size={14} />
                   </Botao>
                   <Botao
                     tamanho="sm"
@@ -168,7 +168,7 @@ export default function Solicitacoes() {
                       setRejeicao(s)
                     }}
                   >
-                    <X size={14} /> Rejeitar
+                    <X size={14} /> Recusar
                   </Botao>
                 </div>
               )}
@@ -180,7 +180,7 @@ export default function Solicitacoes() {
       <Modal
         aberto={Boolean(triagem)}
         aoFechar={() => setTriagem(null)}
-        titulo="Converter em Ordem de Serviço"
+        titulo="Abrir serviço"
         rodape={
           <>
             <Botao variante="secundario" onClick={() => setTriagem(null)}>
@@ -202,12 +202,12 @@ export default function Solicitacoes() {
             <p className="mt-1">{triagem?.descricao}</p>
           </div>
 
-          <Campo rotulo="Título da OS">
+          <Campo rotulo="Nome do serviço">
             <Entrada value={titulo} onChange={(e) => setTitulo(e.target.value)} />
           </Campo>
 
           <div className="grid gap-4 sm:grid-cols-2">
-            <Campo rotulo="Tipo">
+            <Campo rotulo="Que tipo de serviço">
               <Selecao value={tipo} onChange={(e) => setTipo(e.target.value)}>
                 {TIPOS_OS.map((t) => (
                   <option key={t.valor} value={t.valor}>
@@ -216,7 +216,7 @@ export default function Solicitacoes() {
                 ))}
               </Selecao>
             </Campo>
-            <Campo rotulo="Prioridade">
+            <Campo rotulo="Urgência">
               <Selecao value={prioridade} onChange={(e) => setPrioridade(e.target.value)}>
                 {PRIORIDADES.map((p) => (
                   <option key={p.valor} value={p.valor}>
@@ -227,9 +227,9 @@ export default function Solicitacoes() {
             </Campo>
           </div>
 
-          <Campo rotulo="Responsável" dica="Quem vai executar — pode definir depois">
+          <Campo rotulo="Quem vai fazer" dica="Pode deixar pra decidir depois">
             <Selecao value={responsavel} onChange={(e) => setResponsavel(e.target.value)}>
-              <option value="">— definir depois —</option>
+              <option value="">— decido depois —</option>
               {(tecnicos.data || []).map((t) => (
                 <option key={t.id} value={t.id}>
                   {t.nome}
@@ -245,7 +245,7 @@ export default function Solicitacoes() {
       <Modal
         aberto={Boolean(rejeicao)}
         aoFechar={() => setRejeicao(null)}
-        titulo="Rejeitar solicitação"
+        titulo="Recusar aviso"
         rodape={
           <>
             <Botao variante="secundario" onClick={() => setRejeicao(null)}>
@@ -257,18 +257,18 @@ export default function Solicitacoes() {
               carregando={rejeitar.isPending}
               disabled={!motivo.trim()}
             >
-              Rejeitar
+              Recusar
             </Botao>
           </>
         }
       >
         <div className="space-y-4">
-          <Campo rotulo="Motivo" dica="Fica registrado no histórico">
+          <Campo rotulo="Por que não é caso de serviço?" dica="Fica registrado">
             <Area
               rows={3}
               value={motivo}
               onChange={(e) => setMotivo(e.target.value)}
-              placeholder="Ex.: não é falha, era regulagem de operação"
+              placeholder="Ex.: não era defeito, só faltava regular a máquina"
               autoFocus
             />
           </Campo>

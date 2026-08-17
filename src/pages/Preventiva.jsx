@@ -11,8 +11,8 @@ import {
 } from '../components/ui'
 
 const SITUACAO = {
-  vencida: { label: 'Vencida', cor: 'bg-red-100 text-red-700 ring-red-200' },
-  proxima: { label: 'Próxima', cor: 'bg-amber-100 text-amber-700 ring-amber-200' },
+  vencida: { label: 'Atrasada', cor: 'bg-red-100 text-red-700 ring-red-200' },
+  proxima: { label: 'Chegando a hora', cor: 'bg-amber-100 text-amber-700 ring-amber-200' },
   em_dia: { label: 'Em dia', cor: 'bg-emerald-100 text-emerald-700 ring-emerald-200' },
 }
 
@@ -58,7 +58,7 @@ export default function Preventiva() {
       setModal(false)
       setTemplate('')
       setAtivoId('')
-      avisar('Plano aplicado ao ativo.')
+      avisar('Revisão programada.')
     } catch (e) {
       setErro(e)
     }
@@ -69,7 +69,7 @@ export default function Preventiva() {
     try {
       const osId = await gerarOS.mutateAsync({ p_plano: planoId })
       invalidar('ordens_servico')
-      avisar('OS preventiva gerada com o checklist.')
+      avisar('Serviço aberto já com a lista de conferência.')
       navegar(`/os/${osId}`)
     } catch (e) {
       setErro(e)
@@ -84,9 +84,9 @@ export default function Preventiva() {
     <div className="space-y-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold text-slate-900">Manutenção preventiva</h1>
+          <h1 className="text-xl font-bold text-slate-900">Revisões</h1>
           <p className="text-sm text-slate-500">
-            {lista.length} planos · {vencidas} vencidos · {proximas} vencendo
+            {lista.length} programadas · {vencidas} atrasadas · {proximas} chegando a hora
           </p>
         </div>
         {ehGestor && (
@@ -96,7 +96,7 @@ export default function Preventiva() {
               setModal(true)
             }}
           >
-            <Plus size={15} /> Aplicar template
+            <Plus size={15} /> Programar revisão
           </Botao>
         )}
       </div>
@@ -109,12 +109,12 @@ export default function Preventiva() {
         ) : lista.length === 0 ? (
           <Vazio
             icone={CalendarClock}
-            titulo="Nenhum plano preventivo"
-            descricao="Monte o checklist uma vez por categoria e aplique em todas as máquinas iguais."
+            titulo="Nenhuma revisão programada"
+            descricao="Monte a lista de conferência uma vez e use em todas as máquinas iguais."
             acao={
               ehGestor && (
                 <Botao onClick={() => setModal(true)}>
-                  <Plus size={15} /> Aplicar template
+                  <Plus size={15} /> Programar revisão
                 </Botao>
               )
             }
@@ -123,11 +123,11 @@ export default function Preventiva() {
           <Tabela>
             <thead>
               <tr>
-                <Th>Plano</Th>
-                <Th>Ativo</Th>
-                <Th>Base</Th>
-                <Th>Próxima</Th>
-                <Th>Situação</Th>
+                <Th>Revisão</Th>
+                <Th>Máquina</Th>
+                <Th>Controla por</Th>
+                <Th>Quando</Th>
+                <Th>Como está</Th>
                 <Th />
               </tr>
             </thead>
@@ -169,8 +169,8 @@ export default function Preventiva() {
                         {p.dias_restantes != null && (
                           <span className="block text-xs text-slate-400">
                             {p.dias_restantes < 0
-                              ? `${Math.abs(p.dias_restantes)} dias atrasado`
-                              : `em ${p.dias_restantes} dias`}
+                              ? `atrasada ${Math.abs(p.dias_restantes)} dias`
+                              : `daqui a ${p.dias_restantes} dias`}
                           </span>
                         )}
                       </span>
@@ -186,7 +186,7 @@ export default function Preventiva() {
                       onClick={() => gerar(p.plano_id)}
                       carregando={gerarOS.isPending}
                     >
-                      <Play size={13} /> Gerar OS
+                      <Play size={13} /> Abrir serviço
                     </Botao>
                   </Td>
                 </tr>
@@ -198,20 +198,20 @@ export default function Preventiva() {
 
       <Cartao>
         <div className="border-b border-slate-200 px-4 py-3">
-          <h3 className="text-sm font-semibold text-slate-800">Templates de plano</h3>
+          <h3 className="text-sm font-semibold text-slate-800">Modelos de revisão</h3>
           <p className="text-xs text-slate-400">
-            Monte o checklist uma vez por categoria e aplique em todas as máquinas iguais
+            Monte a lista de conferência uma vez e use em todas as máquinas do mesmo tipo
           </p>
         </div>
         {(templates.data || []).length === 0 ? (
-          <Vazio titulo="Nenhum template" descricao="Cadastre pelo Supabase ou peça para o time criar." />
+          <Vazio titulo="Nenhum modelo" descricao="Já vêm prontos os de Compressor e Quadro Elétrico." />
         ) : (
           <Tabela>
             <thead>
               <tr>
-                <Th>Template</Th>
+                <Th>Modelo</Th>
                 <Th>Categoria</Th>
-                <Th>Periodicidade</Th>
+                <Th>De quanto em quanto tempo</Th>
               </tr>
             </thead>
             <tbody>
@@ -236,7 +236,7 @@ export default function Preventiva() {
       <Modal
         aberto={modal}
         aoFechar={() => setModal(false)}
-        titulo="Aplicar template a um ativo"
+        titulo="Programar revisão de uma máquina"
         rodape={
           <>
             <Botao variante="secundario" onClick={() => setModal(false)}>
@@ -253,7 +253,7 @@ export default function Preventiva() {
         }
       >
         <div className="space-y-4">
-          <Campo rotulo="Template *">
+          <Campo rotulo="Qual modelo de revisão *">
             <Selecao
               value={template}
               onChange={(e) => {
@@ -271,10 +271,10 @@ export default function Preventiva() {
           </Campo>
 
           <Campo
-            rotulo="Ativo *"
+            rotulo="Qual máquina *"
             dica={
               templateEscolhido?.categoria?.nome
-                ? `Mostrando só ativos da categoria ${templateEscolhido.categoria.nome}`
+                ? `Mostrando só as máquinas do tipo ${templateEscolhido.categoria.nome}`
                 : undefined
             }
           >

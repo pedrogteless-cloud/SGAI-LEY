@@ -37,7 +37,7 @@ export default function Entrar() {
             S
           </div>
           <h1 className="text-xl font-bold text-slate-900">SGAI</h1>
-          <p className="text-sm text-slate-500">Gestão de Ativos Industriais · Ley Colchões</p>
+          <p className="text-sm text-slate-500">Controle de máquinas e manutenção · Ley Colchões</p>
         </div>
 
         <form
@@ -73,7 +73,7 @@ export default function Entrar() {
         </form>
 
         <p className="mt-5 text-center text-xs text-slate-400">
-          Operador não precisa entrar — é só escanear o QR da máquina.
+          Quem trabalha na produção não precisa de senha — é só ler o QR da máquina.
         </p>
       </div>
     </div>
