@@ -26,6 +26,18 @@ const FORMATOS = [
   { id: 'livre', nome: 'Outro tamanho (digitar)', l: 90, a: 40 },
 ]
 
+const BotaoSeta = ({ rotulo, onClick, children }) => (
+  <button
+    type="button"
+    onClick={onClick}
+    aria-label={rotulo}
+    className="flex size-8 items-center justify-center rounded-md bg-white text-slate-600
+      ring-1 ring-slate-300 transition hover:bg-slate-100 active:scale-95"
+  >
+    {children}
+  </button>
+)
+
 const lerSalvo = () => {
   try {
     return JSON.parse(localStorage.getItem(CHAVE)) || null
@@ -39,6 +51,10 @@ export default function EtiquetaQR({ aberto, aoFechar, ativo, link }) {
   const [formato, setFormato] = useState(salvo?.formato || '6082')
   const [larg, setLarg] = useState(salvo?.larg || 101.6)
   const [alt, setAlt] = useState(salvo?.alt || 33.9)
+  // cada impressora registra a folha de um jeito: esse ajuste calibra a posição
+  // e fica salvo, então uma vez encontrado o ponto certo, é sempre esse
+  const [deslocX, setDeslocX] = useState(salvo?.deslocX ?? 0)
+  const [deslocY, setDeslocY] = useState(salvo?.deslocY ?? 0)
   const [qrSvg, setQrSvg] = useState(null)
 
   useEffect(() => {
@@ -52,11 +68,11 @@ export default function EtiquetaQR({ aberto, aoFechar, ativo, link }) {
       .catch(() => setQrSvg(null))
   }, [aberto, link])
 
-  // guarda a medida assim que ela muda: na próxima vez é só mandar imprimir
+  // guarda medida e ajuste assim que mudam: na próxima vez é só mandar imprimir
   useEffect(() => {
     if (!aberto) return
-    localStorage.setItem(CHAVE, JSON.stringify({ formato, larg, alt }))
-  }, [aberto, formato, larg, alt])
+    localStorage.setItem(CHAVE, JSON.stringify({ formato, larg, alt, deslocX, deslocY }))
+  }, [aberto, formato, larg, alt, deslocX, deslocY])
 
   const trocarFormato = (id) => {
     setFormato(id)
@@ -82,12 +98,16 @@ export default function EtiquetaQR({ aberto, aoFechar, ativo, link }) {
     : Math.min(larg - 6, (alt - 6) * 0.62)
   const sobra = deitada ? larg - ladoQR - 9 : larg - 6
 
-  const etiqueta = (
+  const conteudo = (
     <div
-      className={`etiqueta-folha flex overflow-hidden bg-white p-[3mm] ${
+      className={`flex bg-white p-[3mm] ${
         deitada ? 'items-center gap-[3mm]' : 'flex-col items-center gap-[1.5mm]'
       }`}
-      style={{ width: `${larg}mm`, height: `${alt}mm` }}
+      style={{
+        width: `${larg}mm`,
+        height: `${alt}mm`,
+        transform: `translate(${deslocX}mm, ${deslocY}mm)`,
+      }}
     >
       {qrSvg && (
         <div
@@ -136,6 +156,18 @@ export default function EtiquetaQR({ aberto, aoFechar, ativo, link }) {
           Problema? Aponte a câmera
         </p>
       </div>
+    </div>
+  )
+
+  // A moldura é o papel de verdade — tamanho fixo, corta o que passar da borda
+  // quando o ajuste desloca o conteúdo. Ela é o mesmo tanto na prévia quanto no
+  // que sai impresso, então o que se vê na tela é exatamente o que vai no papel.
+  const etiqueta = (
+    <div
+      className="etiqueta-folha overflow-hidden bg-white"
+      style={{ width: `${larg}mm`, height: `${alt}mm` }}
+    >
+      {conteudo}
     </div>
   )
 
@@ -200,10 +232,55 @@ export default function EtiquetaQR({ aberto, aoFechar, ativo, link }) {
             </div>
           </div>
 
+          <div className="rounded-lg bg-slate-50 p-3 ring-1 ring-slate-200 ring-inset">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-medium text-slate-600">
+                Saiu deslocado no seu adesivo? Ajuste aqui
+              </p>
+              {(deslocX !== 0 || deslocY !== 0) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDeslocX(0)
+                    setDeslocY(0)
+                  }}
+                  className="text-xs font-medium text-sky-600 hover:text-sky-700"
+                >
+                  Zerar
+                </button>
+              )}
+            </div>
+            <div className="mt-2 flex items-center justify-center gap-4">
+              <div className="grid grid-cols-3 grid-rows-3 gap-1">
+                <span />
+                <BotaoSeta rotulo="Para cima" onClick={() => setDeslocY((v) => v - 0.5)}>
+                  ↑
+                </BotaoSeta>
+                <span />
+                <BotaoSeta rotulo="Para a esquerda" onClick={() => setDeslocX((v) => v - 0.5)}>
+                  ←
+                </BotaoSeta>
+                <span />
+                <BotaoSeta rotulo="Para a direita" onClick={() => setDeslocX((v) => v + 0.5)}>
+                  →
+                </BotaoSeta>
+                <span />
+                <BotaoSeta rotulo="Para baixo" onClick={() => setDeslocY((v) => v + 0.5)}>
+                  ↓
+                </BotaoSeta>
+                <span />
+              </div>
+              <span className="font-mono text-xs text-slate-500">
+                x {deslocX.toFixed(1)}mm
+                <br />y {deslocY.toFixed(1)}mm
+              </span>
+            </div>
+          </div>
+
           <p className="text-xs text-slate-500">
             Na hora de imprimir, deixe a escala em <strong>100%</strong> e desmarque
             &ldquo;ajustar à página&rdquo; — senão a impressora encolhe e sai fora da medida.
-            O tamanho escolhido fica guardado para a próxima.
+            Tamanho e ajuste ficam guardados para a próxima.
           </p>
         </div>
       </Modal>

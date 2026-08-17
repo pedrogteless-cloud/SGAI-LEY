@@ -159,6 +159,10 @@ O layout se ajusta sozinho: adesivo em faixa põe o QR ao lado do texto; quadrad
 ou em pé põe o QR em cima. Abaixo de 30 mm de altura o setor sai e as fontes
 encolhem, para nada ficar cortado.
 
+Se o conteúdo sair deslocado no seu adesivo — cada impressora registra a folha de
+um jeito — use as setas de ajuste fino na mesma tela. O deslocamento fica salvo
+junto com o tamanho, então uma vez calibrado fica assim para sempre.
+
 Na hora de imprimir, deixe a escala em **100%** e desmarque "ajustar à página",
 senão a impressora encolhe e a etiqueta sai fora da medida.
 
