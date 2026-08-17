@@ -25,8 +25,34 @@ body {
   @apply mb-1 block text-xs font-medium text-slate-600;
 }
 
+/* A etiqueta vive escondida na tela e só existe no papel. */
+.so-impressao {
+  display: none;
+}
+
 @media print {
   .nao-imprimir {
     display: none !important;
+  }
+
+  /* Com etiqueta na folha, todo o resto some: sobra ela sozinha, no canto. */
+  body:has(.so-impressao) > *:not(.so-impressao) {
+    display: none !important;
+  }
+
+  .so-impressao {
+    display: block;
+    position: absolute;
+    inset: 0;
+  }
+
+  .etiqueta-folha {
+    box-shadow: none !important;
+  }
+
+  /* Impressora térmica costuma descartar cor de fundo; o QR é preto no branco. */
+  * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
   }
 }

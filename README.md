@@ -145,6 +145,23 @@ Todo usuário novo entra como `operador` até alguém promover.
 > senão o login falha com *"Database error querying schema"*. O painel faz isso certo;
 > o `insert` manual, não. O arquivo tem o modelo correto e o comando de conserto.
 
+## Etiqueta de QR para colar na máquina
+
+Na tela da máquina, em **Etiqueta QR**, você escolhe o tamanho do adesivo que usa
+e a prévia aparece no tamanho real. A folha sai com `@page` na medida exata, sem
+margem, então o conteúdo não escorrega de posição.
+
+Já vêm os formatos comuns (Pimaco 6180, 6082, 6087, quadrada 60 mm) e um campo
+para digitar qualquer medida em milímetros. A escolha fica guardada no navegador
+— da segunda vez em diante é abrir e mandar imprimir.
+
+O layout se ajusta sozinho: adesivo em faixa põe o QR ao lado do texto; quadrado
+ou em pé põe o QR em cima. Abaixo de 30 mm de altura o setor sai e as fontes
+encolhem, para nada ficar cortado.
+
+Na hora de imprimir, deixe a escala em **100%** e desmarque "ajustar à página",
+senão a impressora encolhe e a etiqueta sai fora da medida.
+
 ## Cadastrando as máquinas da mudança
 
 Em **Ativos → Importar planilha**: baixe o modelo CSV, preencha no Excel, salve como

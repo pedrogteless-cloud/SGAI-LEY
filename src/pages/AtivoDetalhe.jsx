@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import QRCode from 'qrcode'
 import {
   ArrowLeft, Pencil, Copy, QrCode, Zap, Wrench, Printer, Plus, Image as Imagem,
 } from 'lucide-react'
@@ -12,6 +11,7 @@ import {
   Tabela, Th, Td, Erro, useAviso,
 } from '../components/ui'
 import LancarGasto from '../components/LancarGasto'
+import EtiquetaQR from '../components/EtiquetaQR'
 
 const Linha = ({ rotulo, valor }) => (
   <div className="flex justify-between gap-4 border-b border-slate-100 py-2 last:border-0">
@@ -26,7 +26,6 @@ export default function AtivoDetalhe() {
   const avisar = useAviso()
   const invalidar = useInvalidar()
 
-  const [qrUrl, setQrUrl] = useState(null)
   const [modalQR, setModalQR] = useState(false)
   const [modalGasto, setModalGasto] = useState(false)
   const [modalClone, setModalClone] = useState(false)
@@ -72,13 +71,6 @@ export default function AtivoDetalhe() {
 
   const linkQR = a ? `${window.location.origin}/reportar/${a.qr_token}` : ''
 
-  useEffect(() => {
-    if (!linkQR) return
-    QRCode.toDataURL(linkQR, { width: 640, margin: 1, errorCorrectionLevel: 'M' })
-      .then(setQrUrl)
-      .catch(() => setQrUrl(null))
-  }, [linkQR])
-
   if (ativo.isLoading) return <Carregando />
   if (ativo.error || !a) return <Erro erro={ativo.error || new Error('Ativo não encontrado.')} />
 
@@ -100,7 +92,6 @@ export default function AtivoDetalhe() {
     }
   }
 
-  const imprimirEtiqueta = () => window.print()
 
   return (
     <div className="space-y-5">
@@ -418,36 +409,12 @@ export default function AtivoDetalhe() {
       <LancarGasto aberto={modalGasto} aoFechar={() => setModalGasto(false)} ativoId={id} />
 
       {/* ------------------------------------------------------------ QR */}
-      <Modal
+      <EtiquetaQR
         aberto={modalQR}
         aoFechar={() => setModalQR(false)}
-        titulo="Etiqueta QR da máquina"
-        largura="max-w-sm"
-        rodape={
-          <>
-            <Botao variante="secundario" onClick={() => setModalQR(false)}>
-              Fechar
-            </Botao>
-            <Botao onClick={imprimirEtiqueta}>
-              <Printer size={15} /> Imprimir
-            </Botao>
-          </>
-        }
-      >
-        <div className="text-center">
-          {qrUrl ? (
-            <img src={qrUrl} alt="QR code" className="mx-auto w-56" />
-          ) : (
-            <Carregando texto="Gerando QR…" />
-          )}
-          <p className="mt-3 font-mono text-sm font-semibold text-slate-800">{a.codigo}</p>
-          <p className="text-sm text-slate-600">{a.nome}</p>
-          <p className="mt-3 text-xs break-all text-slate-400">{linkQR}</p>
-          <p className="mt-3 text-xs text-slate-500">
-            Imprima e cole na máquina. Quem estiver operando lê com a câmera do celular e avisa o problema — não precisa de senha.
-          </p>
-        </div>
-      </Modal>
+        ativo={a}
+        link={linkQR}
+      />
 
       {/* --------------------------------------------------------- Clone */}
       <Modal
