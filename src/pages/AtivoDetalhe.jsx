@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import QRCode from 'qrcode'
 import {
-  ArrowLeft, Pencil, Copy, QrCode, Zap, Wrench, Printer, Image as Imagem,
+  ArrowLeft, Pencil, Copy, QrCode, Zap, Wrench, Printer, Plus, Image as Imagem,
 } from 'lucide-react'
 import { useRegistro, useTabela, useRpc, useInvalidar } from '../hooks/useDados'
 import { moeda, data, duracao, numero } from '../lib/format'
@@ -11,6 +11,7 @@ import {
   Botao, Cartao, CartaoTitulo, Campo, Entrada, Etiqueta, Carregando, Vazio, Modal,
   Tabela, Th, Td, Erro, useAviso,
 } from '../components/ui'
+import LancarGasto from '../components/LancarGasto'
 
 const Linha = ({ rotulo, valor }) => (
   <div className="flex justify-between gap-4 border-b border-slate-100 py-2 last:border-0">
@@ -27,6 +28,7 @@ export default function AtivoDetalhe() {
 
   const [qrUrl, setQrUrl] = useState(null)
   const [modalQR, setModalQR] = useState(false)
+  const [modalGasto, setModalGasto] = useState(false)
   const [modalClone, setModalClone] = useState(false)
   const [nomeClone, setNomeClone] = useState('')
   const [serieClone, setSerieClone] = useState('')
@@ -132,6 +134,9 @@ export default function AtivoDetalhe() {
         </div>
 
         <div className="flex flex-wrap gap-2">
+          <Botao onClick={() => setModalGasto(true)}>
+            <Plus size={15} /> Lançar gasto
+          </Botao>
           <Botao variante="secundario" onClick={() => setModalQR(true)}>
             <QrCode size={15} /> Etiqueta QR
           </Botao>
@@ -146,7 +151,7 @@ export default function AtivoDetalhe() {
             <Copy size={15} /> Copiar
           </Botao>
           <Link to={`/ativos/${id}/editar`}>
-            <Botao>
+            <Botao variante="secundario">
               <Pencil size={15} /> Editar
             </Botao>
           </Link>
@@ -409,6 +414,8 @@ export default function AtivoDetalhe() {
           </div>
         )}
       </Cartao>
+
+      <LancarGasto aberto={modalGasto} aoFechar={() => setModalGasto(false)} ativoId={id} />
 
       {/* ------------------------------------------------------------ QR */}
       <Modal

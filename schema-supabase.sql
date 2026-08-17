@@ -318,7 +318,9 @@ create table if not exists solicitacoes_servico (
   id                uuid primary key default gen_random_uuid(),
   numero            text unique,
   ativo_id          uuid not null references ativos(id) on delete restrict,
-  descricao         text not null,
+  descricao         text,              -- opcional: pode vir só o áudio
+  audio_url         text,              -- recado gravado por quem não escreve
+  audio_segundos    int,
   maquina_parada    boolean not null default false,
   prioridade        prioridade_nivel not null default 'media',
   status            status_solicitacao not null default 'aberta',
@@ -332,8 +334,15 @@ create table if not exists solicitacoes_servico (
   atualizado_em     timestamptz not null default now()
 );
 
+-- o relato tem que existir de alguma forma: escrito ou falado
+alter table solicitacoes_servico drop constraint if exists solicitacoes_tem_relato;
+alter table solicitacoes_servico add constraint solicitacoes_tem_relato
+  check (nullif(btrim(descricao), '') is not null or nullif(btrim(audio_url), '') is not null);
+
 create index if not exists idx_solic_status on solicitacoes_servico(status, criado_em desc);
 create index if not exists idx_solic_ativo  on solicitacoes_servico(ativo_id);
+
+alter table ordens_servico add column if not exists audio_url text;
 
 -- (16) solicitacao_midias ---------------------------------------------
 create table if not exists solicitacao_midias (
@@ -408,7 +417,8 @@ create index if not exists idx_tarefas_os on os_tarefas(os_id, ordem);
 create table if not exists os_pecas (
   id             uuid primary key default gen_random_uuid(),
   os_id          uuid not null references ordens_servico(id) on delete cascade,
-  peca_id        uuid not null references pecas(id) on delete restrict,
+  peca_id        uuid references pecas(id) on delete restrict,  -- vazio = peça digitada na hora
+  descricao      text,                                          -- nome da peça quando não vem do almoxarifado
   quantidade     numeric(14,3) not null check (quantidade > 0),
   custo_unitario numeric(14,4) not null default 0,
   custo_total    numeric(14,2) generated always as (round(quantidade * custo_unitario, 2)) stored,
@@ -417,6 +427,11 @@ create table if not exists os_pecas (
   registrado_por uuid references perfis(id) on delete set null,
   criado_em      timestamptz not null default now()
 );
+
+-- ou vem do almoxarifado, ou o nome foi digitado na hora
+alter table os_pecas drop constraint if exists os_pecas_identificacao;
+alter table os_pecas add constraint os_pecas_identificacao
+  check (peca_id is not null or nullif(btrim(descricao), '') is not null);
 
 create index if not exists idx_os_pecas_os on os_pecas(os_id);
 
@@ -783,6 +798,9 @@ declare
   v_mov     uuid;
   v_custo   numeric(14,4);
 begin
+  -- peça digitada na hora não veio do almoxarifado: não há o que baixar
+  if new.peca_id is null then return new; end if;
+
   select a.unidade_id into v_unidade
     from ordens_servico o join ativos a on a.id = o.ativo_id
    where o.id = new.os_id;
@@ -814,6 +832,8 @@ create or replace function fn_os_peca_estorna_estoque()
 returns trigger language plpgsql security definer set search_path = public as $$
 declare v_unidade uuid;
 begin
+  if old.peca_id is null then return old; end if;
+
   select a.unidade_id into v_unidade
     from ordens_servico o join ativos a on a.id = o.ativo_id
    where o.id = old.os_id;
@@ -987,35 +1007,45 @@ $$;
 
 -- --- abertura de solicitação pelo QR ----------------------------------
 create or replace function abrir_solicitacao_qr(
-  p_token uuid,
-  p_descricao text,
-  p_solicitante text default null,
+  p_token          uuid,
+  p_descricao      text default null,
+  p_solicitante    text default null,
   p_maquina_parada boolean default false,
-  p_foto_url text default null
+  p_foto_url       text default null,
+  p_audio_url      text default null,
+  p_audio_segundos int default null
 )
 returns table (id uuid, numero text)
 language plpgsql security definer set search_path = public as $$
 declare
-  v_ativo uuid;
-  v_id uuid;
+  v_ativo  uuid;
+  v_id     uuid;
   v_numero text;
+  v_desc   text := nullif(btrim(coalesce(p_descricao, '')), '');
+  v_audio  text := nullif(btrim(coalesce(p_audio_url, '')), '');
 begin
-  if length(btrim(coalesce(p_descricao, ''))) < 5 then
+  select a.id into v_ativo from ativos a where a.qr_token = p_token and a.ativo;
+  if v_ativo is null then
+    raise exception 'QR code inválido ou máquina inativa';
+  end if;
+
+  -- parte da produção não escreve: o áudio vale como relato
+  if v_desc is null and v_audio is null then
+    raise exception 'Descreva o problema ou grave um áudio';
+  end if;
+  if v_desc is not null and length(v_desc) < 5 then
     raise exception 'Descreva o problema com pelo menos 5 caracteres';
   end if;
 
-  select a.id into v_ativo from ativos a where a.qr_token = p_token and a.ativo;
-  if v_ativo is null then
-    raise exception 'QR code inválido ou ativo inativo';
-  end if;
-
   insert into solicitacoes_servico
-    (ativo_id, descricao, solicitante_nome, maquina_parada, prioridade, origem)
+    (ativo_id, descricao, solicitante_nome, maquina_parada, prioridade, origem,
+     audio_url, audio_segundos)
   values
-    (v_ativo, left(btrim(p_descricao), 2000), nullif(btrim(coalesce(p_solicitante,'')), ''),
+    (v_ativo, left(v_desc, 2000), nullif(btrim(coalesce(p_solicitante,'')), ''),
      coalesce(p_maquina_parada, false),
-     case when p_maquina_parada then 'alta'::prioridade_nivel else 'media'::prioridade_nivel end,
-     'qr')
+     case when p_maquina_parada then 'emergencia'::prioridade_nivel
+          else 'media'::prioridade_nivel end,
+     'qr', v_audio, p_audio_segundos)
   returning solicitacoes_servico.id, solicitacoes_servico.numero into v_id, v_numero;
 
   if p_foto_url is not null then
@@ -1769,7 +1799,7 @@ grant execute on all functions in schema public to authenticated, service_role;
 revoke execute on function fn_recalcular_custo_os(uuid) from anon, authenticated;
 
 grant execute on function ativo_por_qr(uuid) to anon;
-grant execute on function abrir_solicitacao_qr(uuid, text, text, boolean, text) to anon;
+grant execute on function abrir_solicitacao_qr(uuid, text, text, boolean, text, text, int) to anon, authenticated;
 
 -- =====================================================================
 -- 8. PERFIL AUTOMÁTICO NO SIGNUP
@@ -1792,6 +1822,103 @@ end $$;
 drop trigger if exists trg_novo_usuario on auth.users;
 create trigger trg_novo_usuario after insert on auth.users
 for each row execute function fn_novo_usuario();
+
+-- =====================================================================
+-- 8.0 CAMINHO CURTO: DESPESA POR MÁQUINA
+-- =====================================================================
+--
+-- O objetivo número um é ter o gasto lançado na máquina. O fluxo completo
+-- (aviso -> triagem -> OS -> liberação -> execução) é longo demais para um
+-- conserto que já aconteceu. Esta função registra o gasto e fecha o serviço
+-- num passo só. O fluxo completo continua existindo para o serviço grande.
+
+create or replace function lancar_gasto(
+  p_ativo            uuid,
+  p_descricao        text,
+  p_data             date    default current_date,
+  p_tipo             tipo_os default 'corretiva',
+  p_peca_descricao   text    default null,
+  p_peca_valor       numeric default null,
+  p_servico_tipo     text    default null,
+  p_servico_valor    numeric default null,
+  p_fornecedor_id    uuid    default null,
+  p_nota_fiscal      text    default null,
+  p_horas            numeric default null,
+  p_custo_hora       numeric default null,
+  p_horas_parada     numeric default null
+)
+returns uuid language plpgsql security definer set search_path = public as $$
+declare
+  v_os uuid;
+  v_quando timestamptz := coalesce(p_data, current_date)::timestamptz + interval '12 hours';
+begin
+  if not eh_tecnico_ou_gestor() then
+    raise exception 'Sem permissao para lancar gasto';
+  end if;
+  if length(btrim(coalesce(p_descricao, ''))) < 3 then
+    raise exception 'Escreva o que foi feito';
+  end if;
+  if coalesce(p_peca_valor, 0) + coalesce(p_servico_valor, 0)
+     + (coalesce(p_horas, 0) * coalesce(p_custo_hora, 0)) <= 0 then
+    raise exception 'Informe pelo menos um valor';
+  end if;
+
+  insert into ordens_servico (
+    ativo_id, tipo, status, titulo, prioridade,
+    aberta_em, aprovada_em, aprovada_por, iniciada_em, concluida_em,
+    tempo_parada_min, criado_por
+  ) values (
+    p_ativo, p_tipo, 'concluida', left(btrim(p_descricao), 120), 'media',
+    v_quando, v_quando, auth.uid(), v_quando, v_quando,
+    round(coalesce(p_horas_parada, 0) * 60)::int, auth.uid()
+  )
+  returning id into v_os;
+
+  if coalesce(p_peca_valor, 0) > 0 then
+    insert into os_pecas (os_id, descricao, quantidade, custo_unitario, registrado_por)
+    values (v_os, coalesce(nullif(btrim(p_peca_descricao), ''), 'Peça'), 1, p_peca_valor, auth.uid());
+  end if;
+
+  if coalesce(p_servico_valor, 0) > 0 then
+    insert into os_servicos_externos (os_id, fornecedor_id, tipo_servico, valor, nota_fiscal, data_servico, registrado_por)
+    values (v_os, p_fornecedor_id, coalesce(nullif(btrim(p_servico_tipo), ''), 'outro'),
+            p_servico_valor, nullif(btrim(p_nota_fiscal), ''), p_data, auth.uid());
+  end if;
+
+  if coalesce(p_horas, 0) > 0 and coalesce(p_custo_hora, 0) > 0 then
+    insert into os_mao_de_obra (os_id, tecnico_id, horas, custo_hora, data_execucao)
+    values (v_os, auth.uid(), p_horas, p_custo_hora, p_data);
+  end if;
+
+  return v_os;
+end $$;
+
+revoke execute on function lancar_gasto(uuid, text, date, tipo_os, text, numeric, text, numeric, uuid, text, numeric, numeric, numeric) from public, anon;
+grant execute on function lancar_gasto(uuid, text, date, tipo_os, text, numeric, text, numeric, uuid, text, numeric, numeric, numeric) to authenticated, service_role;
+
+-- =====================================================================
+-- 8.2 BUCKET DOS ÁUDIOS
+-- =====================================================================
+--
+-- O operador grava sem ter conta, então o anônimo precisa poder enviar.
+-- Ele envia e nada mais: não lista, não apaga, não sobrescreve.
+
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('audios', 'audios', true, 10485760,
+        array['audio/webm','audio/mp4','audio/mpeg','audio/ogg','audio/wav','audio/aac'])
+on conflict (id) do update
+  set public = true, file_size_limit = 10485760,
+      allowed_mime_types = excluded.allowed_mime_types;
+
+drop policy if exists audios_envio_anonimo on storage.objects;
+create policy audios_envio_anonimo on storage.objects
+  for insert to anon, authenticated
+  with check (bucket_id = 'audios');
+
+drop policy if exists audios_leitura on storage.objects;
+create policy audios_leitura on storage.objects
+  for select to anon, authenticated
+  using (bucket_id = 'audios');
 
 -- =====================================================================
 -- 8.1 CRIANDO USUÁRIO POR SQL (leia antes de usar)

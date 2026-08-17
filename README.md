@@ -10,28 +10,58 @@ de quem gerencia.
 
 | Papel        | Como entra              | O que faz                                                      |
 | ------------ | ----------------------- | -------------------------------------------------------------- |
-| **Operador** | QR da máquina, sem login | Reporta problema com descrição. Nunca vê custo.                |
-| **Técnico**  | E-mail e senha          | Executa a OS, marca tarefa, lança peça, serviço e hora.        |
-| **Gestor**   | E-mail e senha          | Aprova custo, faz triagem, planeja preventiva, vê indicadores. |
+| **Operador** | QR da máquina, sem login | Avisa problema falando ou escrevendo. Nunca vê custo.          |
+| **Técnico**  | E-mail e senha          | Executa o serviço, marca passo, lança peça, serviço e hora.    |
+| **Gestor**   | E-mail e senha          | Lança gasto, libera custo, planeja revisão, vê indicadores.    |
+
+Gerente e subgerente são ambos **gestor** — os dois lançam gasto e liberam custo.
+Não há papel separado: para o tamanho do parque, mais um nível de permissão só
+atrasaria a comunicação.
 
 O operador não tem conta. Ele escaneia o adesivo colado na máquina, cai direto no
 formulário e envia. A separação é garantida no banco: o papel anônimo só pode executar
 duas funções (`ativo_por_qr` e `abrir_solicitacao_qr`) e não lê nenhuma tabela.
 
-## Fluxo principal
+## Os dois caminhos
+
+O objetivo número um é **ter a despesa registrada na máquina**. Para isso existe o
+caminho curto, que é o do dia a dia:
 
 ```
-Operador escaneia o QR
+Gestor clica em "Lançar gasto"
         ↓
-  Solicitação de Serviço  ──→  Gestor rejeita (com motivo)
-        ↓ triagem
-  Ordem de Serviço  ──→  Gestor aprova custo
+  Escolhe a máquina, escreve o que foi feito, põe o valor
         ↓
-  Técnico executa: marca tarefa, lança peça (baixa automática do estoque),
-                   serviço externo e hora de mão de obra
-        ↓
-  Custo total somado sozinho  →  aparece no painel, no ranking e no RAV% da máquina
+  Serviço entra já concluído  →  despesa na máquina, no ranking e no RAV%
 ```
+
+Uma tela, sem aviso, sem triagem, sem liberação. A peça é digitada na hora — não
+precisa estar cadastrada no almoxarifado.
+
+O caminho completo continua para o serviço que ainda vai acontecer:
+
+```
+Alguém avisa o problema (pelo QR, falando ou escrevendo)
+        ↓
+  Gestor faz a triagem  ──→  ou recusa, com motivo
+        ↓
+  Serviço aberto (já liberado quando quem abre é o gestor)
+        ↓
+  Técnico executa: marca os passos, lança peça, serviço de fora e hora
+        ↓
+  Gasto total somado sozinho  →  mesmos indicadores
+```
+
+### Aviso por áudio
+
+Parte da produção não lê nem escreve. Na tela do QR o botão de gravar vem
+**antes** do campo de texto: a pessoa aperta, fala o problema e envia. O texto
+deixa de ser obrigatório quando existe gravação — o banco aceita relato escrito
+**ou** falado, e recusa se não vier nenhum dos dois.
+
+O áudio fica no bucket `audios` do Supabase Storage. Quem não tem conta consegue
+enviar, e só isso: não lista, não apaga, não sobrescreve. Na tela de avisos e na
+do serviço, o gestor ouve o recado direto na linha.
 
 ## Rodando localmente
 
@@ -63,14 +93,16 @@ de ponta a ponta num projeto Supabase novo (SQL Editor → cole → Run).
   dependência elétrica, comparativo entre unidades, preventivas vencendo,
   peças críticas em risco e resumo semanal
 - **RLS por papel** em todas as tabelas
+- **Bucket `audios`** com envio liberado para quem não tem conta
 
 ### O que o banco faz sozinho
 
 Nada disso depende do frontend — vale para qualquer cliente que acesse o Postgres:
 
 - **Custo médio ponderado** recalculado a cada entrada de estoque
-- **Baixa automática** ao lançar peça na OS, com o custo unitário vindo do custo médio
-  daquele momento; remover a linha estorna a peça de volta
+- **Baixa automática** ao lançar peça vinda do almoxarifado, com o custo unitário do
+  custo médio daquele momento; remover a linha estorna a peça de volta. Peça digitada
+  na hora não mexe no estoque — dá para usar o sistema sem almoxarifado nenhum
 - **Custo da OS somado** a cada peça, serviço ou hora lançada
 - **Código do ativo e número da OS/solicitação** gerados por trigger (`EUS-MAT-0001`, `OS-2026-00001`)
 - **QR único** por ativo desde o cadastro
@@ -85,7 +117,8 @@ Nada disso depende do frontend — vale para qualquer cliente que acesse o Postg
 | Função                        | Quem pode      | Para quê                                              |
 | ----------------------------- | -------------- | ----------------------------------------------------- |
 | `ativo_por_qr`                | anônimo        | Lê os dados da máquina pelo QR, sem custo             |
-| `abrir_solicitacao_qr`        | anônimo        | Registra o problema reportado pelo operador           |
+| `abrir_solicitacao_qr`        | anônimo        | Registra o problema, por texto ou por áudio           |
+| `lancar_gasto`                | técnico/gestor | Caminho curto: registra a despesa e fecha o serviço   |
 | `converter_solicitacao_em_os` | gestor         | Triagem: transforma solicitação em OS                 |
 | `rejeitar_solicitacao`        | gestor         | Recusa com motivo registrado                          |
 | `aprovar_os`                  | gestor         | Aprova o custo (usado também pelo link de 1 clique)   |

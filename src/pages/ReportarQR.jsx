@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom'
 import { CheckCircle2, AlertTriangle, Package } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { Botao, Campo, Entrada, Area, Erro, Carregando } from '../components/ui'
+import GravadorAudio from '../components/GravadorAudio'
 
 /**
  * Tela pública: o operador escaneia o QR da máquina e reporta o problema.
@@ -17,6 +18,7 @@ export default function ReportarQR() {
   const [descricao, setDescricao] = useState('')
   const [nome, setNome] = useState('')
   const [parada, setParada] = useState(false)
+  const [audio, setAudio] = useState(null)
   const [enviando, setEnviando] = useState(false)
   const [protocolo, setProtocolo] = useState(null)
 
@@ -42,9 +44,12 @@ export default function ReportarQR() {
     setEnviando(true)
     const { data, error } = await supabase.rpc('abrir_solicitacao_qr', {
       p_token: token,
-      p_descricao: descricao,
+      p_descricao: descricao.trim() || null,
       p_solicitante: nome || null,
       p_maquina_parada: parada,
+      p_foto_url: null,
+      p_audio_url: audio?.url ?? null,
+      p_audio_segundos: audio?.segundos ?? null,
     })
     if (error) setErro(new Error(error.message))
     else setProtocolo(data?.[0]?.numero ?? 'registrado')
@@ -91,6 +96,7 @@ export default function ReportarQR() {
               setProtocolo(null)
               setDescricao('')
               setParada(false)
+              setAudio(null)
             }}
           >
             Avisar outro problema
@@ -131,14 +137,22 @@ export default function ReportarQR() {
             <p className="text-sm text-slate-500">Conte o que está acontecendo com a máquina.</p>
           </div>
 
-          <Campo rotulo="O que está acontecendo? *">
+          <GravadorAudio aoMudar={setAudio} />
+
+          <div className="flex items-center gap-3">
+            <span className="h-px flex-1 bg-slate-200" />
+            <span className="text-xs font-medium text-slate-400">
+              {audio ? 'quer escrever também?' : 'ou escreva'}
+            </span>
+            <span className="h-px flex-1 bg-slate-200" />
+          </div>
+
+          <Campo rotulo={audio ? 'O que está acontecendo?' : 'O que está acontecendo? *'}>
             <Area
-              rows={4}
+              rows={3}
               value={descricao}
               onChange={(e) => setDescricao(e.target.value)}
-              required
-              minLength={5}
-              autoFocus
+              minLength={audio ? 0 : 5}
               placeholder="Ex.: está fazendo barulho do lado direito e esquentando muito"
             />
           </Campo>
@@ -169,7 +183,7 @@ export default function ReportarQR() {
             tamanho="lg"
             className="w-full"
             carregando={enviando}
-            disabled={descricao.trim().length < 5}
+            disabled={!audio && descricao.trim().length < 5}
           >
             Avisar a manutenção
           </Botao>

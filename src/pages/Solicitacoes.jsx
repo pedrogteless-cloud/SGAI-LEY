@@ -9,6 +9,7 @@ import {
 import {
   Botao, Cartao, Etiqueta, Carregando, Vazio, Modal, Campo, Entrada, Selecao, Area, Erro, useAviso,
 } from '../components/ui'
+import OuvirAudio from '../components/OuvirAudio'
 
 export default function Solicitacoes() {
   const navegar = useNavigate()
@@ -41,7 +42,7 @@ export default function Solicitacoes() {
 
   const abrirTriagem = (s) => {
     setErro(null)
-    setTitulo(s.descricao.slice(0, 120))
+    setTitulo((s.descricao || `Problema relatado por áudio · ${s.ativo?.nome ?? ''}`).slice(0, 120))
     setTipo('corretiva')
     setPrioridade(s.prioridade)
     setResponsavel('')
@@ -141,7 +142,17 @@ export default function Solicitacoes() {
                     {s.ativo?.codigo} · {s.ativo?.setor?.nome || s.ativo?.unidade?.nome}
                   </p>
 
-                  <p className="mt-2 text-sm text-slate-600">{s.descricao}</p>
+                  {s.descricao && <p className="mt-2 text-sm text-slate-600">{s.descricao}</p>}
+                  {s.audio_url && (
+                    <div className="mt-2">
+                      <OuvirAudio url={s.audio_url} segundos={s.audio_segundos} />
+                      {!s.descricao && (
+                        <p className="mt-1.5 text-xs text-slate-400">
+                          Sem texto — o relato está no áudio
+                        </p>
+                      )}
+                    </div>
+                  )}
                   <p className="mt-2 text-xs text-slate-400">
                     {dataHora(s.criado_em)}
                     {s.solicitante_nome ? ` · por ${s.solicitante_nome}` : ''}
@@ -199,7 +210,12 @@ export default function Solicitacoes() {
         <div className="space-y-4">
           <div className="rounded-lg bg-slate-50 p-3 text-sm text-slate-600">
             <p className="font-medium text-slate-800">{triagem?.ativo?.nome}</p>
-            <p className="mt-1">{triagem?.descricao}</p>
+            {triagem?.descricao && <p className="mt-1">{triagem.descricao}</p>}
+            {triagem?.audio_url && (
+              <div className="mt-2">
+                <OuvirAudio url={triagem.audio_url} segundos={triagem.audio_segundos} />
+              </div>
+            )}
           </div>
 
           <Campo rotulo="Nome do serviço">

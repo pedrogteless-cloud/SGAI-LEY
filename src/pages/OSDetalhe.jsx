@@ -14,6 +14,7 @@ import {
   Botao, Cartao, CartaoTitulo, Campo, Entrada, Area, Selecao, Etiqueta, Carregando,
   Vazio, Modal, Tabela, Th, Td, Erro, useAviso,
 } from '../components/ui'
+import OuvirAudio from '../components/OuvirAudio'
 
 const INVALIDAR = [
   'ordens_servico', 'estoque', 'estoque_movimentos', 'vw_kpi_custo_por_ativo',
@@ -28,7 +29,9 @@ export default function OSDetalhe() {
 
   const [modal, setModal] = useState(null) // 'peca' | 'servico' | 'mao_obra' | 'tarefa'
   const [erro, setErro] = useState(null)
-  const [formPeca, setFormPeca] = useState({ peca_id: '', quantidade: '1', observacao: '' })
+  const [formPeca, setFormPeca] = useState({
+    peca_id: '', descricao: '', quantidade: '1', custo_unitario: '', observacao: '',
+  })
   const [formServico, setFormServico] = useState({
     fornecedor_id: '', tipo_servico: 'torno', descricao: '', valor: '', nota_fiscal: '',
   })
@@ -41,7 +44,7 @@ export default function OSDetalhe() {
     `*, ativo:ativos(id, codigo, nome, criticidade, unidade_id,
        setor:setores(nome), unidade:unidades(nome)),
      responsavel:responsavel_id(id, nome), aprovador:aprovada_por(nome),
-     solicitacao:solicitacoes_servico(numero, descricao, solicitante_nome)`
+     solicitacao:solicitacoes_servico(numero, descricao, solicitante_nome, audio_url, audio_segundos)`
   )
   const tarefas = useTabela('os_tarefas', {
     filtros: [['os_id', 'eq', id]],
@@ -115,14 +118,17 @@ export default function OSDetalhe() {
     try {
       await inserirPeca.mutateAsync({
         os_id: id,
-        peca_id: formPeca.peca_id,
+        peca_id: formPeca.peca_id || null,
+        descricao: formPeca.peca_id ? null : formPeca.descricao.trim(),
         quantidade: Number(formPeca.quantidade),
+        custo_unitario: Number(formPeca.custo_unitario) || 0,
         observacao: formPeca.observacao.trim() || null,
         registrado_por: perfil?.id ?? null,
       })
+      const doEstoque = Boolean(formPeca.peca_id)
       setModal(null)
-      setFormPeca({ peca_id: '', quantidade: '1', observacao: '' })
-      avisar('Peça lançada e tirada do estoque.')
+      setFormPeca({ peca_id: '', descricao: '', quantidade: '1', custo_unitario: '', observacao: '' })
+      avisar(doEstoque ? 'Peça lançada e tirada do estoque.' : 'Peça lançada.')
     } catch (e) {
       setErro(e)
     }
@@ -343,7 +349,7 @@ export default function OSDetalhe() {
               </span>
             </CartaoTitulo>
             {(pecasOS.data || []).length === 0 ? (
-              <Vazio titulo="Nenhuma peça usada" descricao="Ao lançar aqui, sai do estoque sozinho." />
+              <Vazio titulo="Nenhuma peça usada" descricao="Digite a peça e quanto custou — não precisa estar no almoxarifado." />
             ) : (
               <Tabela>
                 <thead>
@@ -359,11 +365,13 @@ export default function OSDetalhe() {
                   {pecasOS.data.map((p) => (
                     <tr key={p.id}>
                       <Td>
-                        <p className="text-slate-700">{p.peca?.nome}</p>
-                        <p className="font-mono text-xs text-slate-400">{p.peca?.codigo}</p>
+                        <p className="text-slate-700">{p.peca?.nome || p.descricao}</p>
+                        {p.peca?.codigo && (
+                          <p className="font-mono text-xs text-slate-400">{p.peca.codigo}</p>
+                        )}
                       </Td>
                       <Td className="text-right">
-                        {numero(p.quantidade, 2)} {p.peca?.unidade_medida}
+                        {numero(p.quantidade, 2)} {p.peca?.unidade_medida || 'UN'}
                       </Td>
                       <Td className="text-right text-slate-600">{moeda(p.custo_unitario)}</Td>
                       <Td className="text-right font-medium">{moeda(p.custo_total)}</Td>
@@ -517,7 +525,17 @@ export default function OSDetalhe() {
                 <p className="mb-1 text-xs font-medium text-slate-500">
                   Veio do aviso {o.solicitacao.numero}
                 </p>
-                <p className="text-sm text-slate-700">{o.solicitacao.descricao}</p>
+                {o.solicitacao.descricao && (
+                  <p className="text-sm text-slate-700">{o.solicitacao.descricao}</p>
+                )}
+                {o.solicitacao.audio_url && (
+                  <div className="mt-1.5">
+                    <OuvirAudio
+                      url={o.solicitacao.audio_url}
+                      segundos={o.solicitacao.audio_segundos}
+                    />
+                  </div>
+                )}
                 {o.solicitacao.solicitante_nome && (
                   <p className="mt-1 text-xs text-slate-400">
                     avisado por {o.solicitacao.solicitante_nome}
@@ -564,44 +582,76 @@ export default function OSDetalhe() {
             <Botao
               onClick={salvarPeca}
               carregando={inserirPeca.isPending}
-              disabled={!formPeca.peca_id || !(Number(formPeca.quantidade) > 0)}
+              disabled={
+                !(Number(formPeca.quantidade) > 0) ||
+                (formPeca.peca_id
+                  ? false
+                  : !formPeca.descricao.trim() || !(Number(formPeca.custo_unitario) > 0))
+              }
             >
-              Lançar e tirar do estoque
+              {formPeca.peca_id ? 'Lançar e tirar do estoque' : 'Lançar peça'}
             </Botao>
           </>
         }
       >
         <div className="space-y-4">
-          <Campo rotulo="Qual peça *">
-            <Selecao
-              value={formPeca.peca_id}
-              onChange={(e) => setFormPeca((f) => ({ ...f, peca_id: e.target.value }))}
+          {(pecas.data || []).length > 0 && (
+            <Campo rotulo="Tem no almoxarifado?" dica="Escolhendo daqui, o estoque baixa sozinho">
+              <Selecao
+                value={formPeca.peca_id}
+                onChange={(e) =>
+                  setFormPeca((f) => ({ ...f, peca_id: e.target.value, descricao: '' }))
+                }
+              >
+                <option value="">— vou digitar o nome —</option>
+                {pecas.data.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.codigo ? `${p.codigo} · ` : ''}
+                    {p.nome}
+                  </option>
+                ))}
+              </Selecao>
+            </Campo>
+          )}
+
+          {!formPeca.peca_id && (
+            <Campo rotulo="Qual peça *">
+              <Entrada
+                value={formPeca.descricao}
+                onChange={(e) => setFormPeca((f) => ({ ...f, descricao: e.target.value }))}
+                placeholder="Ex.: correia dentada HTD 8M"
+                autoFocus
+              />
+            </Campo>
+          )}
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Campo
+              rotulo="Quantidade *"
+              dica={pecaSelecionada ? pecaSelecionada.unidade_medida : undefined}
             >
-              <option value="">Selecione…</option>
-              {(pecas.data || []).map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.codigo ? `${p.codigo} · ` : ''}
-                  {p.nome}
-                </option>
-              ))}
-            </Selecao>
-          </Campo>
-          <Campo
-            rotulo="Quantidade *"
-            dica={
-              pecaSelecionada
-                ? `O preço sai sozinho do custo médio do estoque (${pecaSelecionada.unidade_medida})`
-                : undefined
-            }
-          >
-            <Entrada
-              type="number"
-              step="0.001"
-              min="0.001"
-              value={formPeca.quantidade}
-              onChange={(e) => setFormPeca((f) => ({ ...f, quantidade: e.target.value }))}
-            />
-          </Campo>
+              <Entrada
+                type="number"
+                step="0.001"
+                min="0.001"
+                value={formPeca.quantidade}
+                onChange={(e) => setFormPeca((f) => ({ ...f, quantidade: e.target.value }))}
+              />
+            </Campo>
+            <Campo
+              rotulo={formPeca.peca_id ? 'Preço da unidade (R$)' : 'Preço da unidade (R$) *'}
+              dica={formPeca.peca_id ? 'Vazio usa o preço médio do estoque' : undefined}
+            >
+              <Entrada
+                type="number"
+                step="0.01"
+                min="0"
+                value={formPeca.custo_unitario}
+                onChange={(e) => setFormPeca((f) => ({ ...f, custo_unitario: e.target.value }))}
+              />
+            </Campo>
+          </div>
+
           <Campo rotulo="Observação">
             <Entrada
               value={formPeca.observacao}

@@ -1,14 +1,16 @@
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, LineChart, Line,
 } from 'recharts'
 import {
-  Wallet, ClipboardList, AlertTriangle, PackageX, TrendingUp, ArrowRight,
+  Wallet, ClipboardList, AlertTriangle, PackageX, TrendingUp, ArrowRight, Plus,
 } from 'lucide-react'
 import { useTabela } from '../hooks/useDados'
 import { moeda, mesLabel, numero } from '../lib/format'
 import { M_CRITICIDADE, M_PRIORIDADE } from '../lib/constants'
-import { Cartao, CartaoTitulo, Etiqueta, Carregando, Vazio, Tabela, Th, Td } from '../components/ui'
+import { Botao, Cartao, CartaoTitulo, Etiqueta, Carregando, Vazio, Tabela, Th, Td } from '../components/ui'
+import LancarGasto from '../components/LancarGasto'
 
 function Indicador({ icone: Icone, rotulo, valor, detalhe, cor = 'text-sky-600', para }) {
   const conteudo = (
@@ -27,6 +29,7 @@ function Indicador({ icone: Icone, rotulo, valor, detalhe, cor = 'text-sky-600',
 }
 
 export default function Painel() {
+  const [gasto, setGasto] = useState(false)
   const unidades = useTabela('vw_kpi_comparativo_unidades')
   const mensal = useTabela('vw_kpi_custo_mensal', { ordem: { coluna: 'mes' } })
   const ranking = useTabela('vw_kpi_ranking_ativos', { ordem: { coluna: 'posicao' }, limite: 8 })
@@ -67,10 +70,17 @@ export default function Painel() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-xl font-bold text-slate-900">Resumo</h1>
-        <p className="text-sm text-slate-500">Como está a manutenção hoje</p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-bold text-slate-900">Resumo</h1>
+          <p className="text-sm text-slate-500">Como está a manutenção hoje</p>
+        </div>
+        <Botao tamanho="lg" onClick={() => setGasto(true)}>
+          <Plus size={16} /> Lançar gasto
+        </Botao>
       </div>
+
+      <LancarGasto aberto={gasto} aoFechar={() => setGasto(false)} />
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Indicador

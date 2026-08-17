@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Plus, Search, ClipboardList } from 'lucide-react'
+import { Plus, Search, ClipboardList, Wallet } from 'lucide-react'
 import { useTabela, useTecnicos, useUnidades, useInserir, useInvalidar } from '../hooks/useDados'
 import { useAuth } from '../hooks/useAuth'
 import { moeda, data, duracao } from '../lib/format'
@@ -9,6 +9,7 @@ import {
   Botao, Cartao, Etiqueta, Carregando, Vazio, Tabela, Th, Td, Entrada, Selecao,
   Modal, Campo, Area, Erro, useAviso,
 } from '../components/ui'
+import LancarGasto from '../components/LancarGasto'
 
 export default function OrdensServico() {
   const { ehGestor } = useAuth()
@@ -20,6 +21,7 @@ export default function OrdensServico() {
   const [tipo, setTipo] = useState('')
   const [unidade, setUnidade] = useState('')
   const [nova, setNova] = useState(false)
+  const [gasto, setGasto] = useState(false)
   const [erro, setErro] = useState(null)
 
   const [form, setForm] = useState({
@@ -86,6 +88,7 @@ export default function OrdensServico() {
         tipo: form.tipo,
         prioridade: form.prioridade,
         responsavel_id: form.responsavel_id || null,
+        status: 'aprovada',
       })
       setNova(false)
       invalidar('ordens_servico')
@@ -107,11 +110,18 @@ export default function OrdensServico() {
           </p>
         </div>
         {ehGestor && (
-          <Botao onClick={abrirNova}>
-            <Plus size={15} /> Novo serviço
-          </Botao>
+          <div className="flex gap-2">
+            <Botao variante="secundario" onClick={abrirNova}>
+              <Plus size={15} /> Serviço a fazer
+            </Botao>
+            <Botao onClick={() => setGasto(true)}>
+              <Wallet size={15} /> Lançar gasto
+            </Botao>
+          </div>
         )}
       </div>
+
+      <LancarGasto aberto={gasto} aoFechar={() => setGasto(false)} />
 
       <Cartao className="p-3">
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
@@ -219,7 +229,7 @@ export default function OrdensServico() {
       <Modal
         aberto={nova}
         aoFechar={() => setNova(false)}
-        titulo="Novo serviço"
+        titulo="Serviço a fazer"
         rodape={
           <>
             <Botao variante="secundario" onClick={() => setNova(false)}>
