@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { createPortal } from 'react-dom'
 import QRCode from 'qrcode'
 import { Printer } from 'lucide-react'
 import { Botao, Campo, Entrada, Selecao, Modal } from './ui'
@@ -205,13 +206,16 @@ export default function EtiquetaQR({ aberto, aoFechar, ativo, link }) {
         </div>
       </Modal>
 
-      {/* Fora do modal: é isto que a impressora enxerga, sozinho na folha. */}
-      {aberto && (
-        <div className="so-impressao">
-          <style>{`@page { size: ${larg}mm ${alt}mm; margin: 0; }`}</style>
-          {etiqueta}
-        </div>
-      )}
+      {/* Vai para fora do #root de propósito: o CSS de impressão esconde os
+          filhos diretos do body, e a etiqueta precisa ser um deles para sobrar. */}
+      {aberto &&
+        createPortal(
+          <div className="so-impressao">
+            <style>{`@page { size: ${larg}mm ${alt}mm; margin: 0; }`}</style>
+            {etiqueta}
+          </div>,
+          document.body
+        )}
     </>
   )
 }
