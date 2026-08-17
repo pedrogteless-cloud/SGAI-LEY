@@ -39,14 +39,17 @@ export default function EtiquetaQR({ aberto, aoFechar, ativo, link }) {
   const [formato, setFormato] = useState(salvo?.formato || '6082')
   const [larg, setLarg] = useState(salvo?.larg || 101.6)
   const [alt, setAlt] = useState(salvo?.alt || 33.9)
-  const [qr, setQr] = useState(null)
+  const [qrSvg, setQrSvg] = useState(null)
 
   useEffect(() => {
     if (!aberto || !link) return
-    // margin 0: quem dá a folga é o layout da etiqueta, não o PNG
-    QRCode.toDataURL(link, { margin: 0, width: 600, errorCorrectionLevel: 'M' })
-      .then(setQr)
-      .catch(() => setQr(null))
+    // SVG, não PNG: o QR sai vetorial, sem borrão de escala nem de impressora.
+    // margin 0 porque quem dá a folga é o layout da etiqueta, não o código.
+    // A lib devolve só viewBox, sem width/height — sem forçar 100%, o navegador
+    // usa o padrão de 300×150px do SVG inline e quebra o layout inteiro.
+    QRCode.toString(link, { type: 'svg', margin: 0, errorCorrectionLevel: 'M' })
+      .then(setQrSvg)
+      .catch(() => setQrSvg(null))
   }, [aberto, link])
 
   // guarda a medida assim que ela muda: na próxima vez é só mandar imprimir
@@ -86,12 +89,11 @@ export default function EtiquetaQR({ aberto, aoFechar, ativo, link }) {
       }`}
       style={{ width: `${larg}mm`, height: `${alt}mm` }}
     >
-      {qr && (
-        <img
-          src={qr}
-          alt=""
-          className="shrink-0"
+      {qrSvg && (
+        <div
+          className="shrink-0 [&>svg]:block [&>svg]:h-full [&>svg]:w-full"
           style={{ width: `${ladoQR}mm`, height: `${ladoQR}mm` }}
+          dangerouslySetInnerHTML={{ __html: qrSvg }}
         />
       )}
       <div
@@ -149,7 +151,7 @@ export default function EtiquetaQR({ aberto, aoFechar, ativo, link }) {
             <Botao variante="secundario" onClick={aoFechar}>
               Fechar
             </Botao>
-            <Botao onClick={imprimir} disabled={!qr}>
+            <Botao onClick={imprimir} disabled={!qrSvg}>
               <Printer size={15} /> Imprimir
             </Botao>
           </>
