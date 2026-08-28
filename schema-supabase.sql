@@ -1958,23 +1958,41 @@ create policy plantas_del on plantas for delete to authenticated using (eh_gesto
 -- O operador do QR não tem conta e não tem nada que ver a planta.
 revoke all on plantas from anon;
 
--- Tudo que o mapa precisa saber de cada máquina, numa consulta só.
+-- Tudo que o mapa precisa saber de cada máquina, numa consulta só — inclusive
+-- o endereço dela no galpão, calculado pelo CENTRO: vão no comprimento (o
+-- mesmo que a pessoa conta olhando os pilares) cruzado com a letra da faixa
+-- na largura. Fica aqui para a lista de máquinas e a OS mostrarem "7C" sem
+-- refazer a conta em cada tela.
 drop view if exists vw_planta_ativos;
+
 create view vw_planta_ativos with (security_invoker = on) as
+with base as (
+  select
+    a.*,
+    pl.comprimento_m  as planta_comp,
+    pl.largura_m      as planta_larg,
+    coalesce(pl.vao_pilar_m, 5) as celula,
+    a.pos_x_m + (case when a.rotacao in (90, 270)
+                      then coalesce(a.larg_m, 2) else coalesce(a.comp_m, 2) end) / 2 as centro_x,
+    a.pos_y_m + (case when a.rotacao in (90, 270)
+                      then coalesce(a.comp_m, 2) else coalesce(a.larg_m, 2) end) / 2 as centro_y
+  from ativos a
+  left join plantas pl on pl.id = a.planta_id
+)
 select
-  a.id                as ativo_id,
-  a.planta_id,
-  a.codigo,
-  a.nome,
-  a.pos_x_m,
-  a.pos_y_m,
-  a.comp_m,
-  a.larg_m,
-  a.rotacao,
-  a.criticidade,
-  a.situacao,
-  a.foto_capa_url,
-  a.ativo_pai_id,
+  b.id                as ativo_id,
+  b.planta_id,
+  b.codigo,
+  b.nome,
+  b.pos_x_m,
+  b.pos_y_m,
+  b.comp_m,
+  b.larg_m,
+  b.rotacao,
+  b.criticidade,
+  b.situacao,
+  b.foto_capa_url,
+  b.ativo_pai_id,
   c.nome              as categoria,
   s.nome              as setor,
   u.nome              as unidade,
@@ -1986,14 +2004,26 @@ select
   coalesce(k.total_os, 0)   as total_os,
   k.ultima_manutencao,
   coalesce(os.abertas, 0)   as os_abertas,
-  os.pior_prioridade
-from ativos a
-join unidades u             on u.id = a.unidade_id
-join categorias_ativo c     on c.id = a.categoria_id
-left join setores s         on s.id = a.setor_id
-left join ativo_ficha_eletrica fe on fe.ativo_id = a.id
+  os.pior_prioridade,
+  case
+    when b.centro_x is null or b.planta_comp is null then null
+    else (
+      least(floor(round(b.centro_x::numeric, 2) / b.celula)::int + 1,
+            greatest(ceil(b.planta_comp / b.celula)::int, 1))::text
+      ||
+      chr(65 + least(
+            least(floor(round(b.centro_y::numeric, 2) / b.celula)::int,
+                  greatest(ceil(b.planta_larg / b.celula)::int - 1, 0)),
+            25))
+    )
+  end as endereco
+from base b
+join unidades u             on u.id = b.unidade_id
+join categorias_ativo c     on c.id = b.categoria_id
+left join setores s         on s.id = b.setor_id
+left join ativo_ficha_eletrica fe on fe.ativo_id = b.id
 left join quadros_eletricos q     on q.id = fe.quadro_id
-left join vw_kpi_custo_por_ativo k on k.ativo_id = a.id
+left join vw_kpi_custo_por_ativo k on k.ativo_id = b.id
 left join lateral (
   select count(*) as abertas,
          -- max() sobre o enum respeita a ordem declarada (baixa < media < alta
@@ -2001,10 +2031,10 @@ left join lateral (
          -- "emergencia", que é justamente a que não pode passar despercebida
          max(o.prioridade) as pior_prioridade
   from ordens_servico o
-  where o.ativo_id = a.id
+  where o.ativo_id = b.id
     and o.status in ('aberta', 'aprovada', 'em_execucao', 'pausada')
 ) os on true
-where a.ativo;
+where b.ativo;
 
 grant select on vw_planta_ativos to authenticated;
 revoke all on vw_planta_ativos from anon;

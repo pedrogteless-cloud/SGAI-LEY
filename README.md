@@ -159,6 +159,22 @@ exatos nos 84 m) e cada vão recebe um número. É a referência que quem anda n
 Passe o mouse (ou toque, no celular) numa máquina para ver situação, gasto do
 último ano, serviços em aberto, quadro que a alimenta e quanto ela ocupa no chão.
 
+### Endereço: como achar qualquer ponto do galpão
+
+O galpão é dividido em quadrados de 6 × 6 m com endereço de tabuleiro:
+
+- **Vão** (1 a 14) no comprimento — é o mesmo número que a pessoa conta olhando
+  os pilares, então dá para se localizar no chão de fábrica sem medir nada
+- **Faixa** (A a E) na largura
+
+Cruzando os dois sai o endereço: o canto de entrada é **1A**, o centro é **8C**,
+o fundo é **14E**. Ele aparece no cartão da máquina, na lista de máquinas e na
+ficha dela. Passando o mouse pelo galpão, o endereço e a posição exata em metros
+aparecem ao vivo no rodapé do desenho.
+
+O tamanho do quadrado acompanha o vão entre pilares de cada galpão, então em
+outra unidade com vão diferente o endereço se ajusta sozinho.
+
 A mesma planta se repinta em quatro leituras:
 
 | Camada | Para que serve |

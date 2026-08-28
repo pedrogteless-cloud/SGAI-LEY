@@ -36,6 +36,11 @@ export default function Ativos() {
   })
 
   const custos = useTabela('vw_kpi_custo_por_ativo', { select: 'ativo_id, custo_12m' })
+  const enderecos = useTabela('vw_planta_ativos', { select: 'ativo_id, endereco' })
+  const enderecoPorAtivo = useMemo(
+    () => Object.fromEntries((enderecos.data || []).map((e) => [e.ativo_id, e.endereco])),
+    [enderecos.data]
+  )
   const custoPorAtivo = useMemo(
     () => Object.fromEntries((custos.data || []).map((c) => [c.ativo_id, c.custo_12m])),
     [custos.data]
@@ -203,8 +208,21 @@ export default function Ativos() {
                     </div>
                   </Td>
                   <Td className="text-slate-600">
-                    <p>{a.setor?.nome || '—'}</p>
-                    <p className="text-xs text-slate-400">{a.unidade?.nome}</p>
+                    <div className="flex items-center gap-2">
+                      {enderecoPorAtivo[a.id] && (
+                        <span
+                          className="shrink-0 rounded bg-slate-900 px-1.5 py-0.5 font-mono
+                            text-[11px] font-semibold text-white"
+                          title="Endereço no galpão"
+                        >
+                          {enderecoPorAtivo[a.id]}
+                        </span>
+                      )}
+                      <div className="min-w-0">
+                        <p className="truncate">{a.setor?.nome || '—'}</p>
+                        <p className="truncate text-xs text-slate-400">{a.unidade?.nome}</p>
+                      </div>
+                    </div>
                   </Td>
                   <Td>
                     <Etiqueta cor={M_CRITICIDADE[a.criticidade]?.cor}>{a.criticidade}</Etiqueta>

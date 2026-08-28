@@ -9,6 +9,7 @@ import { moeda, data } from '../lib/format'
 import { M_CRITICIDADE, M_SITUACAO } from '../lib/constants'
 import {
   caixa, temPosicao, contexto, legenda, cor, CAMADAS, primeiroLugarLivre,
+  enderecoDaMaquina, celula,
 } from '../lib/planta'
 import {
   Botao, Cartao, Etiqueta, Carregando, Vazio, Selecao, Entrada, Campo, useAviso,
@@ -160,6 +161,15 @@ export default function Planta() {
         <div className="min-w-0">
           <p className="truncate font-semibold text-slate-900">{detalhe.nome}</p>
           <p className="font-mono text-xs text-slate-500">{detalhe.codigo}</p>
+          {enderecoDaMaquina(detalhe, planta) && (
+            <p className="mt-1 inline-flex items-baseline gap-1.5 rounded-md bg-slate-900
+              px-2 py-0.5 text-xs font-semibold text-white">
+              <span className="font-mono">{enderecoDaMaquina(detalhe, planta).curto}</span>
+              <span className="font-normal text-slate-300">
+                {enderecoDaMaquina(detalhe, planta).completo}
+              </span>
+            </p>
+          )}
         </div>
         <button
           onClick={() => {
@@ -421,8 +431,12 @@ export default function Planta() {
           {!detalhe && !editando && (
             <Cartao className="hidden p-4 lg:block">
               <p className="text-sm text-slate-500">
-                Passe o mouse por cima de uma máquina para ver situação, gasto e serviços em
-                aberto. Role a roda para aproximar e arraste para andar pelo galpão.
+                Cada quadrado de {celula(planta)} × {celula(planta)} m tem endereço: o número
+                do vão (que você conta pelos pilares) cruzado com a letra da faixa. O canto de
+                entrada é o <span className="font-mono font-semibold">1A</span>.
+                <span className="mt-2 block">
+                  Passe o mouse pelo galpão que o endereço aparece embaixo, ao vivo.
+                </span>
               </p>
             </Cartao>
           )}

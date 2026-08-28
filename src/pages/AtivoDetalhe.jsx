@@ -28,6 +28,13 @@ export default function AtivoDetalhe() {
 
   const [modalQR, setModalQR] = useState(false)
   const [modalGasto, setModalGasto] = useState(false)
+
+  // endereço vem pronto da view, para não repetir a conta em cada tela
+  const planta = useTabela('vw_planta_ativos', {
+    select: 'ativo_id, endereco',
+    filtros: [['ativo_id', 'eq', id]],
+  })
+  const naPlanta = planta.data?.[0]
   const [modalClone, setModalClone] = useState(false)
   const [nomeClone, setNomeClone] = useState('')
   const [serieClone, setSerieClone] = useState('')
@@ -200,6 +207,19 @@ export default function AtivoDetalhe() {
             <Linha rotulo="Unidade" valor={a.unidade?.nome} />
             <Linha rotulo="Setor" valor={a.setor?.nome} />
             <Linha rotulo="Onde fica" valor={a.localizacao} />
+              <Linha
+                rotulo="Endereço no galpão"
+                valor={
+                  naPlanta?.endereco ? (
+                    <Link
+                      to="/planta"
+                      className="font-mono font-semibold text-sky-600 hover:text-sky-700"
+                    >
+                      {naPlanta.endereco}
+                    </Link>
+                  ) : null
+                }
+              />
             <Linha rotulo="Marca" valor={a.fabricante} />
             <Linha rotulo="Modelo" valor={a.modelo} />
             <Linha rotulo="Nº de série" valor={a.numero_serie} />

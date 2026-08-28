@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react'
-import { caixa, cor, encaixar, prender } from '../lib/planta'
+import { caixa, cor, encaixar, prender, divisoes, endereco, letraFaixa } from '../lib/planta'
 
 /**
  * A planta desenhada.
@@ -35,6 +35,9 @@ export default function PlantaCanvas({
   const [vista, setVista] = useState({ x: 0, y: 0, k: 1 })
   const [arrastando, setArrastando] = useState(null)
   const [sobMouse, setSobMouse] = useState(null)
+  // leitura do ponto sob o cursor. Fica aqui e não na página de propósito:
+  // muda a cada movimento do mouse e redesenharia a tela toda se subisse.
+  const [cursor, setCursor] = useState(null)
 
   const ponteiros = useRef(new Map())
   const gesto = useRef(null)
@@ -121,6 +124,13 @@ export default function PlantaCanvas({
   }
 
   const aoMexer = (e) => {
+    // No dedo não existe "passar por cima": a leitura só faz sentido com mouse.
+    if (e.pointerType !== 'touch') {
+      const p = paraMetros(e)
+      const dentro = p.x >= 0 && p.x <= comp && p.y >= 0 && p.y <= larg
+      setCursor(dentro ? p : null)
+    }
+
     if (!gesto.current) return
     if (ponteiros.current.has(e.pointerId)) {
       ponteiros.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
@@ -177,23 +187,14 @@ export default function PlantaCanvas({
     }
   }
 
-  // Os pilares das laterais são a referência de quem anda no galpão — dizer
-  // "entre o quinto e o sexto pilar" localiza melhor do que dizer "aos 32 m".
-  // Por isso a grade segue o vão deles, e não um múltiplo qualquer.
-  const vao = Number(planta.vao_pilar_m) || 0
-  const pilares = []
-  if (vao > 0) {
-    for (let x = 0; x < comp - 0.01; x += vao) pilares.push(Number(x.toFixed(2)))
-    // o último pilar é o da ponta: o vão que sobra costuma ser menor que os outros
-    pilares.push(comp)
-  }
-
-  const linhasV = vao > 0 ? pilares.slice(1, -1) : []
-  if (vao <= 0) for (let x = 5; x < comp; x += 5) linhasV.push(x)
-  const linhasH = []
-  for (let y = 5; y < larg; y += 5) linhasH.push(y)
+  // A grade é o endereço: vão no comprimento (o mesmo dos pilares, que a
+  // pessoa enxerga andando), faixa na largura. Cruzando os dois sai "7C".
+  const { vaos, faixas } = divisoes(planta)
+  const temPilar = Number(planta.vao_pilar_m) > 0
+  const pilares = temPilar ? vaos : []
 
   const LADO_PILAR = 0.5
+  const fonteRegua = Math.max(comp, larg) / 95
 
   const fonteCota = Math.max(comp, larg) / 45
 
@@ -217,6 +218,7 @@ export default function PlantaCanvas({
       onPointerLeave={(e) => {
         aoSoltar(e)
         aoPassarMouse?.(null)
+        setCursor(null)
       }}
     >
       <defs>
@@ -229,19 +231,12 @@ export default function PlantaCanvas({
         {/* piso */}
         <rect data-fundo="1" x={0} y={0} width={comp} height={larg} fill="#ffffff" />
 
-        {/* grade: eixos dos pilares na horizontal, 5 em 5 m na profundidade */}
-        <g stroke="#e2e8f0" strokeWidth={0.06}>
-          {linhasV.map((x) => (
-            <line
-              key={`v${x}`}
-              x1={x}
-              y1={0}
-              x2={x}
-              y2={larg}
-              strokeDasharray={vao > 0 ? '0.9 0.7' : undefined}
-            />
+        {/* grade do endereço */}
+        <g stroke="#e2e8f0" strokeWidth={0.06} strokeDasharray="0.9 0.7">
+          {vaos.slice(1, -1).map((x) => (
+            <line key={`v${x}`} x1={x} y1={0} x2={x} y2={larg} />
           ))}
-          {linhasH.map((y) => (
+          {faixas.slice(1, -1).map((y) => (
             <line key={`h${y}`} x1={0} y1={y} x2={comp} y2={y} />
           ))}
         </g>
@@ -268,7 +263,7 @@ export default function PlantaCanvas({
         />
 
         {/* pilares das duas laterais, plantados em cima da linha da parede */}
-        {vao > 0 && (
+        {temPilar && (
           <g fill="#334155">
             {pilares.map((x) => (
               <g key={`pil${x}`}>
@@ -289,21 +284,36 @@ export default function PlantaCanvas({
           </g>
         )}
 
+        {/* letra da faixa na lateral: cruzando com o número do vão sai o
+            endereço, do mesmo jeito que se lê um tabuleiro ou um mapa */}
+        {faixas.slice(0, -1).map((y, i) => (
+          <text
+            key={`fx${i}`}
+            x={-1.5}
+            y={(y + faixas[i + 1]) / 2 + fonteRegua * 0.35}
+            fontSize={fonteRegua}
+            fill="#94a3b8"
+            textAnchor="middle"
+            pointerEvents="none"
+          >
+            {letraFaixa(i)}
+          </text>
+        ))}
+
         {/* número do vão, para poder dizer "está no vão 7" */}
-        {vao > 0 &&
-          pilares.slice(0, -1).map((x, i) => (
+        {vaos.slice(0, -1).map((x, i) => (
             <text
               key={`vao${i}`}
-              x={(x + pilares[i + 1]) / 2}
+              x={(x + vaos[i + 1]) / 2}
               y={-0.9}
-              fontSize={0.85}
+              fontSize={fonteRegua}
               fill="#94a3b8"
               textAnchor="middle"
               pointerEvents="none"
             >
-              {i + 1}
-            </text>
-          ))}
+            {i + 1}
+          </text>
+        ))}
 
         {/* cotas do galpão */}
         <g stroke="#94a3b8" strokeWidth={0.07} fill="#64748b">
@@ -443,6 +453,44 @@ export default function PlantaCanvas({
           )
         })}
       </g>
+
+      {/* Leitura do ponto sob o cursor. Fica FORA do grupo do zoom de
+          propósito: é informação de tela, não desenho do galpão, então não
+          pode crescer nem sumir quando se aproxima. */}
+      {cursor &&
+        (() => {
+          // O endereço sai do MESMO número que aparece escrito ao lado dele.
+          // Calcular um com a posição crua e escrever o outro arredondado faz a
+          // leitura se contradizer perto das bordas: "x 36,0 m" no vão 6.
+          const mx = Math.round(cursor.x * 10) / 10
+          const my = Math.round(cursor.y * 10) / 10
+          const e = endereco(mx, my, planta)
+          const texto = `${e.completo}   ·   x ${mx.toFixed(1)} m   y ${my.toFixed(1)} m`
+          const fs = fonteRegua * 1.15
+          const largura = texto.length * fs * 0.62 + fs * 1.4
+          return (
+            <g pointerEvents="none">
+              <rect
+                x={-FOLGA + 0.6}
+                y={larg + FOLGA - fs * 2.2}
+                width={largura}
+                height={fs * 1.8}
+                rx={fs * 0.4}
+                fill="#0f172a"
+                opacity={0.88}
+              />
+              <text
+                x={-FOLGA + 0.6 + fs * 0.5}
+                y={larg + FOLGA - fs * 0.9}
+                fontSize={fs}
+                fill="#ffffff"
+                fontFamily="ui-monospace, monospace"
+              >
+                {texto}
+              </text>
+            </g>
+          )
+        })()}
     </svg>
   )
 }
