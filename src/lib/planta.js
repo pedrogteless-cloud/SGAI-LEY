@@ -133,6 +133,68 @@ export function divisoes(planta) {
   return { celula: c, vaos, faixas }
 }
 
+// ------------------------------------------------------- fluxo do processo
+
+/** Altura fixa da etiqueta da etapa, em metros. */
+export const ALTURA_ETAPA = 3.4
+
+/** Caixa da etapa, centrada na posição dela. Largura acompanha o nome. */
+export function caixaEtapa(e) {
+  const nome = e.nome || ''
+  const w = Math.max(9, Math.min(nome.length * 0.82 + 2.5, 26))
+  return {
+    x: Number(e.pos_x_m) - w / 2,
+    y: Number(e.pos_y_m) - ALTURA_ETAPA / 2,
+    w,
+    h: ALTURA_ETAPA,
+    cx: Number(e.pos_x_m),
+    cy: Number(e.pos_y_m),
+  }
+}
+
+/**
+ * Onde a seta encosta na borda da caixa, vindo da direção de `alvo`.
+ * Sem isso a linha entra por baixo da etiqueta e a ponta some.
+ */
+export function pontoNaBorda(c, alvoX, alvoY, folga = 0.6) {
+  const dx = alvoX - c.cx
+  const dy = alvoY - c.cy
+  if (dx === 0 && dy === 0) return { x: c.cx, y: c.cy }
+
+  const meiaL = c.w / 2 + folga
+  const meiaA = c.h / 2 + folga
+  // quanto é preciso andar na direção do alvo para sair da caixa
+  const t = Math.min(
+    dx === 0 ? Infinity : meiaL / Math.abs(dx),
+    dy === 0 ? Infinity : meiaA / Math.abs(dy)
+  )
+  return { x: c.cx + dx * t, y: c.cy + dy * t }
+}
+
+/**
+ * Ponto na parede mais perto, para a seta que sai do galpão.
+ * O material que vai para a serraria não tem destino desenhado aqui: a seta
+ * aponta para fora, na direção da parede mais próxima, com o nome do destino.
+ */
+// avanco casa com a FOLGA do desenho (6 m): mais que isto e o nome do
+// destino sai do quadro e aparece cortado
+export function saidaNaParede(c, planta, avanco = 3.2) {
+  const comp = Number(planta.comprimento_m)
+  const larg = Number(planta.largura_m)
+  const dists = [
+    { lado: 'esq', d: c.cx, x: 0, y: c.cy, dx: -1, dy: 0 },
+    { lado: 'dir', d: comp - c.cx, x: comp, y: c.cy, dx: 1, dy: 0 },
+    { lado: 'cima', d: c.cy, x: c.cx, y: 0, dx: 0, dy: -1 },
+    { lado: 'baixo', d: larg - c.cy, x: c.cx, y: larg, dx: 0, dy: 1 },
+  ]
+  const p = dists.reduce((a, b) => (b.d < a.d ? b : a))
+  return {
+    parede: { x: p.x, y: p.y },
+    fora: { x: p.x + p.dx * avanco, y: p.y + p.dy * avanco },
+    lado: p.lado,
+  }
+}
+
 // ---------------------------------------------------------------- cores
 
 const CINZA = { fundo: '#f1f5f9', borda: '#94a3b8', texto: '#334155' }

@@ -2040,6 +2040,148 @@ grant select on vw_planta_ativos to authenticated;
 revoke all on vw_planta_ativos from anon;
 
 -- =====================================================================
+-- 8.4 FLUXO DO PROCESSO
+-- =====================================================================
+--
+-- Não é fila, é rede: o caminho se divide, tem tarefa alternativa e às vezes
+-- o material sai para outro galpão (a capa de unibox que vai para a serraria
+-- vestir a base). Por isso etapa e ligação são tabelas separadas — uma coluna
+-- de ordem só daria conta de linha reta.
+
+create table if not exists etapas_processo (
+  id            uuid primary key default gen_random_uuid(),
+  unidade_id    uuid not null references unidades(id) on delete cascade,
+  -- planta nula = a etapa acontece fora do galpão desenhado. A seta então
+  -- aponta para fora, com o nome do destino escrito na parede.
+  planta_id     uuid references plantas(id) on delete set null,
+  setor_id      uuid references setores(id) on delete set null,
+  nome          text not null,
+  descricao     text,
+  pos_x_m       numeric(8,2),
+  pos_y_m       numeric(8,2),
+  ordem         int not null default 0,
+  ativo         boolean not null default true,
+  criado_em     timestamptz not null default now(),
+  atualizado_em timestamptz not null default now(),
+  unique (unidade_id, nome)
+);
+
+create index if not exists idx_etapas_unidade on etapas_processo(unidade_id);
+create index if not exists idx_etapas_planta  on etapas_processo(planta_id) where planta_id is not null;
+
+drop trigger if exists trg_etapas_atualizado on etapas_processo;
+create trigger trg_etapas_atualizado before update on etapas_processo
+  for each row execute function fn_atualizado_em();
+
+create table if not exists fluxo_etapas (
+  id        uuid primary key default gen_random_uuid(),
+  de_id     uuid not null references etapas_processo(id) on delete cascade,
+  para_id   uuid not null references etapas_processo(id) on delete cascade,
+  -- 'alternativa' é o caminho que só às vezes acontece. Desenhado tracejado.
+  tipo      text not null default 'principal' check (tipo in ('principal', 'alternativa')),
+  rotulo    text,
+  criado_em timestamptz not null default now(),
+  unique (de_id, para_id),
+  check (de_id <> para_id)
+);
+
+create index if not exists idx_fluxo_de   on fluxo_etapas(de_id);
+create index if not exists idx_fluxo_para on fluxo_etapas(para_id);
+
+alter table etapas_processo enable row level security;
+alter table fluxo_etapas    enable row level security;
+
+drop policy if exists etapas_sel on etapas_processo;
+create policy etapas_sel on etapas_processo for select to authenticated using (true);
+drop policy if exists etapas_ins on etapas_processo;
+create policy etapas_ins on etapas_processo for insert to authenticated with check (eh_gestor());
+drop policy if exists etapas_upd on etapas_processo;
+create policy etapas_upd on etapas_processo for update to authenticated using (eh_gestor()) with check (eh_gestor());
+drop policy if exists etapas_del on etapas_processo;
+create policy etapas_del on etapas_processo for delete to authenticated using (eh_gestor());
+
+drop policy if exists fluxo_sel on fluxo_etapas;
+create policy fluxo_sel on fluxo_etapas for select to authenticated using (true);
+drop policy if exists fluxo_ins on fluxo_etapas;
+create policy fluxo_ins on fluxo_etapas for insert to authenticated with check (eh_gestor());
+drop policy if exists fluxo_upd on fluxo_etapas;
+create policy fluxo_upd on fluxo_etapas for update to authenticated using (eh_gestor()) with check (eh_gestor());
+drop policy if exists fluxo_del on fluxo_etapas;
+create policy fluxo_del on fluxo_etapas for delete to authenticated using (eh_gestor());
+
+revoke all on etapas_processo from anon;
+revoke all on fluxo_etapas from anon;
+
+-- A etapa carregando a saúde do que está debaixo dela. É o cruzamento que
+-- interessa: "a etapa que mais para é justo a que todo mundo depende".
+create or replace view vw_etapas_processo with (security_invoker = on) as
+select
+  e.id            as etapa_id,
+  e.unidade_id,
+  e.planta_id,
+  e.setor_id,
+  e.nome,
+  e.descricao,
+  e.pos_x_m,
+  e.pos_y_m,
+  e.ordem,
+  u.nome          as unidade,
+  s.nome          as setor,
+  p.nome          as planta,
+  coalesce(m.qtd, 0)          as qtd_maquinas,
+  coalesce(m.paradas, 0)      as maquinas_paradas,
+  coalesce(m.em_conserto, 0)  as maquinas_em_conserto,
+  coalesce(m.criticas_a, 0)   as maquinas_criticas,
+  coalesce(m.custo_12m, 0)    as custo_12m,
+  coalesce(m.os_abertas, 0)   as os_abertas
+from etapas_processo e
+join unidades u        on u.id = e.unidade_id
+left join setores s    on s.id = e.setor_id
+left join plantas p    on p.id = e.planta_id
+left join lateral (
+  select
+    count(*)                                             as qtd,
+    count(*) filter (where v.situacao = 'parado')        as paradas,
+    count(*) filter (where v.situacao = 'em_manutencao') as em_conserto,
+    count(*) filter (where v.criticidade = 'A')          as criticas_a,
+    sum(v.custo_12m)                                     as custo_12m,
+    sum(v.os_abertas)                                    as os_abertas
+  from vw_planta_ativos v
+  join ativos a on a.id = v.ativo_id
+  where e.setor_id is not null and a.setor_id = e.setor_id
+) m on true
+where e.ativo;
+
+grant select on vw_etapas_processo to authenticated;
+revoke all on vw_etapas_processo from anon;
+
+-- As setas, com as duas pontas já resolvidas.
+create or replace view vw_fluxo_processo with (security_invoker = on) as
+select
+  f.id           as ligacao_id,
+  f.tipo,
+  f.rotulo,
+  de.id          as de_id,
+  de.nome        as de_nome,
+  de.planta_id   as de_planta_id,
+  de.pos_x_m     as de_x,
+  de.pos_y_m     as de_y,
+  de.unidade_id,
+  pa.id          as para_id,
+  pa.nome        as para_nome,
+  pa.planta_id   as para_planta_id,
+  pa.pos_x_m     as para_x,
+  pa.pos_y_m     as para_y,
+  (de.planta_id is distinct from pa.planta_id) as sai_do_galpao
+from fluxo_etapas f
+join etapas_processo de on de.id = f.de_id
+join etapas_processo pa on pa.id = f.para_id
+where de.ativo and pa.ativo;
+
+grant select on vw_fluxo_processo to authenticated;
+revoke all on vw_fluxo_processo from anon;
+
+-- =====================================================================
 -- 8.2 BUCKET DOS ÁUDIOS
 -- =====================================================================
 --

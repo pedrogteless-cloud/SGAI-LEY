@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react'
-import { caixa, cor, encaixar, prender, divisoes, endereco, letraFaixa } from '../lib/planta'
+import {
+  caixa, cor, encaixar, prender, divisoes, endereco, letraFaixa,
+  caixaEtapa, pontoNaBorda, saidaNaParede, ALTURA_ETAPA,
+} from '../lib/planta'
 
 /**
  * A planta desenhada.
@@ -30,6 +33,13 @@ export default function PlantaCanvas({
   aoMover,
   aoTerminarArraste,
   refCamera,
+  etapas = [],
+  ligacoes = [],
+  mostrarFluxo = false,
+  etapaSelecionada,
+  aoSelecionarEtapa,
+  aoMoverEtapa,
+  aoTerminarArrasteEtapa,
 }) {
   const svgRef = useRef(null)
   const [vista, setVista] = useState({ x: 0, y: 0, k: 1 })
@@ -114,6 +124,16 @@ export default function PlantaCanvas({
 
     if (maquina && modoEditar) {
       const p = paraMetros(e)
+      if (maquina.etapa_id) {
+        gesto.current = {
+          tipo: 'etapa',
+          id: maquina.etapa_id,
+          dx: p.x - Number(maquina.pos_x_m),
+          dy: p.y - Number(maquina.pos_y_m),
+        }
+        setArrastando(maquina.etapa_id)
+        return
+      }
       const c = caixa(maquina)
       gesto.current = { tipo: 'maquina', id: maquina.ativo_id, dx: p.x - c.x, dy: p.y - c.y }
       setArrastando(maquina.ativo_id)
@@ -151,6 +171,14 @@ export default function PlantaCanvas({
       return
     }
 
+    if (gesto.current.tipo === 'etapa') {
+      const p = paraMetros(e)
+      const x = Math.min(Math.max(encaixar(p.x - gesto.current.dx), 1), comp - 1)
+      const y = Math.min(Math.max(encaixar(p.y - gesto.current.dy), 1), larg - 1)
+      aoMoverEtapa?.(gesto.current.id, x, y)
+      return
+    }
+
     if (gesto.current.tipo === 'maquina') {
       const p = paraMetros(e)
       const m = maquinas.find((x) => x.ativo_id === gesto.current.id)
@@ -179,6 +207,7 @@ export default function PlantaCanvas({
   const aoSoltar = (e) => {
     ponteiros.current.delete(e.pointerId)
     if (gesto.current?.tipo === 'maquina') aoTerminarArraste?.(gesto.current.id)
+    if (gesto.current?.tipo === 'etapa') aoTerminarArrasteEtapa?.(gesto.current.id)
     if (ponteiros.current.size === 0) {
       gesto.current = null
       setArrastando(null)
@@ -222,6 +251,14 @@ export default function PlantaCanvas({
       }}
     >
       <defs>
+        <marker id="ponta-principal" viewBox="0 0 10 10" refX="9" refY="5"
+          markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="#4338ca" />
+        </marker>
+        <marker id="ponta-alternativa" viewBox="0 0 10 10" refX="9" refY="5"
+          markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="#7c3aed" />
+        </marker>
         <pattern id="hachura" width="1.4" height="1.4" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
           <line x1="0" y1="0" x2="0" y2="1.4" stroke="#cbd5e1" strokeWidth="0.35" />
         </pattern>
@@ -452,6 +489,144 @@ export default function PlantaCanvas({
             </g>
           )
         })}
+
+        {/* ------------------------------------------------ fluxo do processo
+            Desenhado por cima das máquinas de propósito: o caminho é a leitura
+            principal quando está ligado, e some inteiro quando está desligado. */}
+        {mostrarFluxo && (
+          <g>
+            {ligacoes.map((l) => {
+              const de = etapas.find((e) => e.etapa_id === l.de_id)
+              if (!de || de.pos_x_m == null) return null
+              const cDe = caixaEtapa(de)
+              const alt = l.tipo === 'alternativa'
+              const traco = alt ? '1.4 1' : undefined
+              const corLinha = alt ? '#7c3aed' : '#4338ca'
+              const ponta = alt ? 'url(#ponta-alternativa)' : 'url(#ponta-principal)'
+
+              const para = etapas.find((e) => e.etapa_id === l.para_id)
+              const dentro = para && para.pos_x_m != null && para.planta_id === de.planta_id
+
+              // destino em outro galpão: a seta aponta para a parede mais perto
+              // e leva o nome do destino escrito do lado de fora
+              if (!dentro) {
+                const saida = saidaNaParede(cDe, planta)
+                const ini = pontoNaBorda(cDe, saida.fora.x, saida.fora.y)
+                return (
+                  <g key={l.ligacao_id} pointerEvents="none">
+                    <line
+                      x1={ini.x}
+                      y1={ini.y}
+                      x2={saida.fora.x}
+                      y2={saida.fora.y}
+                      stroke={corLinha}
+                      strokeWidth={0.34}
+                      strokeDasharray={traco}
+                      markerEnd={ponta}
+                    />
+                    <text
+                      x={saida.fora.x + (saida.lado === 'dir' ? 1 : saida.lado === 'esq' ? -1 : 0)}
+                      y={saida.fora.y + (saida.lado === 'baixo' ? 1.5 : saida.lado === 'cima' ? -0.7 : 0.5)}
+                      fontSize={1.35}
+                      fill={corLinha}
+                      fontWeight="700"
+                      textAnchor={saida.lado === 'esq' ? 'end' : saida.lado === 'dir' ? 'start' : 'middle'}
+                    >
+                      → {l.para_nome}
+                    </text>
+                  </g>
+                )
+              }
+
+              const cPara = caixaEtapa(para)
+              const a = pontoNaBorda(cDe, cPara.cx, cPara.cy)
+              const b = pontoNaBorda(cPara, cDe.cx, cDe.cy)
+              return (
+                <g key={l.ligacao_id} pointerEvents="none">
+                  <line
+                    x1={a.x}
+                    y1={a.y}
+                    x2={b.x}
+                    y2={b.y}
+                    stroke={corLinha}
+                    strokeWidth={0.34}
+                    strokeDasharray={traco}
+                    markerEnd={ponta}
+                  />
+                  {l.rotulo && (
+                    <text
+                      x={(a.x + b.x) / 2}
+                      y={(a.y + b.y) / 2 - 0.6}
+                      fontSize={1.15}
+                      fill={corLinha}
+                      textAnchor="middle"
+                      fontWeight="600"
+                    >
+                      {l.rotulo}
+                    </text>
+                  )}
+                </g>
+              )
+            })}
+
+            {etapas
+              .filter((e) => e.pos_x_m != null && e.planta_id === planta.id)
+              .map((e) => {
+                const c = caixaEtapa(e)
+                const escolhida = etapaSelecionada === e.etapa_id
+                const temParada = Number(e.maquinas_paradas) > 0
+                return (
+                  <g
+                    key={e.etapa_id}
+                    onPointerDown={(ev) => {
+                      ev.stopPropagation()
+                      aoSelecionarEtapa?.(e)
+                      aoApertar(ev, { etapa_id: e.etapa_id, pos_x_m: e.pos_x_m, pos_y_m: e.pos_y_m })
+                    }}
+                    style={{ cursor: modoEditar ? 'move' : 'pointer' }}
+                  >
+                    <rect
+                      x={c.x}
+                      y={c.y}
+                      width={c.w}
+                      height={c.h}
+                      rx={c.h / 2}
+                      fill="#ffffff"
+                      opacity={0.96}
+                      stroke={temParada ? '#dc2626' : escolhida ? '#0f172a' : '#4338ca'}
+                      strokeWidth={escolhida || temParada ? 0.36 : 0.22}
+                    />
+                    <text
+                      x={c.cx}
+                      y={c.cy + 0.48}
+                      fontSize={1.35}
+                      fill={temParada ? '#991b1b' : '#3730a3'}
+                      textAnchor="middle"
+                      fontWeight="700"
+                      pointerEvents="none"
+                    >
+                      {e.nome}
+                    </text>
+                    {temParada && (
+                      <g pointerEvents="none">
+                        <circle cx={c.x + c.w - 0.9} cy={c.y + 0.5} r={0.62} fill="#dc2626" />
+                        <text
+                          x={c.x + c.w - 0.9}
+                          y={c.y + 0.85}
+                          fontSize={0.85}
+                          fill="#ffffff"
+                          textAnchor="middle"
+                          fontWeight="700"
+                        >
+                          {e.maquinas_paradas}
+                        </text>
+                      </g>
+                    )}
+                  </g>
+                )
+              })}
+          </g>
+        )}
       </g>
 
       {/* Leitura do ponto sob o cursor. Fica FORA do grupo do zoom de

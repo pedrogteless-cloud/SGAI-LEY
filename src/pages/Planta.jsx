@@ -2,8 +2,11 @@ import { useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   Maximize2, Plus, Minus, Move, Check, RotateCw, MapPin, X, ArrowRight, LayoutGrid,
+  Workflow, Trash2, Link2,
 } from 'lucide-react'
-import { useTabela, useUnidades, useQuadros, useAtualizar, useInvalidar } from '../hooks/useDados'
+import {
+  useTabela, useUnidades, useQuadros, useAtualizar, useInvalidar, useInserir, useRemover,
+} from '../hooks/useDados'
 import { useAuth } from '../hooks/useAuth'
 import { moeda, data } from '../lib/format'
 import { M_CRITICIDADE, M_SITUACAO } from '../lib/constants'
@@ -17,6 +20,7 @@ import {
 import PlantaCanvas from '../components/PlantaCanvas'
 
 const INVALIDAR = ['vw_planta_ativos', 'ativos']
+const INVALIDAR_FLUXO = ['vw_etapas_processo', 'vw_fluxo_processo', 'etapas_processo', 'fluxo_etapas']
 
 /** Linha de dado do cartão de detalhe. */
 const Linha = ({ rotulo, children }) =>
@@ -41,6 +45,12 @@ export default function Planta() {
   // posição enquanto o dedo/mouse ainda está arrastando: o banco só é tocado
   // quando solta, senão seria uma gravação por pixel percorrido
   const [rascunho, setRascunho] = useState({})
+  const [mostrarFluxo, setMostrarFluxo] = useState(false)
+  const [etapaSel, setEtapaSel] = useState(null)
+  const [rascunhoEtapa, setRascunhoEtapa] = useState({})
+  const [novaEtapa, setNovaEtapa] = useState('')
+  const [ligarA, setLigarA] = useState('')
+  const [ligarTipo, setLigarTipo] = useState('principal')
 
   const unidades = useUnidades()
   const unidadeAtual = unidadeId || unidades.data?.[0]?.id || ''
@@ -57,6 +67,27 @@ export default function Planta() {
 
   const todas = useTabela('vw_planta_ativos', { ordem: { coluna: 'nome' } })
   const atualizar = useAtualizar('ativos', INVALIDAR)
+
+  const etapasBanco = useTabela('vw_etapas_processo', { ordem: { coluna: 'ordem' } })
+  const ligacoes = useTabela('vw_fluxo_processo')
+  const criarEtapa = useInserir('etapas_processo', INVALIDAR_FLUXO)
+  const atualizarEtapa = useAtualizar('etapas_processo', INVALIDAR_FLUXO)
+  const removerEtapa = useRemover('etapas_processo', INVALIDAR_FLUXO)
+  const criarLigacao = useInserir('fluxo_etapas', INVALIDAR_FLUXO)
+  const removerLigacao = useRemover('fluxo_etapas', INVALIDAR_FLUXO)
+
+  const etapas = useMemo(
+    () =>
+      (etapasBanco.data || [])
+        .filter((e) => !unidadeAtual || e.unidade_id === unidadeAtual)
+        .map((e) => (rascunhoEtapa[e.etapa_id] ? { ...e, ...rascunhoEtapa[e.etapa_id] } : e)),
+    [etapasBanco.data, unidadeAtual, rascunhoEtapa]
+  )
+  const ligacoesDaUnidade = useMemo(
+    () => (ligacoes.data || []).filter((l) => !unidadeAtual || l.unidade_id === unidadeAtual),
+    [ligacoes.data, unidadeAtual]
+  )
+  const etapaAberta = etapas.find((e) => e.etapa_id === etapaSel) || null
 
   const daUnidade = useMemo(
     () => (todas.data || []).filter((m) => !unidadeAtual || m.unidade === unidades.data?.find((u) => u.id === unidadeAtual)?.nome),
@@ -136,6 +167,65 @@ export default function Planta() {
     if (!(n > 0)) return
     await atualizar.mutateAsync({ id: m.ativo_id, [campo]: n })
     invalidar(...INVALIDAR)
+  }
+
+  const moverEtapa = (id, x, y) =>
+    setRascunhoEtapa((r) => ({ ...r, [id]: { pos_x_m: x, pos_y_m: y } }))
+
+  const gravarEtapa = async (id) => {
+    const pos = rascunhoEtapa[id]
+    if (!pos) return
+    try {
+      await atualizarEtapa.mutateAsync({ id, ...pos })
+      setRascunhoEtapa((r) => {
+        const { [id]: _, ...resto } = r
+        return resto
+      })
+    } catch (e) {
+      avisar(`Não consegui salvar a etapa: ${e.message}`)
+    }
+  }
+
+  const adicionarEtapa = async () => {
+    const nome = novaEtapa.trim()
+    if (!nome) return
+    try {
+      const e = await criarEtapa.mutateAsync({
+        unidade_id: unidadeAtual,
+        planta_id: planta.id,
+        nome,
+        pos_x_m: Number(planta.comprimento_m) / 2,
+        pos_y_m: Number(planta.largura_m) / 2,
+        ordem: etapas.length + 1,
+      })
+      invalidar(...INVALIDAR_FLUXO)
+      setNovaEtapa('')
+      setEtapaSel(e.id)
+      avisar(`Etapa "${nome}" criada. Arraste para o lugar dela.`)
+    } catch (err) {
+      avisar(`Não consegui criar: ${err.message}`)
+    }
+  }
+
+  const ligar = async () => {
+    if (!etapaAberta || !ligarA) return
+    try {
+      await criarLigacao.mutateAsync({
+        de_id: etapaAberta.etapa_id,
+        para_id: ligarA,
+        tipo: ligarTipo,
+      })
+      invalidar(...INVALIDAR_FLUXO)
+      setLigarA('')
+      avisar('Ligação criada.')
+    } catch (e) {
+      // a única violação provável aqui é ligar duas vezes o mesmo par
+      avisar(
+        /duplicate|unique/i.test(e.message)
+          ? 'Essas duas etapas já estão ligadas.'
+          : `Não consegui ligar: ${e.message}`
+      )
+    }
   }
 
   // ------------------------------------------------------------- telas
@@ -282,6 +372,15 @@ export default function Planta() {
               ))}
             </Selecao>
           )}
+          <Botao
+            variante={mostrarFluxo ? 'primario' : 'secundario'}
+            onClick={() => {
+              setMostrarFluxo((v) => !v)
+              setEtapaSel(null)
+            }}
+          >
+            <Workflow size={15} /> Fluxo do processo
+          </Botao>
           {ehGestor && (
             <Botao
               variante={editando ? 'sucesso' : 'secundario'}
@@ -360,6 +459,13 @@ export default function Planta() {
                 aoMover={mover}
                 aoTerminarArraste={gravarPosicao}
                 refCamera={camera}
+                etapas={etapas}
+                ligacoes={ligacoesDaUnidade}
+                mostrarFluxo={mostrarFluxo}
+                etapaSelecionada={etapaSel}
+                aoSelecionarEtapa={(e) => setEtapaSel(e?.etapa_id ?? null)}
+                aoMoverEtapa={moverEtapa}
+                aoTerminarArrasteEtapa={gravarEtapa}
               />
             )}
           </Cartao>
@@ -391,6 +497,138 @@ export default function Planta() {
         </div>
 
         <div className="space-y-3">
+          {mostrarFluxo && (
+            <Cartao className="p-4">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-sm font-semibold text-slate-800">Fluxo do processo</p>
+                <span className="text-xs text-slate-500">{etapas.length} etapas</span>
+              </div>
+              <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-600">
+                <span className="flex items-center gap-1.5">
+                  <span className="h-0.5 w-5 bg-indigo-700" /> caminho principal
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span
+                    className="h-0.5 w-5"
+                    style={{ backgroundImage: 'repeating-linear-gradient(90deg,#7c3aed 0 3px,transparent 3px 6px)' }}
+                  />
+                  às vezes acontece
+                </span>
+              </div>
+
+              {ehGestor && editando && (
+                <div className="mt-3 flex gap-2">
+                  <Entrada
+                    value={novaEtapa}
+                    onChange={(e) => setNovaEtapa(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && adicionarEtapa()}
+                    placeholder="Nova etapa (ex.: Costura)"
+                  />
+                  <Botao onClick={adicionarEtapa} disabled={!novaEtapa.trim()}>
+                    <Plus size={15} />
+                  </Botao>
+                </div>
+              )}
+
+              <div className="mt-3 max-h-56 space-y-1 overflow-y-auto">
+                {etapas.map((e) => {
+                  const saidas = ligacoesDaUnidade.filter((l) => l.de_id === e.etapa_id)
+                  return (
+                    <button
+                      key={e.etapa_id}
+                      onClick={() => setEtapaSel(e.etapa_id === etapaSel ? null : e.etapa_id)}
+                      className={`w-full rounded-lg px-2 py-1.5 text-left transition ${
+                        etapaSel === e.etapa_id ? 'bg-indigo-50 ring-1 ring-indigo-300' : 'hover:bg-slate-50'
+                      }`}
+                    >
+                      <span className="flex items-center gap-2">
+                        <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-800">
+                          {e.nome}
+                        </span>
+                        {Number(e.maquinas_paradas) > 0 && (
+                          <span className="shrink-0 rounded bg-red-100 px-1.5 text-[11px] font-semibold text-red-700">
+                            {e.maquinas_paradas} parada
+                          </span>
+                        )}
+                        {e.pos_x_m == null && (
+                          <span className="shrink-0 text-[11px] text-slate-400">fora do galpão</span>
+                        )}
+                      </span>
+                      {saidas.length > 0 && (
+                        <span className="mt-0.5 block truncate text-xs text-slate-500">
+                          → {saidas.map((l) => l.para_nome).join(', ')}
+                        </span>
+                      )}
+                    </button>
+                  )
+                })}
+              </div>
+
+              {etapaAberta && ehGestor && editando && (
+                <div className="mt-3 space-y-2 rounded-lg bg-slate-50 p-3">
+                  <p className="text-xs font-medium text-slate-600">
+                    De <strong>{etapaAberta.nome}</strong>, o material vai para:
+                  </p>
+                  <Selecao value={ligarA} onChange={(ev) => setLigarA(ev.target.value)}>
+                    <option value="">Escolha a etapa seguinte…</option>
+                    {etapas
+                      .filter((e) => e.etapa_id !== etapaAberta.etapa_id)
+                      .map((e) => (
+                        <option key={e.etapa_id} value={e.etapa_id}>
+                          {e.nome}
+                          {e.pos_x_m == null ? ' (outro galpão)' : ''}
+                        </option>
+                      ))}
+                  </Selecao>
+                  <Selecao value={ligarTipo} onChange={(ev) => setLigarTipo(ev.target.value)}>
+                    <option value="principal">Sempre passa por aqui</option>
+                    <option value="alternativa">Só às vezes</option>
+                  </Selecao>
+                  <Botao onClick={ligar} disabled={!ligarA} className="w-full">
+                    <Link2 size={14} /> Ligar
+                  </Botao>
+
+                  {ligacoesDaUnidade
+                    .filter((l) => l.de_id === etapaAberta.etapa_id)
+                    .map((l) => (
+                      <div
+                        key={l.ligacao_id}
+                        className="flex items-center gap-2 rounded bg-white px-2 py-1 text-xs"
+                      >
+                        <span className="min-w-0 flex-1 truncate text-slate-600">
+                          → {l.para_nome}
+                          {l.tipo === 'alternativa' && (
+                            <span className="text-violet-600"> · só às vezes</span>
+                          )}
+                        </span>
+                        <button
+                          onClick={async () => {
+                            await removerLigacao.mutateAsync(l.ligacao_id)
+                            invalidar(...INVALIDAR_FLUXO)
+                          }}
+                          className="shrink-0 text-slate-400 hover:text-red-600"
+                          aria-label="Apagar ligação"
+                        >
+                          <X size={13} />
+                        </button>
+                      </div>
+                    ))}
+
+                  <button
+                    onClick={async () => {
+                      await removerEtapa.mutateAsync(etapaAberta.etapa_id)
+                      invalidar(...INVALIDAR_FLUXO)
+                      setEtapaSel(null)
+                    }}
+                    className="flex items-center gap-1.5 text-xs font-medium text-red-600 hover:text-red-700"
+                  >
+                    <Trash2 size={13} /> Apagar a etapa {etapaAberta.nome}
+                  </button>
+                </div>
+              )}
+            </Cartao>
+          )}
+
           <div className="hidden lg:block">{cartaoDetalhe}</div>
 
           {editando && ehGestor && (

@@ -196,6 +196,22 @@ mesmo, e o botão girar vira a máquina de 90 em 90 graus.
 Roda do mouse aproxima, arrastar anda pelo galpão. No celular, pinça aproxima e
 o toque abre uma folha embaixo com os dados.
 
+### Fluxo do processo
+
+O botão **Fluxo do processo** desenha por cima da planta o caminho que o material
+faz. Não é uma fila: o caminho se divide, junta de novo, e tem tarefa que só às
+vezes acontece — desenhada tracejada. Quando o material sai para outro galpão (a
+capa de unibox que vai para a serraria vestir a base), a seta aponta para a parede
+mais próxima com o nome do destino escrito.
+
+A etapa fica **vermelha quando tem máquina parada** debaixo dela. É o cruzamento
+que interessa: mostra que a etapa que está travando é justo a que todo mundo
+depende, sem precisar comparar duas telas.
+
+Em **Posicionar máquinas**, o gestor cria etapa, arrasta para o lugar e liga uma na
+outra escolhendo se o material *sempre passa por ali* ou *só às vezes*. Etapa sem
+posição é entendida como fora do galpão desenhado.
+
 ## Etiqueta de QR para colar na máquina
 
 Na tela da máquina, em **Etiqueta QR**, você escolhe o tamanho do adesivo que usa
