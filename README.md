@@ -150,7 +150,11 @@ Todo usuário novo entra como `operador` até alguém promover.
 Em **Planta do galpão** o chão de fábrica vira desenho em escala: 1 unidade do
 desenho é 1 metro, e cada máquina aparece com a área que realmente ocupa. Dá para
 ver corredor, folga e aglomeração — não só um pino dizendo "é mais ou menos aqui".
-O galpão de Eusébio já vem cadastrado: 86 × 30 m de vão livre, 2.580 m².
+O galpão de Eusébio já vem cadastrado: 84 × 30 m de vão livre, 2.520 m².
+
+Os pilares das laterais são desenhados no vão real (6 m em Eusébio, dando 14 vãos
+exatos nos 84 m) e cada vão recebe um número. É a referência que quem anda no chão de fábrica já usa —
+"está entre o quinto e o sexto pilar" localiza melhor que "aos 32 metros".
 
 Passe o mouse (ou toque, no celular) numa máquina para ver situação, gasto do
 último ano, serviços em aberto, quadro que a alimenta e quanto ela ocupa no chão.

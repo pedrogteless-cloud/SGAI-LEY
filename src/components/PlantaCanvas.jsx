@@ -177,11 +177,23 @@ export default function PlantaCanvas({
     }
   }
 
-  // Grade a cada 5 m, que é a leitura natural de quem anda no galpão
-  const linhasV = []
-  for (let x = 5; x < comp; x += 5) linhasV.push(x)
+  // Os pilares das laterais são a referência de quem anda no galpão — dizer
+  // "entre o quinto e o sexto pilar" localiza melhor do que dizer "aos 32 m".
+  // Por isso a grade segue o vão deles, e não um múltiplo qualquer.
+  const vao = Number(planta.vao_pilar_m) || 0
+  const pilares = []
+  if (vao > 0) {
+    for (let x = 0; x < comp - 0.01; x += vao) pilares.push(Number(x.toFixed(2)))
+    // o último pilar é o da ponta: o vão que sobra costuma ser menor que os outros
+    pilares.push(comp)
+  }
+
+  const linhasV = vao > 0 ? pilares.slice(1, -1) : []
+  if (vao <= 0) for (let x = 5; x < comp; x += 5) linhasV.push(x)
   const linhasH = []
   for (let y = 5; y < larg; y += 5) linhasH.push(y)
+
+  const LADO_PILAR = 0.5
 
   const fonteCota = Math.max(comp, larg) / 45
 
@@ -217,10 +229,17 @@ export default function PlantaCanvas({
         {/* piso */}
         <rect data-fundo="1" x={0} y={0} width={comp} height={larg} fill="#ffffff" />
 
-        {/* grade de 5 m */}
+        {/* grade: eixos dos pilares na horizontal, 5 em 5 m na profundidade */}
         <g stroke="#e2e8f0" strokeWidth={0.06}>
           {linhasV.map((x) => (
-            <line key={`v${x}`} x1={x} y1={0} x2={x} y2={larg} />
+            <line
+              key={`v${x}`}
+              x1={x}
+              y1={0}
+              x2={x}
+              y2={larg}
+              strokeDasharray={vao > 0 ? '0.9 0.7' : undefined}
+            />
           ))}
           {linhasH.map((y) => (
             <line key={`h${y}`} x1={0} y1={y} x2={comp} y2={y} />
@@ -247,6 +266,44 @@ export default function PlantaCanvas({
           stroke="#334155"
           strokeWidth={0.18}
         />
+
+        {/* pilares das duas laterais, plantados em cima da linha da parede */}
+        {vao > 0 && (
+          <g fill="#334155">
+            {pilares.map((x) => (
+              <g key={`pil${x}`}>
+                <rect
+                  x={x - LADO_PILAR / 2}
+                  y={-LADO_PILAR / 2}
+                  width={LADO_PILAR}
+                  height={LADO_PILAR}
+                />
+                <rect
+                  x={x - LADO_PILAR / 2}
+                  y={larg - LADO_PILAR / 2}
+                  width={LADO_PILAR}
+                  height={LADO_PILAR}
+                />
+              </g>
+            ))}
+          </g>
+        )}
+
+        {/* número do vão, para poder dizer "está no vão 7" */}
+        {vao > 0 &&
+          pilares.slice(0, -1).map((x, i) => (
+            <text
+              key={`vao${i}`}
+              x={(x + pilares[i + 1]) / 2}
+              y={-0.9}
+              fontSize={0.85}
+              fill="#94a3b8"
+              textAnchor="middle"
+              pointerEvents="none"
+            >
+              {i + 1}
+            </text>
+          ))}
 
         {/* cotas do galpão */}
         <g stroke="#94a3b8" strokeWidth={0.07} fill="#64748b">

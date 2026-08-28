@@ -1912,6 +1912,10 @@ create table if not exists plantas (
   nome           text not null,
   comprimento_m  numeric(8,2) not null check (comprimento_m > 0),  -- eixo x
   largura_m      numeric(8,2) not null check (largura_m > 0),      -- eixo y
+  -- Vão entre os pilares das laterais. Vira a referência visual de quem anda
+  -- no galpão: "está entre o quinto e o sexto pilar" localiza melhor que o
+  -- metro corrido. Nulo = galpão sem pilar aparente na planta.
+  vao_pilar_m    numeric(6,2) check (vao_pilar_m > 0),
   observacoes    text,
   ativo          boolean not null default true,
   criado_em      timestamptz not null default now(),
@@ -2092,8 +2096,8 @@ insert into unidades (nome, sigla, cidade, uf) values
 on conflict (nome) do nothing;
 
 -- Galpão de Eusébio: vão livre, sem pilar no meio.
-insert into plantas (unidade_id, nome, comprimento_m, largura_m, observacoes)
-select id, 'Galpão de produção', 86, 30, 'Vão livre, sem pilar no meio'
+insert into plantas (unidade_id, nome, comprimento_m, largura_m, vao_pilar_m, observacoes)
+select id, 'Galpão de produção', 84, 30, 6, 'Vão livre de 30 m, sem pilar no meio; 14 vãos de 6 m'
 from unidades where sigla = 'EUS'
 on conflict (unidade_id, nome) do nothing;
 

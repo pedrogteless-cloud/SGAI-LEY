@@ -249,7 +249,8 @@ export default function Planta() {
         <div>
           <h1 className="text-xl font-bold text-slate-900">Planta do galpão</h1>
           <p className="text-sm text-slate-500">
-            {planta.comprimento_m} × {planta.largura_m} m · {area.toLocaleString('pt-BR')} m² ·{' '}
+            {planta.comprimento_m} × {planta.largura_m} m · {area.toLocaleString('pt-BR')} m²
+            {planta.vao_pilar_m ? ` · vão de ${planta.vao_pilar_m} m entre pilares` : ''} ·{' '}
             {noChao.length} de {daUnidade.length} máquinas posicionadas
             {paradas > 0 && <span className="font-medium text-red-600"> · {paradas} parada(s)</span>}
           </p>
