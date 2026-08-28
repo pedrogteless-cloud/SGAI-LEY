@@ -145,6 +145,37 @@ Todo usuário novo entra como `operador` até alguém promover.
 > senão o login falha com *"Database error querying schema"*. O painel faz isso certo;
 > o `insert` manual, não. O arquivo tem o modelo correto e o comando de conserto.
 
+## Planta do galpão
+
+Em **Planta do galpão** o chão de fábrica vira desenho em escala: 1 unidade do
+desenho é 1 metro, e cada máquina aparece com a área que realmente ocupa. Dá para
+ver corredor, folga e aglomeração — não só um pino dizendo "é mais ou menos aqui".
+O galpão de Eusébio já vem cadastrado: 86 × 30 m de vão livre, 2.580 m².
+
+Passe o mouse (ou toque, no celular) numa máquina para ver situação, gasto do
+último ano, serviços em aberto, quadro que a alimenta e quanto ela ocupa no chão.
+
+A mesma planta se repinta em quatro leituras:
+
+| Camada | Para que serve |
+| ------ | -------------- |
+| **Como está agora** | Verde funcionando, vermelho parada, amarelo em conserto |
+| **Importância** | Onde estão as máquinas A, que param a produção |
+| **Onde o dinheiro foi** | Mapa de calor do gasto — o vermelho escuro é onde mais saiu dinheiro |
+| **Se o quadro cair** | Cada quadro elétrico numa cor: mostra o que apaga junto |
+
+Nas três últimas a cor conta outra coisa, então a situação volta como um ponto no
+canto da máquina — saber se ela está rodando nunca se perde.
+
+Em **Posicionar máquinas** (só gestor) você arrasta cada uma para o lugar, com
+encaixe de meio metro e sem deixar sair do galpão. A lista lateral mostra o que
+ainda está fora da planta; ao colocar, a máquina entra num vaga livre em vez de
+empilhar em cima de outra. O comprimento e a largura reais são informados ali
+mesmo, e o botão girar vira a máquina de 90 em 90 graus.
+
+Roda do mouse aproxima, arrastar anda pelo galpão. No celular, pinça aproxima e
+o toque abre uma folha embaixo com os dados.
+
 ## Etiqueta de QR para colar na máquina
 
 Na tela da máquina, em **Etiqueta QR**, você escolhe o tamanho do adesivo que usa

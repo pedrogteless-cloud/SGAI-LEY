@@ -16,6 +16,7 @@ import OSDetalhe from './pages/OSDetalhe'
 import Almoxarifado from './pages/Almoxarifado'
 import Fornecedores from './pages/Fornecedores'
 import Preventiva from './pages/Preventiva'
+import Planta from './pages/Planta'
 import ReportarQR from './pages/ReportarQR'
 
 const cliente = new QueryClient({
@@ -75,6 +76,7 @@ export default function App() {
                 <Route path="os/:id" element={<OSDetalhe />} />
                 <Route path="almoxarifado" element={<Almoxarifado />} />
                 <Route path="preventiva" element={<Preventiva />} />
+                <Route path="planta" element={<Planta />} />
                 <Route path="fornecedores" element={<Fornecedores />} />
               </Route>
 

@@ -1,0 +1,441 @@
+import { useMemo, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
+import {
+  Maximize2, Plus, Minus, Move, Check, RotateCw, MapPin, X, ArrowRight, LayoutGrid,
+} from 'lucide-react'
+import { useTabela, useUnidades, useQuadros, useAtualizar, useInvalidar } from '../hooks/useDados'
+import { useAuth } from '../hooks/useAuth'
+import { moeda, data } from '../lib/format'
+import { M_CRITICIDADE, M_SITUACAO } from '../lib/constants'
+import {
+  caixa, temPosicao, contexto, legenda, cor, CAMADAS, primeiroLugarLivre,
+} from '../lib/planta'
+import {
+  Botao, Cartao, Etiqueta, Carregando, Vazio, Selecao, Entrada, Campo, useAviso,
+} from '../components/ui'
+import PlantaCanvas from '../components/PlantaCanvas'
+
+const INVALIDAR = ['vw_planta_ativos', 'ativos']
+
+/** Linha de dado do cartão de detalhe. */
+const Linha = ({ rotulo, children }) =>
+  children ? (
+    <div className="flex items-baseline justify-between gap-3 py-1">
+      <span className="shrink-0 text-xs text-slate-500">{rotulo}</span>
+      <span className="text-right text-sm font-medium text-slate-800">{children}</span>
+    </div>
+  ) : null
+
+export default function Planta() {
+  const { ehGestor } = useAuth()
+  const avisar = useAviso()
+  const invalidar = useInvalidar()
+  const camera = useRef(null)
+
+  const [unidadeId, setUnidadeId] = useState('')
+  const [camada, setCamada] = useState('situacao')
+  const [editando, setEditando] = useState(false)
+  const [selecionada, setSelecionada] = useState(null)
+  const [sobMouse, setSobMouse] = useState(null)
+  // posição enquanto o dedo/mouse ainda está arrastando: o banco só é tocado
+  // quando solta, senão seria uma gravação por pixel percorrido
+  const [rascunho, setRascunho] = useState({})
+
+  const unidades = useUnidades()
+  const unidadeAtual = unidadeId || unidades.data?.[0]?.id || ''
+  const quadros = useQuadros(unidadeAtual || undefined)
+
+  const plantas = useTabela('plantas', {
+    filtros: [
+      ['ativo', 'eq', true],
+      ...(unidadeAtual ? [['unidade_id', 'eq', unidadeAtual]] : []),
+    ],
+    ordem: { coluna: 'nome' },
+  })
+  const planta = plantas.data?.[0]
+
+  const todas = useTabela('vw_planta_ativos', { ordem: { coluna: 'nome' } })
+  const atualizar = useAtualizar('ativos', INVALIDAR)
+
+  const daUnidade = useMemo(
+    () => (todas.data || []).filter((m) => !unidadeAtual || m.unidade === unidades.data?.find((u) => u.id === unidadeAtual)?.nome),
+    [todas.data, unidadeAtual, unidades.data]
+  )
+
+  const noChao = useMemo(
+    () =>
+      daUnidade
+        .filter((m) => temPosicao(m) && m.planta_id === planta?.id)
+        .map((m) => (rascunho[m.ativo_id] ? { ...m, ...rascunho[m.ativo_id] } : m)),
+    [daUnidade, planta?.id, rascunho]
+  )
+
+  const foraDaPlanta = useMemo(
+    () => daUnidade.filter((m) => !temPosicao(m) || m.planta_id !== planta?.id),
+    [daUnidade, planta?.id]
+  )
+
+  const ctx = useMemo(() => contexto(noChao, quadros.data || []), [noChao, quadros.data])
+  const itensLegenda = useMemo(() => legenda(camada, noChao, ctx), [camada, noChao, ctx])
+
+  const detalhe = selecionada
+    ? noChao.find((m) => m.ativo_id === selecionada) || foraDaPlanta.find((m) => m.ativo_id === selecionada)
+    : sobMouse
+
+  // ------------------------------------------------------------- ações
+
+  const mover = (id, x, y) => setRascunho((r) => ({ ...r, [id]: { pos_x_m: x, pos_y_m: y } }))
+
+  const gravarPosicao = async (id) => {
+    const pos = rascunho[id]
+    if (!pos) return
+    try {
+      await atualizar.mutateAsync({ id, ...pos })
+      setRascunho((r) => {
+        const { [id]: _, ...resto } = r
+        return resto
+      })
+    } catch (e) {
+      avisar(`Não consegui salvar a posição: ${e.message}`)
+    }
+  }
+
+  const colocarNaPlanta = async (m) => {
+    const c = caixa(m)
+    const lugar = primeiroLugarLivre(c.w, c.h, noChao.map(caixa), planta)
+    try {
+      await atualizar.mutateAsync({
+        id: m.ativo_id,
+        planta_id: planta.id,
+        pos_x_m: lugar.x,
+        pos_y_m: lugar.y,
+      })
+      invalidar(...INVALIDAR)
+      setSelecionada(m.ativo_id)
+      avisar(`${m.nome} entrou na planta. Arraste para o lugar certo.`)
+    } catch (e) {
+      avisar(`Não consegui colocar na planta: ${e.message}`)
+    }
+  }
+
+  const tirarDaPlanta = async (m) => {
+    await atualizar.mutateAsync({ id: m.ativo_id, planta_id: null, pos_x_m: null, pos_y_m: null })
+    invalidar(...INVALIDAR)
+    setSelecionada(null)
+  }
+
+  const girar = async (m) => {
+    const novo = ((m.rotacao || 0) + 90) % 360
+    await atualizar.mutateAsync({ id: m.ativo_id, rotacao: novo })
+    invalidar(...INVALIDAR)
+  }
+
+  const medir = async (m, campo, valor) => {
+    const n = Number(String(valor).replace(',', '.'))
+    if (!(n > 0)) return
+    await atualizar.mutateAsync({ id: m.ativo_id, [campo]: n })
+    invalidar(...INVALIDAR)
+  }
+
+  // ------------------------------------------------------------- telas
+
+  if (plantas.isLoading || todas.isLoading) return <Carregando />
+
+  if (!planta) {
+    return (
+      <Vazio
+        icone={LayoutGrid}
+        titulo="Nenhuma planta cadastrada nesta unidade"
+        descricao="A planta guarda a medida do galpão e a posição de cada máquina no chão."
+      />
+    )
+  }
+
+  const area = Math.round(Number(planta.comprimento_m) * Number(planta.largura_m))
+  const paradas = noChao.filter((m) => m.situacao === 'parado').length
+
+  const cartaoDetalhe = detalhe && (
+    <Cartao className="p-4">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="truncate font-semibold text-slate-900">{detalhe.nome}</p>
+          <p className="font-mono text-xs text-slate-500">{detalhe.codigo}</p>
+        </div>
+        <button
+          onClick={() => {
+            setSelecionada(null)
+            setSobMouse(null)
+          }}
+          className="shrink-0 rounded p-1 text-slate-400 hover:bg-slate-100 lg:hidden"
+          aria-label="Fechar"
+        >
+          <X size={16} />
+        </button>
+      </div>
+
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        <Etiqueta cor={M_SITUACAO[detalhe.situacao]?.cor}>
+          {M_SITUACAO[detalhe.situacao]?.label}
+        </Etiqueta>
+        <Etiqueta cor={M_CRITICIDADE[detalhe.criticidade]?.cor}>
+          Importância {detalhe.criticidade}
+        </Etiqueta>
+        {Number(detalhe.os_abertas) > 0 && (
+          <Etiqueta cor="bg-slate-900 text-white ring-slate-900">
+            {detalhe.os_abertas} serviço{Number(detalhe.os_abertas) > 1 ? 's' : ''} em aberto
+          </Etiqueta>
+        )}
+      </div>
+
+      <div className="mt-3 divide-y divide-slate-100 border-t border-slate-100 pt-1">
+        <Linha rotulo="Setor">{detalhe.setor}</Linha>
+        <Linha rotulo="Categoria">{detalhe.categoria}</Linha>
+        <Linha rotulo="Gasto no último ano">{moeda(detalhe.custo_12m)}</Linha>
+        <Linha rotulo="Última manutenção">
+          {detalhe.ultima_manutencao ? data(detalhe.ultima_manutencao) : null}
+        </Linha>
+        <Linha rotulo="Quadro que alimenta">{detalhe.quadro}</Linha>
+        <Linha rotulo="Ocupa no chão">
+          {detalhe.comp_m && detalhe.larg_m
+            ? `${detalhe.comp_m} × ${detalhe.larg_m} m`
+            : 'medida não informada'}
+        </Linha>
+      </div>
+
+      {editando && ehGestor && temPosicao(detalhe) && (
+        <div className="mt-3 space-y-3 rounded-lg bg-slate-50 p-3">
+          <div className="grid grid-cols-2 gap-2">
+            <Campo rotulo="Comprimento (m)">
+              <Entrada
+                type="number"
+                step="0.1"
+                min="0.1"
+                defaultValue={detalhe.comp_m ?? ''}
+                onBlur={(e) => medir(detalhe, 'comp_m', e.target.value)}
+              />
+            </Campo>
+            <Campo rotulo="Largura (m)">
+              <Entrada
+                type="number"
+                step="0.1"
+                min="0.1"
+                defaultValue={detalhe.larg_m ?? ''}
+                onBlur={(e) => medir(detalhe, 'larg_m', e.target.value)}
+              />
+            </Campo>
+          </div>
+          <div className="flex gap-2">
+            <Botao variante="secundario" tamanho="sm" onClick={() => girar(detalhe)}>
+              <RotateCw size={14} /> Girar
+            </Botao>
+            <Botao variante="secundario" tamanho="sm" onClick={() => tirarDaPlanta(detalhe)}>
+              <X size={14} /> Tirar da planta
+            </Botao>
+          </div>
+        </div>
+      )}
+
+      <Link to={`/ativos/${detalhe.ativo_id}`} className="mt-3 block">
+        <Botao variante="secundario" className="w-full">
+          Abrir a máquina <ArrowRight size={14} />
+        </Botao>
+      </Link>
+    </Cartao>
+  )
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-bold text-slate-900">Planta do galpão</h1>
+          <p className="text-sm text-slate-500">
+            {planta.comprimento_m} × {planta.largura_m} m · {area.toLocaleString('pt-BR')} m² ·{' '}
+            {noChao.length} de {daUnidade.length} máquinas posicionadas
+            {paradas > 0 && <span className="font-medium text-red-600"> · {paradas} parada(s)</span>}
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {(unidades.data || []).length > 1 && (
+            <Selecao
+              value={unidadeAtual}
+              onChange={(e) => {
+                setUnidadeId(e.target.value)
+                setSelecionada(null)
+              }}
+              className="w-auto max-w-44"
+            >
+              {(unidades.data || []).map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.nome}
+                </option>
+              ))}
+            </Selecao>
+          )}
+          {ehGestor && (
+            <Botao
+              variante={editando ? 'sucesso' : 'secundario'}
+              onClick={() => {
+                setEditando((v) => !v)
+                setSelecionada(null)
+              }}
+            >
+              {editando ? <Check size={15} /> : <Move size={15} />}
+              {editando ? 'Pronto' : 'Posicionar máquinas'}
+            </Botao>
+          )}
+        </div>
+      </div>
+
+      {/* camada + legenda */}
+      <Cartao className="p-3">
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+          <Selecao value={camada} onChange={(e) => setCamada(e.target.value)} className="w-auto">
+            {CAMADAS.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.nome}
+              </option>
+            ))}
+          </Selecao>
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
+            {itensLegenda.map((l) => (
+              <span key={l.chave} className="flex items-center gap-1.5 text-xs text-slate-600">
+                <span
+                  className="size-3 shrink-0 rounded-sm ring-1"
+                  style={{ background: l.cor.fundo, borderColor: l.cor.borda, boxShadow: `inset 0 0 0 1px ${l.cor.borda}` }}
+                />
+                {l.rotulo}
+                {l.n != null && <span className="font-semibold text-slate-500">({l.n})</span>}
+              </span>
+            ))}
+          </div>
+        </div>
+      </Cartao>
+
+      <div className="grid gap-4 lg:grid-cols-[1fr_20rem]">
+        <div className="relative">
+          {/* No celular vale a altura fixa e a largura da tela. No computador a
+              proporção da planta manda, para não sobrar faixa branca em cima e
+              embaixo.
+
+              Cuidado ao mexer aqui: aspect-ratio junto com QUALQUER altura
+              definida (h, min-h) faz o navegador calcular a LARGURA a partir
+              dela. Numa planta de 86 x 30, isso estica o cartão para mais de
+              700px e estoura a tela do celular inteira. Por isso a proporção
+              só entra a partir de lg, onde a altura é auto. */}
+          <Cartao
+            className="h-[38vh] overflow-hidden lg:h-auto lg:aspect-[var(--proporcao)]"
+            style={{ '--proporcao': `${Number(planta.comprimento_m) + 12} / ${Number(planta.largura_m) + 12}` }}
+          >
+            {noChao.length === 0 && !editando ? (
+              <Vazio
+                icone={MapPin}
+                titulo="Nenhuma máquina posicionada ainda"
+                descricao={
+                  ehGestor
+                    ? 'Clique em "Posicionar máquinas" e arraste cada uma para o lugar dela no galpão.'
+                    : 'Quando o gestor posicionar as máquinas, o mapa aparece aqui.'
+                }
+              />
+            ) : (
+              <PlantaCanvas
+                planta={planta}
+                maquinas={noChao}
+                camada={camada}
+                ctx={ctx}
+                selecionada={selecionada}
+                aoSelecionar={(m) => setSelecionada(m?.ativo_id ?? null)}
+                aoPassarMouse={setSobMouse}
+                modoEditar={editando && ehGestor}
+                aoMover={mover}
+                aoTerminarArraste={gravarPosicao}
+                refCamera={camera}
+              />
+            )}
+          </Cartao>
+
+          <div className="nao-imprimir absolute top-3 right-3 z-10 flex flex-col gap-1 rounded-lg
+            bg-white/95 p-1 shadow ring-1 ring-slate-200 lg:top-auto lg:bottom-3">
+            <button
+              onClick={() => camera.current?.aproximar()}
+              className="rounded p-1.5 text-slate-600 hover:bg-slate-100"
+              aria-label="Aproximar"
+            >
+              <Plus size={16} />
+            </button>
+            <button
+              onClick={() => camera.current?.afastar()}
+              className="rounded p-1.5 text-slate-600 hover:bg-slate-100"
+              aria-label="Afastar"
+            >
+              <Minus size={16} />
+            </button>
+            <button
+              onClick={() => camera.current?.encaixar()}
+              className="rounded p-1.5 text-slate-600 hover:bg-slate-100"
+              aria-label="Encaixar na tela"
+            >
+              <Maximize2 size={16} />
+            </button>
+          </div>
+        </div>
+
+        <div className="space-y-3">
+          <div className="hidden lg:block">{cartaoDetalhe}</div>
+
+          {editando && ehGestor && (
+            <Cartao className="p-4">
+              <p className="text-sm font-semibold text-slate-800">
+                Ainda fora da planta ({foraDaPlanta.length})
+              </p>
+              <p className="mt-0.5 text-xs text-slate-500">
+                Toque para colocar no galpão, depois arraste até o lugar.
+              </p>
+              {foraDaPlanta.length === 0 ? (
+                <p className="mt-3 text-sm text-emerald-700">Todas as máquinas já estão na planta.</p>
+              ) : (
+                <div className="mt-3 max-h-72 space-y-1 overflow-y-auto">
+                  {foraDaPlanta.map((m) => (
+                    <button
+                      key={m.ativo_id}
+                      onClick={() => colocarNaPlanta(m)}
+                      className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left
+                        transition hover:bg-sky-50"
+                    >
+                      <span
+                        className="size-2.5 shrink-0 rounded-sm"
+                        style={{ background: cor('situacao', m).borda }}
+                      />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm text-slate-700">{m.nome}</span>
+                        <span className="block font-mono text-[11px] text-slate-400">{m.codigo}</span>
+                      </span>
+                      <Plus size={14} className="shrink-0 text-sky-600" />
+                    </button>
+                  ))}
+                </div>
+              )}
+            </Cartao>
+          )}
+
+          {!detalhe && !editando && (
+            <Cartao className="hidden p-4 lg:block">
+              <p className="text-sm text-slate-500">
+                Passe o mouse por cima de uma máquina para ver situação, gasto e serviços em
+                aberto. Role a roda para aproximar e arraste para andar pelo galpão.
+              </p>
+            </Cartao>
+          )}
+        </div>
+      </div>
+
+      {/* No celular não existe passar o mouse: o toque abre esta folha, que fica
+          presa embaixo para não obrigar ninguém a rolar a tela atrás dela. */}
+      {selecionada && detalhe && (
+        <div className="fixed inset-x-0 bottom-0 z-40 max-h-[48vh] overflow-y-auto
+          border-t border-slate-200 bg-slate-50 p-3 shadow-[0_-4px_16px_rgba(15,23,42,0.12)] lg:hidden">
+          {cartaoDetalhe}
+        </div>
+      )}
+    </div>
+  )
+}

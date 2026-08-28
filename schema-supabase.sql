@@ -1897,6 +1897,115 @@ revoke execute on function lancar_gasto(uuid, text, date, tipo_os, text, numeric
 grant execute on function lancar_gasto(uuid, text, date, tipo_os, text, numeric, text, numeric, uuid, text, numeric, numeric, numeric) to authenticated, service_role;
 
 -- =====================================================================
+-- 8.3 PLANTA DO GALPÃO
+-- =====================================================================
+--
+-- Tudo em metros. O desenho na tela usa 1 unidade = 1 metro, então a máquina
+-- aparece com a área que realmente ocupa no chão — dá para enxergar corredor,
+-- folga e aglomeração, não só "onde mais ou menos ela está".
+--
+-- Eixos: x corre no comprimento do galpão, y na largura.
+
+create table if not exists plantas (
+  id             uuid primary key default gen_random_uuid(),
+  unidade_id     uuid not null references unidades(id) on delete cascade,
+  nome           text not null,
+  comprimento_m  numeric(8,2) not null check (comprimento_m > 0),  -- eixo x
+  largura_m      numeric(8,2) not null check (largura_m > 0),      -- eixo y
+  observacoes    text,
+  ativo          boolean not null default true,
+  criado_em      timestamptz not null default now(),
+  atualizado_em  timestamptz not null default now(),
+  unique (unidade_id, nome)
+);
+
+create index if not exists idx_plantas_unidade on plantas(unidade_id);
+
+drop trigger if exists trg_plantas_atualizado on plantas;
+create trigger trg_plantas_atualizado before update on plantas
+  for each row execute function fn_atualizado_em();
+
+-- Posição e medida da máquina no chão
+alter table ativos add column if not exists planta_id uuid references plantas(id) on delete set null;
+alter table ativos add column if not exists pos_x_m   numeric(8,2);  -- canto do retângulo já girado
+alter table ativos add column if not exists pos_y_m   numeric(8,2);
+alter table ativos add column if not exists comp_m    numeric(6,2) check (comp_m > 0);
+alter table ativos add column if not exists larg_m    numeric(6,2) check (larg_m > 0);
+alter table ativos add column if not exists rotacao   smallint not null default 0
+  check (rotacao in (0, 90, 180, 270));
+
+create index if not exists idx_ativos_planta on ativos(planta_id) where planta_id is not null;
+
+-- Todo mundo logado enxerga a planta; só o gestor mexe nela.
+alter table plantas enable row level security;
+
+drop policy if exists plantas_sel on plantas;
+create policy plantas_sel on plantas for select to authenticated using (true);
+
+drop policy if exists plantas_ins on plantas;
+create policy plantas_ins on plantas for insert to authenticated with check (eh_gestor());
+
+drop policy if exists plantas_upd on plantas;
+create policy plantas_upd on plantas for update to authenticated using (eh_gestor()) with check (eh_gestor());
+
+drop policy if exists plantas_del on plantas;
+create policy plantas_del on plantas for delete to authenticated using (eh_gestor());
+
+-- O operador do QR não tem conta e não tem nada que ver a planta.
+revoke all on plantas from anon;
+
+-- Tudo que o mapa precisa saber de cada máquina, numa consulta só.
+drop view if exists vw_planta_ativos;
+create view vw_planta_ativos with (security_invoker = on) as
+select
+  a.id                as ativo_id,
+  a.planta_id,
+  a.codigo,
+  a.nome,
+  a.pos_x_m,
+  a.pos_y_m,
+  a.comp_m,
+  a.larg_m,
+  a.rotacao,
+  a.criticidade,
+  a.situacao,
+  a.foto_capa_url,
+  a.ativo_pai_id,
+  c.nome              as categoria,
+  s.nome              as setor,
+  u.nome              as unidade,
+  fe.quadro_id,
+  q.nome              as quadro,
+  q.tag               as quadro_tag,
+  fe.potencia_cv,
+  coalesce(k.custo_12m, 0)  as custo_12m,
+  coalesce(k.total_os, 0)   as total_os,
+  k.ultima_manutencao,
+  coalesce(os.abertas, 0)   as os_abertas,
+  os.pior_prioridade
+from ativos a
+join unidades u             on u.id = a.unidade_id
+join categorias_ativo c     on c.id = a.categoria_id
+left join setores s         on s.id = a.setor_id
+left join ativo_ficha_eletrica fe on fe.ativo_id = a.id
+left join quadros_eletricos q     on q.id = fe.quadro_id
+left join vw_kpi_custo_por_ativo k on k.ativo_id = a.id
+left join lateral (
+  select count(*) as abertas,
+         -- max() sobre o enum respeita a ordem declarada (baixa < media < alta
+         -- < emergencia); sobre texto daria ordem alfabética e "media" venceria
+         -- "emergencia", que é justamente a que não pode passar despercebida
+         max(o.prioridade) as pior_prioridade
+  from ordens_servico o
+  where o.ativo_id = a.id
+    and o.status in ('aberta', 'aprovada', 'em_execucao', 'pausada')
+) os on true
+where a.ativo;
+
+grant select on vw_planta_ativos to authenticated;
+revoke all on vw_planta_ativos from anon;
+
+-- =====================================================================
 -- 8.2 BUCKET DOS ÁUDIOS
 -- =====================================================================
 --
@@ -1981,6 +2090,12 @@ insert into unidades (nome, sigla, cidade, uf) values
   ('Eusébio', 'EUS', 'Eusébio', 'CE'),
   ('Timon',   'TIM', 'Timon',   'MA')
 on conflict (nome) do nothing;
+
+-- Galpão de Eusébio: vão livre, sem pilar no meio.
+insert into plantas (unidade_id, nome, comprimento_m, largura_m, observacoes)
+select id, 'Galpão de produção', 86, 30, 'Vão livre, sem pilar no meio'
+from unidades where sigla = 'EUS'
+on conflict (unidade_id, nome) do nothing;
 
 insert into categorias_ativo (nome, sigla, grupo) values
   ('Máquina de Corte',        'COR', 'producao'),
