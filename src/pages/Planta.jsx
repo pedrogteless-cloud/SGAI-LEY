@@ -12,7 +12,7 @@ import { moeda, data } from '../lib/format'
 import { M_CRITICIDADE, M_SITUACAO } from '../lib/constants'
 import {
   caixa, temPosicao, contexto, legenda, cor, CAMADAS, primeiroLugarLivre,
-  enderecoDaMaquina, celula, encaixar, prender, PASSO,
+  enderecoDaMaquina, CELULA_COMPRIMENTO, CELULA_LARGURA, encaixar, prender, PASSO,
 } from '../lib/planta'
 import {
   Botao, Cartao, Etiqueta, Carregando, Vazio, Selecao, Entrada, Campo, useAviso,
@@ -1063,9 +1063,10 @@ export default function Planta() {
           {!detalhe && !editando && (
             <Cartao className="hidden p-4 lg:block">
               <p className="text-sm text-slate-500">
-                Cada quadrado de {celula(planta)} × {celula(planta)} m tem endereço: o número
-                do vão (que você conta pelos pilares) cruzado com a letra da faixa. O canto de
-                entrada é o <span className="font-mono font-semibold">1A</span>.
+                Cada quadrante tem {CELULA_COMPRIMENTO} × {CELULA_LARGURA} m, ou 30 m²,
+                seguindo as juntas de dilatação como referência. O número no comprimento
+                cruzado com a letra na largura forma o endereço; o canto de entrada é o{' '}
+                <span className="font-mono font-semibold">1A</span>.
                 <span className="mt-2 block">
                   Passe o mouse pelo galpão que o endereço aparece embaixo, ao vivo.
                 </span>

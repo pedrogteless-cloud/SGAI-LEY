@@ -226,11 +226,19 @@ export default function PlantaCanvas({
     }
   }
 
-  // A grade é o endereço: vão no comprimento (o mesmo dos pilares, que a
-  // pessoa enxerga andando), faixa na largura. Cruzando os dois sai "7C".
+  // A grade é o endereço: 6 m no comprimento por 5 m na largura, acompanhando
+  // as juntas de dilatacao. Cruzando os dois eixos sai "7C".
   const { vaos, faixas } = divisoes(planta)
   const temPilar = Number(planta.vao_pilar_m) > 0
-  const pilares = temPilar ? vaos : []
+  const pilares = temPilar
+    ? (() => {
+        const passo = Number(planta.vao_pilar_m)
+        const xs = []
+        for (let x = 0; x < comp - 0.01; x += passo) xs.push(Number(x.toFixed(2)))
+        xs.push(comp)
+        return xs
+      })()
+    : []
   const quadrante = cursor
     ? (() => {
         const ix = indiceDaDivisao(cursor.x, vaos)

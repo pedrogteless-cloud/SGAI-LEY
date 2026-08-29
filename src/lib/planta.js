@@ -70,12 +70,14 @@ export function primeiroLugarLivre(w, h, ocupadas, planta, folga = 1) {
 
 // ------------------------------------------------------------- endereço
 
-/**
- * Tamanho da célula do endereço. Usa o vão entre pilares porque essa é a
- * referência que já existe fisicamente: a pessoa olha os pilares e sabe onde
- * está, sem medir nada. Sem pilar cadastrado, cai para 5 m.
- */
-export const celula = (planta) => Number(planta?.vao_pilar_m) || 5
+/** Tamanho de cada quadrante, seguindo as juntas de dilatacao do galpao. */
+export const CELULA_COMPRIMENTO = 6
+export const CELULA_LARGURA = 5
+
+export const celula = () => ({
+  comprimento: CELULA_COMPRIMENTO,
+  largura: CELULA_LARGURA,
+})
 
 /** Letras das faixas na largura: A, B, C… e AA depois do Z, se um dia precisar. */
 export function letraFaixa(i) {
@@ -94,9 +96,10 @@ export function letraFaixa(i) {
  */
 export function endereco(x, y, planta) {
   if (x == null || y == null || !planta) return null
-  const c = celula(planta)
   const comp = Number(planta.comprimento_m)
   const larg = Number(planta.largura_m)
+  const cComp = CELULA_COMPRIMENTO
+  const cLarg = CELULA_LARGURA
 
   // Arredonda no centímetro antes de dividir. Sem isso, um cursor em
   // 35,9999 m cai no vão 6 enquanto a tela escreve "36,0 m" — o endereço e o
@@ -105,8 +108,8 @@ export function endereco(x, y, planta) {
   const cy = Math.round(y * 100) / 100
 
   // um ponto exatamente na parede do fim pertence ao último vão, não a um a mais
-  const vao = Math.min(Math.floor(cx / c) + 1, Math.max(1, Math.ceil(comp / c)))
-  const iFaixa = Math.min(Math.floor(cy / c), Math.max(0, Math.ceil(larg / c) - 1))
+  const vao = Math.min(Math.floor(cx / cComp) + 1, Math.max(1, Math.ceil(comp / cComp)))
+  const iFaixa = Math.min(Math.floor(cy / cLarg), Math.max(0, Math.ceil(larg / cLarg) - 1))
   const faixa = letraFaixa(iFaixa)
 
   return { vao, faixa, curto: `${vao}${faixa}`, completo: `Vão ${vao} · Faixa ${faixa}` }
@@ -121,16 +124,15 @@ export function enderecoDaMaquina(m, planta) {
 
 /** Divisões do endereço, para desenhar a grade e as réguas. */
 export function divisoes(planta) {
-  const c = celula(planta)
   const comp = Number(planta.comprimento_m)
   const larg = Number(planta.largura_m)
   const vaos = []
-  for (let x = 0; x < comp - 0.01; x += c) vaos.push(Number(x.toFixed(2)))
+  for (let x = 0; x < comp - 0.01; x += CELULA_COMPRIMENTO) vaos.push(Number(x.toFixed(2)))
   vaos.push(comp)
   const faixas = []
-  for (let y = 0; y < larg - 0.01; y += c) faixas.push(Number(y.toFixed(2)))
+  for (let y = 0; y < larg - 0.01; y += CELULA_LARGURA) faixas.push(Number(y.toFixed(2)))
   faixas.push(larg)
-  return { celula: c, vaos, faixas }
+  return { celula: celula(), vaos, faixas }
 }
 
 // ------------------------------------------------------- fluxo do processo
