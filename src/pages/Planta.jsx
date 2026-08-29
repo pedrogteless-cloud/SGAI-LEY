@@ -1,8 +1,8 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
-  Maximize2, Plus, Minus, Move, Check, RotateCw, MapPin, X, ArrowRight, LayoutGrid,
-  Workflow, Zap, Flame, Layers, Trash2, Link2,
+  Maximize2, Plus, Minus, Move, Check, RotateCw, MapPin, X, ArrowRight, ArrowLeft,
+  ArrowUp, ArrowDown, LayoutGrid, Workflow, Zap, Flame, Layers, Trash2, Link2, Save,
 } from 'lucide-react'
 import {
   useTabela, useUnidades, useQuadros, useAtualizar, useInvalidar, useInserir, useRemover,
@@ -12,7 +12,7 @@ import { moeda, data } from '../lib/format'
 import { M_CRITICIDADE, M_SITUACAO } from '../lib/constants'
 import {
   caixa, temPosicao, contexto, legenda, cor, CAMADAS, primeiroLugarLivre,
-  enderecoDaMaquina, celula,
+  enderecoDaMaquina, celula, encaixar, prender, PASSO,
 } from '../lib/planta'
 import {
   Botao, Cartao, Etiqueta, Carregando, Vazio, Selecao, Entrada, Campo, useAviso,
@@ -29,6 +29,11 @@ const INVALIDAR_ESQUEMAS = [...INVALIDAR_FLUXO, 'esquemas']
 const ICONE_ESQUEMA = { Workflow, Zap, Flame }
 const EXEMPLO_ITEM = { Produção: 'Costura', Energia: 'Gerador', Bombeiros: 'Hidrante' }
 const CORES_ESQUEMA = ['#4338ca', '#d97706', '#dc2626', '#0891b2', '#16a34a', '#be185d']
+const PASSOS_AJUSTE = [0.1, PASSO, 1]
+const CAMPO_VAZIO = { id: null, comp_m: '', larg_m: '', pos_x_m: '', pos_y_m: '' }
+
+const paraCampo = (valor) => (valor == null || valor === '' ? '' : String(valor))
+const numeroCampo = (valor) => Number(String(valor).replace(',', '.'))
 
 /** Linha de dado do cartão de detalhe. */
 const Linha = ({ rotulo, children }) =>
@@ -50,6 +55,8 @@ export default function Planta() {
   const [editando, setEditando] = useState(false)
   const [selecionada, setSelecionada] = useState(null)
   const [sobMouse, setSobMouse] = useState(null)
+  const [passoAjuste, setPassoAjuste] = useState(PASSO)
+  const [edicao, setEdicao] = useState(CAMPO_VAZIO)
   // posição enquanto o dedo/mouse ainda está arrastando: o banco só é tocado
   // quando solta, senão seria uma gravação por pixel percorrido
   const [rascunho, setRascunho] = useState({})
@@ -137,13 +144,33 @@ export default function Planta() {
   const ctx = useMemo(() => contexto(noChao, quadros.data || []), [noChao, quadros.data])
   const itensLegenda = useMemo(() => legenda(camada, noChao, ctx), [camada, noChao, ctx])
 
+  const maquinaSelecionada = selecionada ? noChao.find((m) => m.ativo_id === selecionada) : null
   const detalhe = selecionada
-    ? noChao.find((m) => m.ativo_id === selecionada) || foraDaPlanta.find((m) => m.ativo_id === selecionada)
+    ? maquinaSelecionada || foraDaPlanta.find((m) => m.ativo_id === selecionada)
     : sobMouse
+
+  useEffect(() => {
+    if (!maquinaSelecionada || !editando || !ehGestor) {
+      setEdicao(CAMPO_VAZIO)
+      return
+    }
+    setEdicao({
+      id: maquinaSelecionada.ativo_id,
+      comp_m: paraCampo(maquinaSelecionada.comp_m),
+      larg_m: paraCampo(maquinaSelecionada.larg_m),
+      pos_x_m: paraCampo(maquinaSelecionada.pos_x_m),
+      pos_y_m: paraCampo(maquinaSelecionada.pos_y_m),
+    })
+  }, [maquinaSelecionada?.ativo_id, editando, ehGestor])
 
   // ------------------------------------------------------------- ações
 
-  const mover = (id, x, y) => setRascunho((r) => ({ ...r, [id]: { pos_x_m: x, pos_y_m: y } }))
+  const mover = (id, x, y) => {
+    setRascunho((r) => ({ ...r, [id]: { pos_x_m: x, pos_y_m: y } }))
+    setEdicao((e) =>
+      e.id === id ? { ...e, pos_x_m: paraCampo(x), pos_y_m: paraCampo(y) } : e
+    )
+  }
 
   const gravarPosicao = async (id) => {
     const pos = rascunho[id]
@@ -185,15 +212,110 @@ export default function Planta() {
 
   const girar = async (m) => {
     const novo = ((m.rotacao || 0) + 90) % 360
-    await atualizar.mutateAsync({ id: m.ativo_id, rotacao: novo })
-    invalidar(...INVALIDAR)
+    const c = caixa({ ...m, rotacao: novo })
+    const pos = prender(c.x, c.y, c.w, c.h, planta)
+    try {
+      await atualizar.mutateAsync({
+        id: m.ativo_id,
+        rotacao: novo,
+        pos_x_m: pos.x,
+        pos_y_m: pos.y,
+      })
+      setEdicao((e) =>
+        e.id === m.ativo_id ? { ...e, pos_x_m: paraCampo(pos.x), pos_y_m: paraCampo(pos.y) } : e
+      )
+      invalidar(...INVALIDAR)
+    } catch (e) {
+      avisar(`Não consegui girar: ${e.message}`, 'erro')
+    }
   }
 
-  const medir = async (m, campo, valor) => {
-    const n = Number(String(valor).replace(',', '.'))
-    if (!(n > 0)) return
-    await atualizar.mutateAsync({ id: m.ativo_id, [campo]: n })
-    invalidar(...INVALIDAR)
+  const salvarMedida = async (m) => {
+    const comp = numeroCampo(edicao.comp_m)
+    const larg = numeroCampo(edicao.larg_m)
+    if (!(comp > 0) || !(larg > 0)) {
+      avisar('Informe comprimento e largura maiores que zero.', 'erro')
+      return
+    }
+    const c = caixa({ ...m, comp_m: comp, larg_m: larg })
+    const pos = prender(c.x, c.y, c.w, c.h, planta)
+    try {
+      await atualizar.mutateAsync({
+        id: m.ativo_id,
+        comp_m: comp,
+        larg_m: larg,
+        pos_x_m: pos.x,
+        pos_y_m: pos.y,
+      })
+      setRascunho((r) => {
+        const { [m.ativo_id]: _, ...resto } = r
+        return resto
+      })
+      setEdicao((e) =>
+        e.id === m.ativo_id
+          ? {
+              ...e,
+              comp_m: paraCampo(comp),
+              larg_m: paraCampo(larg),
+              pos_x_m: paraCampo(pos.x),
+              pos_y_m: paraCampo(pos.y),
+            }
+          : e
+      )
+      invalidar(...INVALIDAR)
+      avisar('Medida salva.')
+    } catch (e) {
+      avisar(`Não consegui salvar a medida: ${e.message}`, 'erro')
+    }
+  }
+
+  const salvarPosicao = async (m, xValor = edicao.pos_x_m, yValor = edicao.pos_y_m) => {
+    const x = numeroCampo(xValor)
+    const y = numeroCampo(yValor)
+    if (!Number.isFinite(x) || !Number.isFinite(y)) {
+      avisar('Informe uma posição válida.', 'erro')
+      return
+    }
+    const c = caixa({ ...m, pos_x_m: x, pos_y_m: y })
+    const pos = prender(
+      encaixar(x, passoAjuste),
+      encaixar(y, passoAjuste),
+      c.w,
+      c.h,
+      planta
+    )
+    setRascunho((r) => ({ ...r, [m.ativo_id]: { pos_x_m: pos.x, pos_y_m: pos.y } }))
+    setEdicao((e) =>
+      e.id === m.ativo_id ? { ...e, pos_x_m: paraCampo(pos.x), pos_y_m: paraCampo(pos.y) } : e
+    )
+    try {
+      await atualizar.mutateAsync({ id: m.ativo_id, pos_x_m: pos.x, pos_y_m: pos.y })
+      setRascunho((r) => {
+        const { [m.ativo_id]: _, ...resto } = r
+        return resto
+      })
+      invalidar(...INVALIDAR)
+      avisar('Posição salva.')
+    } catch (e) {
+      avisar(`Não consegui salvar a posição: ${e.message}`, 'erro')
+    }
+  }
+
+  const deslocar = (m, dx, dy) => {
+    const x = numeroCampo(edicao.id === m.ativo_id ? edicao.pos_x_m : m.pos_x_m)
+    const y = numeroCampo(edicao.id === m.ativo_id ? edicao.pos_y_m : m.pos_y_m)
+    const c = caixa({ ...m, pos_x_m: x, pos_y_m: y })
+    const pos = prender(
+      encaixar((Number.isFinite(x) ? x : c.x) + dx, passoAjuste),
+      encaixar((Number.isFinite(y) ? y : c.y) + dy, passoAjuste),
+      c.w,
+      c.h,
+      planta
+    )
+    setRascunho((r) => ({ ...r, [m.ativo_id]: { pos_x_m: pos.x, pos_y_m: pos.y } }))
+    setEdicao((e) =>
+      e.id === m.ativo_id ? { ...e, pos_x_m: paraCampo(pos.x), pos_y_m: paraCampo(pos.y) } : e
+    )
   }
 
   const moverEtapa = (id, x, y) =>
@@ -359,33 +481,150 @@ export default function Planta() {
         </Linha>
       </div>
 
-      {editando && ehGestor && temPosicao(detalhe) && (
+      {editando && ehGestor && temPosicao(detalhe) && selecionada === detalhe.ativo_id && (
         <div className="mt-3 space-y-3 rounded-lg bg-slate-50 p-3">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-xs font-semibold text-slate-700">Medidas</p>
+            <span className="text-xs text-slate-400">encaixe {String(passoAjuste).replace('.', ',')} m</span>
+          </div>
+
           <div className="grid grid-cols-2 gap-2">
             <Campo rotulo="Comprimento (m)">
               <Entrada
-                type="number"
-                step="0.1"
-                min="0.1"
-                defaultValue={detalhe.comp_m ?? ''}
-                onBlur={(e) => medir(detalhe, 'comp_m', e.target.value)}
+                type="text"
+                inputMode="decimal"
+                value={edicao.comp_m}
+                onChange={(e) => setEdicao((v) => ({ ...v, comp_m: e.target.value }))}
               />
             </Campo>
             <Campo rotulo="Largura (m)">
               <Entrada
-                type="number"
-                step="0.1"
-                min="0.1"
-                defaultValue={detalhe.larg_m ?? ''}
-                onBlur={(e) => medir(detalhe, 'larg_m', e.target.value)}
+                type="text"
+                inputMode="decimal"
+                value={edicao.larg_m}
+                onChange={(e) => setEdicao((v) => ({ ...v, larg_m: e.target.value }))}
               />
             </Campo>
           </div>
+
+          <Botao
+            tamanho="sm"
+            className="w-full"
+            onClick={() => salvarMedida(detalhe)}
+            carregando={atualizar.isPending}
+          >
+            <Save size={14} /> Salvar medida
+          </Botao>
+
+          <div className="space-y-2 border-t border-slate-200 pt-3">
+            <p className="text-xs font-semibold text-slate-700">Posição</p>
+            <div className="grid grid-cols-2 gap-2">
+              <Campo rotulo="X (m)">
+                <Entrada
+                  type="text"
+                  inputMode="decimal"
+                  value={edicao.pos_x_m}
+                  onChange={(e) => setEdicao((v) => ({ ...v, pos_x_m: e.target.value }))}
+                />
+              </Campo>
+              <Campo rotulo="Y (m)">
+                <Entrada
+                  type="text"
+                  inputMode="decimal"
+                  value={edicao.pos_y_m}
+                  onChange={(e) => setEdicao((v) => ({ ...v, pos_y_m: e.target.value }))}
+                />
+              </Campo>
+            </div>
+
+            <div className="grid grid-cols-[2.25rem_2.25rem_2.25rem] justify-center gap-1.5">
+              <span />
+              <button
+                type="button"
+                onClick={() => deslocar(detalhe, 0, -passoAjuste)}
+                disabled={atualizar.isPending}
+                className="flex size-9 items-center justify-center rounded-lg bg-white text-slate-600
+                  ring-1 ring-slate-200 ring-inset hover:bg-slate-100 disabled:opacity-40"
+                aria-label="Subir"
+                title="Subir"
+              >
+                <ArrowUp size={15} />
+              </button>
+              <span />
+              <button
+                type="button"
+                onClick={() => deslocar(detalhe, -passoAjuste, 0)}
+                disabled={atualizar.isPending}
+                className="flex size-9 items-center justify-center rounded-lg bg-white text-slate-600
+                  ring-1 ring-slate-200 ring-inset hover:bg-slate-100 disabled:opacity-40"
+                aria-label="Mover para a esquerda"
+                title="Esquerda"
+              >
+                <ArrowLeft size={15} />
+              </button>
+              <Botao
+                tamanho="sm"
+                variante="secundario"
+                onClick={() => salvarPosicao(detalhe)}
+                carregando={atualizar.isPending}
+                className="size-9 p-0"
+                aria-label="Salvar posição"
+                title="Salvar posição"
+              >
+                <Save size={14} />
+              </Botao>
+              <button
+                type="button"
+                onClick={() => deslocar(detalhe, passoAjuste, 0)}
+                disabled={atualizar.isPending}
+                className="flex size-9 items-center justify-center rounded-lg bg-white text-slate-600
+                  ring-1 ring-slate-200 ring-inset hover:bg-slate-100 disabled:opacity-40"
+                aria-label="Mover para a direita"
+                title="Direita"
+              >
+                <ArrowRight size={15} />
+              </button>
+              <span />
+              <button
+                type="button"
+                onClick={() => deslocar(detalhe, 0, passoAjuste)}
+                disabled={atualizar.isPending}
+                className="flex size-9 items-center justify-center rounded-lg bg-white text-slate-600
+                  ring-1 ring-slate-200 ring-inset hover:bg-slate-100 disabled:opacity-40"
+                aria-label="Descer"
+                title="Descer"
+              >
+                <ArrowDown size={15} />
+              </button>
+              <span />
+            </div>
+
+            <Botao
+              tamanho="sm"
+              variante="secundario"
+              onClick={() => salvarPosicao(detalhe)}
+              carregando={atualizar.isPending}
+              className="w-full"
+            >
+              <Save size={14} /> Salvar posição
+            </Botao>
+          </div>
+
           <div className="flex gap-2">
-            <Botao variante="secundario" tamanho="sm" onClick={() => girar(detalhe)}>
+            <Botao
+              variante="secundario"
+              tamanho="sm"
+              onClick={() => girar(detalhe)}
+              disabled={atualizar.isPending}
+            >
               <RotateCw size={14} /> Girar
             </Botao>
-            <Botao variante="secundario" tamanho="sm" onClick={() => tirarDaPlanta(detalhe)}>
+            <Botao
+              variante="secundario"
+              tamanho="sm"
+              onClick={() => tirarDaPlanta(detalhe)}
+              disabled={atualizar.isPending}
+            >
               <X size={14} /> Tirar da planta
             </Botao>
           </div>
@@ -413,6 +652,24 @@ export default function Planta() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
+          {editando && ehGestor && (
+            <div className="flex items-center gap-1 rounded-lg bg-white p-1 ring-1 ring-slate-200">
+              {PASSOS_AJUSTE.map((p) => (
+                <button
+                  key={p}
+                  type="button"
+                  onClick={() => setPassoAjuste(p)}
+                  className={`rounded-md px-2.5 py-1.5 text-xs font-medium transition ${
+                    passoAjuste === p
+                      ? 'bg-slate-900 text-white'
+                      : 'text-slate-500 hover:bg-slate-100 hover:text-slate-700'
+                  }`}
+                >
+                  {String(p).replace('.', ',')} m
+                </button>
+              ))}
+            </div>
+          )}
           {(unidades.data || []).length > 1 && (
             <Selecao
               value={unidadeAtual}
@@ -600,6 +857,7 @@ export default function Planta() {
                 aoSelecionarEtapa={(e) => setEtapaSel(e?.etapa_id ?? null)}
                 aoMoverEtapa={moverEtapa}
                 aoTerminarArrasteEtapa={gravarEtapa}
+                passoEncaixe={passoAjuste}
               />
             )}
           </Cartao>

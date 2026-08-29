@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react'
 import {
   caixa, cor, encaixar, prender, divisoes, endereco, letraFaixa,
-  caixaEtapa, pontoNaBorda, saidaNaParede, ALTURA_ETAPA,
+  caixaEtapa, pontoNaBorda, saidaNaParede, ALTURA_ETAPA, PASSO,
 } from '../lib/planta'
 
 /**
@@ -20,6 +20,14 @@ const MAX_K = 16
 const FOLGA = 6 // metros de respiro em volta, onde as cotas são escritas
 
 const limitar = (v, min, max) => Math.min(Math.max(v, min), max)
+const indiceDaDivisao = (valor, divs) => {
+  const ultimo = divs.length - 2
+  if (ultimo < 0) return 0
+  for (let i = 0; i < divs.length - 1; i += 1) {
+    if (valor >= divs[i] && valor < divs[i + 1]) return i
+  }
+  return ultimo
+}
 
 export default function PlantaCanvas({
   planta,
@@ -41,6 +49,7 @@ export default function PlantaCanvas({
   aoSelecionarEtapa,
   aoMoverEtapa,
   aoTerminarArrasteEtapa,
+  passoEncaixe = PASSO,
 }) {
   const svgRef = useRef(null)
   const [vista, setVista] = useState({ x: 0, y: 0, k: 1 })
@@ -174,8 +183,8 @@ export default function PlantaCanvas({
 
     if (gesto.current.tipo === 'etapa') {
       const p = paraMetros(e)
-      const x = Math.min(Math.max(encaixar(p.x - gesto.current.dx), 1), comp - 1)
-      const y = Math.min(Math.max(encaixar(p.y - gesto.current.dy), 1), larg - 1)
+      const x = Math.min(Math.max(encaixar(p.x - gesto.current.dx, passoEncaixe), 1), comp - 1)
+      const y = Math.min(Math.max(encaixar(p.y - gesto.current.dy, passoEncaixe), 1), larg - 1)
       aoMoverEtapa?.(gesto.current.id, x, y)
       return
     }
@@ -186,8 +195,8 @@ export default function PlantaCanvas({
       if (!m) return
       const c = caixa(m)
       const preso = prender(
-        encaixar(p.x - gesto.current.dx),
-        encaixar(p.y - gesto.current.dy),
+        encaixar(p.x - gesto.current.dx, passoEncaixe),
+        encaixar(p.y - gesto.current.dy, passoEncaixe),
         c.w,
         c.h,
         planta
@@ -222,6 +231,19 @@ export default function PlantaCanvas({
   const { vaos, faixas } = divisoes(planta)
   const temPilar = Number(planta.vao_pilar_m) > 0
   const pilares = temPilar ? vaos : []
+  const quadrante = cursor
+    ? (() => {
+        const ix = indiceDaDivisao(cursor.x, vaos)
+        const iy = indiceDaDivisao(cursor.y, faixas)
+        return {
+          x: vaos[ix],
+          y: faixas[iy],
+          w: vaos[ix + 1] - vaos[ix],
+          h: faixas[iy + 1] - faixas[iy],
+          endereco: endereco(cursor.x, cursor.y, planta),
+        }
+      })()
+    : null
 
   const LADO_PILAR = 0.5
   const fonteRegua = Math.max(comp, larg) / 95
@@ -264,19 +286,6 @@ export default function PlantaCanvas({
       </defs>
 
       <g transform={`translate(${vista.x} ${vista.y}) scale(${vista.k})`}>
-        {/* piso */}
-        <rect data-fundo="1" x={0} y={0} width={comp} height={larg} fill="#ffffff" />
-
-        {/* grade do endereço */}
-        <g stroke="#e2e8f0" strokeWidth={0.06} strokeDasharray="0.9 0.7">
-          {vaos.slice(1, -1).map((x) => (
-            <line key={`v${x}`} x1={x} y1={0} x2={x} y2={larg} />
-          ))}
-          {faixas.slice(1, -1).map((y) => (
-            <line key={`h${y}`} x1={0} y1={y} x2={comp} y2={y} />
-          ))}
-        </g>
-
         {/* parede: faixa hachurada por fora, como em planta de verdade */}
         <rect
           x={-0.7}
@@ -287,6 +296,8 @@ export default function PlantaCanvas({
           stroke="#334155"
           strokeWidth={0.18}
         />
+
+        {/* piso */}
         <rect
           data-fundo="1"
           x={0}
@@ -297,6 +308,52 @@ export default function PlantaCanvas({
           stroke="#334155"
           strokeWidth={0.18}
         />
+
+        {/* quadrante sob o mouse: acende enquanto o ponteiro está dentro do
+            galpão e some assim que ele sai. */}
+        {quadrante && (
+          <g pointerEvents="none">
+            <rect
+              x={quadrante.x}
+              y={quadrante.y}
+              width={quadrante.w}
+              height={quadrante.h}
+              fill="#bae6fd"
+              opacity={0.38}
+              stroke="#0284c7"
+              strokeWidth={0.16}
+            />
+            <rect
+              x={quadrante.x + 0.35}
+              y={quadrante.y + 0.35}
+              width={Math.max(2.2, fonteRegua * 2.8)}
+              height={Math.max(1.25, fonteRegua * 1.55)}
+              rx={0.28}
+              fill="#0f172a"
+              opacity={0.88}
+            />
+            <text
+              x={quadrante.x + 0.7}
+              y={quadrante.y + 0.35 + Math.max(1.25, fonteRegua * 1.55) * 0.68}
+              fontSize={Math.max(0.85, fonteRegua * 0.95)}
+              fill="#ffffff"
+              fontFamily="ui-monospace, monospace"
+              fontWeight="700"
+            >
+              {quadrante.endereco.curto}
+            </text>
+          </g>
+        )}
+
+        {/* grade do endereço */}
+        <g pointerEvents="none" stroke="#cbd5e1" strokeWidth={0.07} strokeDasharray="0.9 0.7">
+          {vaos.slice(1, -1).map((x) => (
+            <line key={`v${x}`} x1={x} y1={0} x2={x} y2={larg} />
+          ))}
+          {faixas.slice(1, -1).map((y) => (
+            <line key={`h${y}`} x1={0} y1={y} x2={comp} y2={y} />
+          ))}
+        </g>
 
         {/* pilares das duas laterais, plantados em cima da linha da parede */}
         {temPilar && (
