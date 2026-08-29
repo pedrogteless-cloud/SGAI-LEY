@@ -17,7 +17,7 @@ const COLUNAS = [
 
 const EXEMPLO = [
   COLUNAS.join(','),
-  'Bordadeira de Tampo HC3200,Bordadeira de Tampo,Eusébio,Matelassê,,HC3200,,,,,A,Galpão 2 linha B,380,3,,,,',
+  'Bordadeira de Tampo HC3200,Bordadeira de Tampo,Eusébio,Bordado de Tampos,,HC3200,,,,,A,Galpão 2 linha B,380,3,,,,',
   'Compressor Parafuso 50CV,Compressor,Eusébio,Utilidades,Atlas Copco,GA37,AC-7781,2020,2020-08-01,80000,A,Casa de máquinas,380,3,50,68.5,3x100A,',
 ].join('\n')
 

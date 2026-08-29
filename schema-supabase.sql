@@ -2345,7 +2345,7 @@ on conflict (unidade_id, nome) do nothing;
 
 insert into categorias_ativo (nome, sigla, grupo) values
   ('Máquina de Corte',        'COR', 'producao'),
-  ('Matelassê',               'MAT', 'producao'),
+  ('Bordado de Tampos',       'BDT', 'producao'),
   ('Bordadeira de Tampo',     'BOR', 'producao'),
   ('Máquina de Molas',        'MOL', 'producao'),
   ('Máquina de Costura',      'COS', 'producao'),
@@ -2374,7 +2374,7 @@ select u.id, s.nome, s.sigla
 from unidades u
 cross join (values
   ('Corte',        'COR'),
-  ('Matelassê',    'MAT'),
+  ('Bordado de Tampos', 'BDT'),
   ('Molas',        'MOL'),
   ('Costura',      'CST'),
   ('Montagem',     'MTG'),
