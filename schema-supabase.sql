@@ -2269,7 +2269,7 @@ on conflict (nome) do nothing;
 
 -- Galpão de Eusébio: vão livre, sem pilar no meio.
 insert into plantas (unidade_id, nome, comprimento_m, largura_m, vao_pilar_m, observacoes)
-select id, 'Galpão de produção', 84, 30, 6, 'Vão livre de 30 m, sem pilar no meio; 14 vãos de 6 m'
+select id, 'Galpão de produção', 72, 30, 6, 'Vão livre de 30 m, sem pilar no meio; 12 vãos de 6 m'
 from unidades where sigla = 'EUS'
 on conflict (unidade_id, nome) do nothing;
 

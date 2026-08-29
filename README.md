@@ -150,10 +150,10 @@ Todo usuário novo entra como `operador` até alguém promover.
 Em **Planta do galpão** o chão de fábrica vira desenho em escala: 1 unidade do
 desenho é 1 metro, e cada máquina aparece com a área que realmente ocupa. Dá para
 ver corredor, folga e aglomeração — não só um pino dizendo "é mais ou menos aqui".
-O galpão de Eusébio já vem cadastrado: 84 × 30 m de vão livre, 2.520 m².
+O galpão de Eusébio já vem cadastrado: 72 × 30 m de vão livre, 2.160 m².
 
-Os pilares das laterais são desenhados no vão real (6 m em Eusébio, dando 14 vãos
-exatos nos 84 m) e cada vão recebe um número. É a referência que quem anda no chão de fábrica já usa —
+Os pilares das laterais são desenhados no vão real (6 m em Eusébio, dando 12 vãos
+exatos nos 72 m) e cada vão recebe um número. É a referência que quem anda no chão de fábrica já usa —
 "está entre o quinto e o sexto pilar" localiza melhor que "aos 32 metros".
 
 Passe o mouse (ou toque, no celular) numa máquina para ver situação, gasto do
@@ -163,12 +163,12 @@ Passe o mouse (ou toque, no celular) numa máquina para ver situação, gasto do
 
 O galpão é dividido em quadrados de 6 × 6 m com endereço de tabuleiro:
 
-- **Vão** (1 a 14) no comprimento — é o mesmo número que a pessoa conta olhando
+- **Vão** (1 a 12) no comprimento — é o mesmo número que a pessoa conta olhando
   os pilares, então dá para se localizar no chão de fábrica sem medir nada
 - **Faixa** (A a E) na largura
 
-Cruzando os dois sai o endereço: o canto de entrada é **1A**, o centro é **8C**,
-o fundo é **14E**. Ele aparece no cartão da máquina, na lista de máquinas e na
+Cruzando os dois sai o endereço: o canto de entrada é **1A**, o centro é **6C**,
+o fundo é **12E**. Ele aparece no cartão da máquina, na lista de máquinas e na
 ficha dela. Passando o mouse pelo galpão, o endereço e a posição exata em metros
 aparecem ao vivo no rodapé do desenho.
 
