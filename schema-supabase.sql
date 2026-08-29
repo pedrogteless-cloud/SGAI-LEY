@@ -2040,19 +2040,53 @@ grant select on vw_planta_ativos to authenticated;
 revoke all on vw_planta_ativos from anon;
 
 -- =====================================================================
--- 8.4 FLUXO DO PROCESSO
+-- 8.4 ESQUEMAS: PRODUÇÃO, ENERGIA, BOMBEIROS E O QUE MAIS PRECISAR
 -- =====================================================================
 --
 -- Não é fila, é rede: o caminho se divide, tem tarefa alternativa e às vezes
 -- o material sai para outro galpão (a capa de unibox que vai para a serraria
--- vestir a base). Por isso etapa e ligação são tabelas separadas — uma coluna
+-- vestir a base). Por isso nó e ligação são tabelas separadas — uma coluna
 -- de ordem só daria conta de linha reta.
+--
+-- E não é só produção: o mesmo desenho serve pra elétrica, pra bombeiro, pra
+-- qualquer coisa que precise de nó + ligação sobre a planta. Um esquema é a
+-- categoria (Produção, Energia, Bombeiros…); cada nó pertence a um esquema.
+-- Um de cada vez na tela, cada um com a cor dele.
 
-create table if not exists etapas_processo (
+create table if not exists esquemas (
   id            uuid primary key default gen_random_uuid(),
   unidade_id    uuid not null references unidades(id) on delete cascade,
-  -- planta nula = a etapa acontece fora do galpão desenhado. A seta então
-  -- aponta para fora, com o nome do destino escrito na parede.
+  nome          text not null,
+  cor           text not null default '#4338ca',
+  icone         text not null default 'Workflow',
+  ordem         int not null default 0,
+  ativo         boolean not null default true,
+  criado_em     timestamptz not null default now(),
+  atualizado_em timestamptz not null default now(),
+  unique (unidade_id, nome)
+);
+
+drop trigger if exists trg_esquemas_atualizado on esquemas;
+create trigger trg_esquemas_atualizado before update on esquemas
+  for each row execute function fn_atualizado_em();
+
+alter table esquemas enable row level security;
+drop policy if exists esquemas_sel on esquemas;
+create policy esquemas_sel on esquemas for select to authenticated using (true);
+drop policy if exists esquemas_ins on esquemas;
+create policy esquemas_ins on esquemas for insert to authenticated with check (eh_gestor());
+drop policy if exists esquemas_upd on esquemas;
+create policy esquemas_upd on esquemas for update to authenticated using (eh_gestor()) with check (eh_gestor());
+drop policy if exists esquemas_del on esquemas;
+create policy esquemas_del on esquemas for delete to authenticated using (eh_gestor());
+revoke all on esquemas from anon;
+
+create table if not exists esquema_nos (
+  id            uuid primary key default gen_random_uuid(),
+  unidade_id    uuid not null references unidades(id) on delete cascade,
+  esquema_id    uuid not null references esquemas(id) on delete cascade,
+  -- planta nula = o nó fica fora do galpão desenhado (outro galpão, pátio,
+  -- terceiro). A seta então aponta para fora, com o nome do destino.
   planta_id     uuid references plantas(id) on delete set null,
   setor_id      uuid references setores(id) on delete set null,
   nome          text not null,
@@ -2063,20 +2097,22 @@ create table if not exists etapas_processo (
   ativo         boolean not null default true,
   criado_em     timestamptz not null default now(),
   atualizado_em timestamptz not null default now(),
-  unique (unidade_id, nome)
+  -- nome é único por esquema, não por unidade: "Entrada" pode existir em
+  -- Bombeiros e em Produção ao mesmo tempo
+  unique (esquema_id, nome)
 );
 
-create index if not exists idx_etapas_unidade on etapas_processo(unidade_id);
-create index if not exists idx_etapas_planta  on etapas_processo(planta_id) where planta_id is not null;
+create index if not exists idx_esquema_nos_esquema on esquema_nos(esquema_id);
+create index if not exists idx_esquema_nos_planta  on esquema_nos(planta_id) where planta_id is not null;
 
-drop trigger if exists trg_etapas_atualizado on etapas_processo;
-create trigger trg_etapas_atualizado before update on etapas_processo
+drop trigger if exists trg_esquema_nos_atualizado on esquema_nos;
+create trigger trg_esquema_nos_atualizado before update on esquema_nos
   for each row execute function fn_atualizado_em();
 
-create table if not exists fluxo_etapas (
+create table if not exists esquema_ligacoes (
   id        uuid primary key default gen_random_uuid(),
-  de_id     uuid not null references etapas_processo(id) on delete cascade,
-  para_id   uuid not null references etapas_processo(id) on delete cascade,
+  de_id     uuid not null references esquema_nos(id) on delete cascade,
+  para_id   uuid not null references esquema_nos(id) on delete cascade,
   -- 'alternativa' é o caminho que só às vezes acontece. Desenhado tracejado.
   tipo      text not null default 'principal' check (tipo in ('principal', 'alternativa')),
   rotulo    text,
@@ -2085,46 +2121,69 @@ create table if not exists fluxo_etapas (
   check (de_id <> para_id)
 );
 
-create index if not exists idx_fluxo_de   on fluxo_etapas(de_id);
-create index if not exists idx_fluxo_para on fluxo_etapas(para_id);
+create index if not exists idx_esquema_liga_de   on esquema_ligacoes(de_id);
+create index if not exists idx_esquema_liga_para on esquema_ligacoes(para_id);
 
-alter table etapas_processo enable row level security;
-alter table fluxo_etapas    enable row level security;
+-- Uma ligação nunca pode atravessar dois esquemas — não faz sentido ligar um
+-- hidrante (Bombeiros) numa etapa de costura (Produção). Trava no banco, não
+-- só na tela: a UI já filtra, isso é o cinto de segurança.
+create or replace function fn_valida_ligacao_mesmo_esquema()
+returns trigger language plpgsql as $$
+declare v_de uuid; v_para uuid;
+begin
+  select esquema_id into v_de   from esquema_nos where id = new.de_id;
+  select esquema_id into v_para from esquema_nos where id = new.para_id;
+  if v_de is distinct from v_para then
+    raise exception 'As duas pontas da ligação precisam ser do mesmo esquema';
+  end if;
+  return new;
+end $$;
 
-drop policy if exists etapas_sel on etapas_processo;
-create policy etapas_sel on etapas_processo for select to authenticated using (true);
-drop policy if exists etapas_ins on etapas_processo;
-create policy etapas_ins on etapas_processo for insert to authenticated with check (eh_gestor());
-drop policy if exists etapas_upd on etapas_processo;
-create policy etapas_upd on etapas_processo for update to authenticated using (eh_gestor()) with check (eh_gestor());
-drop policy if exists etapas_del on etapas_processo;
-create policy etapas_del on etapas_processo for delete to authenticated using (eh_gestor());
+drop trigger if exists trg_liga_mesmo_esquema on esquema_ligacoes;
+create trigger trg_liga_mesmo_esquema before insert or update on esquema_ligacoes
+  for each row execute function fn_valida_ligacao_mesmo_esquema();
 
-drop policy if exists fluxo_sel on fluxo_etapas;
-create policy fluxo_sel on fluxo_etapas for select to authenticated using (true);
-drop policy if exists fluxo_ins on fluxo_etapas;
-create policy fluxo_ins on fluxo_etapas for insert to authenticated with check (eh_gestor());
-drop policy if exists fluxo_upd on fluxo_etapas;
-create policy fluxo_upd on fluxo_etapas for update to authenticated using (eh_gestor()) with check (eh_gestor());
-drop policy if exists fluxo_del on fluxo_etapas;
-create policy fluxo_del on fluxo_etapas for delete to authenticated using (eh_gestor());
+alter table esquema_nos      enable row level security;
+alter table esquema_ligacoes enable row level security;
 
-revoke all on etapas_processo from anon;
-revoke all on fluxo_etapas from anon;
+drop policy if exists esquema_nos_sel on esquema_nos;
+create policy esquema_nos_sel on esquema_nos for select to authenticated using (true);
+drop policy if exists esquema_nos_ins on esquema_nos;
+create policy esquema_nos_ins on esquema_nos for insert to authenticated with check (eh_gestor());
+drop policy if exists esquema_nos_upd on esquema_nos;
+create policy esquema_nos_upd on esquema_nos for update to authenticated using (eh_gestor()) with check (eh_gestor());
+drop policy if exists esquema_nos_del on esquema_nos;
+create policy esquema_nos_del on esquema_nos for delete to authenticated using (eh_gestor());
 
--- A etapa carregando a saúde do que está debaixo dela. É o cruzamento que
+drop policy if exists esquema_liga_sel on esquema_ligacoes;
+create policy esquema_liga_sel on esquema_ligacoes for select to authenticated using (true);
+drop policy if exists esquema_liga_ins on esquema_ligacoes;
+create policy esquema_liga_ins on esquema_ligacoes for insert to authenticated with check (eh_gestor());
+drop policy if exists esquema_liga_upd on esquema_ligacoes;
+create policy esquema_liga_upd on esquema_ligacoes for update to authenticated using (eh_gestor()) with check (eh_gestor());
+drop policy if exists esquema_liga_del on esquema_ligacoes;
+create policy esquema_liga_del on esquema_ligacoes for delete to authenticated using (eh_gestor());
+
+revoke all on esquema_nos      from anon;
+revoke all on esquema_ligacoes from anon;
+
+-- O nó carregando a saúde do que está debaixo dele. É o cruzamento que
 -- interessa: "a etapa que mais para é justo a que todo mundo depende".
-create or replace view vw_etapas_processo with (security_invoker = on) as
+create or replace view vw_esquema_nos with (security_invoker = on) as
 select
-  e.id            as etapa_id,
-  e.unidade_id,
-  e.planta_id,
-  e.setor_id,
-  e.nome,
-  e.descricao,
-  e.pos_x_m,
-  e.pos_y_m,
-  e.ordem,
+  n.id            as no_id,
+  n.esquema_id,
+  es.nome         as esquema_nome,
+  es.cor          as esquema_cor,
+  es.icone        as esquema_icone,
+  n.unidade_id,
+  n.planta_id,
+  n.setor_id,
+  n.nome,
+  n.descricao,
+  n.pos_x_m,
+  n.pos_y_m,
+  n.ordem,
   u.nome          as unidade,
   s.nome          as setor,
   p.nome          as planta,
@@ -2134,10 +2193,11 @@ select
   coalesce(m.criticas_a, 0)   as maquinas_criticas,
   coalesce(m.custo_12m, 0)    as custo_12m,
   coalesce(m.os_abertas, 0)   as os_abertas
-from etapas_processo e
-join unidades u        on u.id = e.unidade_id
-left join setores s    on s.id = e.setor_id
-left join plantas p    on p.id = e.planta_id
+from esquema_nos n
+join esquemas es       on es.id = n.esquema_id
+join unidades u        on u.id = n.unidade_id
+left join setores s    on s.id = n.setor_id
+left join plantas p    on p.id = n.planta_id
 left join lateral (
   select
     count(*)                                             as qtd,
@@ -2148,19 +2208,20 @@ left join lateral (
     sum(v.os_abertas)                                    as os_abertas
   from vw_planta_ativos v
   join ativos a on a.id = v.ativo_id
-  where e.setor_id is not null and a.setor_id = e.setor_id
+  where n.setor_id is not null and a.setor_id = n.setor_id
 ) m on true
-where e.ativo;
+where n.ativo and es.ativo;
 
-grant select on vw_etapas_processo to authenticated;
-revoke all on vw_etapas_processo from anon;
+grant select on vw_esquema_nos to authenticated;
+revoke all on vw_esquema_nos from anon;
 
 -- As setas, com as duas pontas já resolvidas.
-create or replace view vw_fluxo_processo with (security_invoker = on) as
+create or replace view vw_esquema_ligacoes with (security_invoker = on) as
 select
   f.id           as ligacao_id,
   f.tipo,
   f.rotulo,
+  de.esquema_id,
   de.id          as de_id,
   de.nome        as de_nome,
   de.planta_id   as de_planta_id,
@@ -2173,13 +2234,13 @@ select
   pa.pos_x_m     as para_x,
   pa.pos_y_m     as para_y,
   (de.planta_id is distinct from pa.planta_id) as sai_do_galpao
-from fluxo_etapas f
-join etapas_processo de on de.id = f.de_id
-join etapas_processo pa on pa.id = f.para_id
+from esquema_ligacoes f
+join esquema_nos de on de.id = f.de_id
+join esquema_nos pa on pa.id = f.para_id
 where de.ativo and pa.ativo;
 
-grant select on vw_fluxo_processo to authenticated;
-revoke all on vw_fluxo_processo from anon;
+grant select on vw_esquema_ligacoes to authenticated;
+revoke all on vw_esquema_ligacoes from anon;
 
 -- =====================================================================
 -- 8.2 BUCKET DOS ÁUDIOS
@@ -2271,6 +2332,15 @@ on conflict (nome) do nothing;
 insert into plantas (unidade_id, nome, comprimento_m, largura_m, vao_pilar_m, observacoes)
 select id, 'Galpão de produção', 72, 30, 6, 'Vão livre de 30 m, sem pilar no meio; 12 vãos de 6 m'
 from unidades where sigla = 'EUS'
+on conflict (unidade_id, nome) do nothing;
+
+-- Os três esquemas de cada galpão, prontos para desenhar em cima da planta.
+insert into esquemas (unidade_id, nome, cor, icone, ordem)
+select unidade_id, 'Produção', '#4338ca', 'Workflow', 1 from plantas
+union all
+select unidade_id, 'Energia', '#d97706', 'Zap', 2 from plantas
+union all
+select unidade_id, 'Bombeiros', '#dc2626', 'Flame', 3 from plantas
 on conflict (unidade_id, nome) do nothing;
 
 insert into categorias_ativo (nome, sigla, grupo) values

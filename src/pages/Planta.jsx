@@ -2,7 +2,7 @@ import { useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   Maximize2, Plus, Minus, Move, Check, RotateCw, MapPin, X, ArrowRight, LayoutGrid,
-  Workflow, Trash2, Link2,
+  Workflow, Zap, Flame, Layers, Trash2, Link2,
 } from 'lucide-react'
 import {
   useTabela, useUnidades, useQuadros, useAtualizar, useInvalidar, useInserir, useRemover,
@@ -20,7 +20,15 @@ import {
 import PlantaCanvas from '../components/PlantaCanvas'
 
 const INVALIDAR = ['vw_planta_ativos', 'ativos']
-const INVALIDAR_FLUXO = ['vw_etapas_processo', 'vw_fluxo_processo', 'etapas_processo', 'fluxo_etapas']
+const INVALIDAR_FLUXO = ['vw_esquema_nos', 'vw_esquema_ligacoes', 'esquema_nos', 'esquema_ligacoes']
+const INVALIDAR_ESQUEMAS = [...INVALIDAR_FLUXO, 'esquemas']
+
+// Ícone e exemplo de item mudam com o nome do esquema — Produção, Energia e
+// Bombeiros já vêm com uma cara própria; um esquema que o gestor inventar cai
+// no genérico (Layers), sem precisar escolher ícone.
+const ICONE_ESQUEMA = { Workflow, Zap, Flame }
+const EXEMPLO_ITEM = { Produção: 'Costura', Energia: 'Gerador', Bombeiros: 'Hidrante' }
+const CORES_ESQUEMA = ['#4338ca', '#d97706', '#dc2626', '#0891b2', '#16a34a', '#be185d']
 
 /** Linha de dado do cartão de detalhe. */
 const Linha = ({ rotulo, children }) =>
@@ -45,7 +53,12 @@ export default function Planta() {
   // posição enquanto o dedo/mouse ainda está arrastando: o banco só é tocado
   // quando solta, senão seria uma gravação por pixel percorrido
   const [rascunho, setRascunho] = useState({})
-  const [mostrarFluxo, setMostrarFluxo] = useState(false)
+  // qual esquema está ligado — null é "nenhum", cada esquema (Produção,
+  // Energia, Bombeiros…) é um mapa próprio sobre a mesma planta
+  const [esquemaAtivoId, setEsquemaAtivoId] = useState(null)
+  const [criandoEsquema, setCriandoEsquema] = useState(false)
+  const [novoEsquemaNome, setNovoEsquemaNome] = useState('')
+  const [novoEsquemaCor, setNovoEsquemaCor] = useState(CORES_ESQUEMA[0])
   const [etapaSel, setEtapaSel] = useState(null)
   const [rascunhoEtapa, setRascunhoEtapa] = useState({})
   const [novaEtapa, setNovaEtapa] = useState('')
@@ -68,24 +81,38 @@ export default function Planta() {
   const todas = useTabela('vw_planta_ativos', { ordem: { coluna: 'nome' } })
   const atualizar = useAtualizar('ativos', INVALIDAR)
 
-  const etapasBanco = useTabela('vw_etapas_processo', { ordem: { coluna: 'ordem' } })
-  const ligacoes = useTabela('vw_fluxo_processo')
-  const criarEtapa = useInserir('etapas_processo', INVALIDAR_FLUXO)
-  const atualizarEtapa = useAtualizar('etapas_processo', INVALIDAR_FLUXO)
-  const removerEtapa = useRemover('etapas_processo', INVALIDAR_FLUXO)
-  const criarLigacao = useInserir('fluxo_etapas', INVALIDAR_FLUXO)
-  const removerLigacao = useRemover('fluxo_etapas', INVALIDAR_FLUXO)
+  const esquemasBanco = useTabela('esquemas', {
+    filtros: [
+      ['ativo', 'eq', true],
+      ...(unidadeAtual ? [['unidade_id', 'eq', unidadeAtual]] : []),
+    ],
+    ordem: { coluna: 'ordem' },
+  })
+  const criarEsquema = useInserir('esquemas', INVALIDAR_ESQUEMAS)
+
+  const etapasBanco = useTabela('vw_esquema_nos', { ordem: { coluna: 'ordem' } })
+  const ligacoes = useTabela('vw_esquema_ligacoes')
+  const criarEtapa = useInserir('esquema_nos', INVALIDAR_FLUXO)
+  const atualizarEtapa = useAtualizar('esquema_nos', INVALIDAR_FLUXO)
+  const removerEtapa = useRemover('esquema_nos', INVALIDAR_FLUXO)
+  const criarLigacao = useInserir('esquema_ligacoes', INVALIDAR_FLUXO)
+  const removerLigacao = useRemover('esquema_ligacoes', INVALIDAR_FLUXO)
+
+  const esquemas = esquemasBanco.data || []
+  const esquemaAtivo = esquemas.find((e) => e.id === esquemaAtivoId) || null
+  const corAtiva = esquemaAtivo?.cor || CORES_ESQUEMA[0]
 
   const etapas = useMemo(
     () =>
       (etapasBanco.data || [])
-        .filter((e) => !unidadeAtual || e.unidade_id === unidadeAtual)
-        .map((e) => (rascunhoEtapa[e.etapa_id] ? { ...e, ...rascunhoEtapa[e.etapa_id] } : e)),
-    [etapasBanco.data, unidadeAtual, rascunhoEtapa]
+        .filter((e) => e.esquema_id === esquemaAtivoId)
+        .map((e) => (rascunhoEtapa[e.etapa_id ?? e.no_id] ? { ...e, ...rascunhoEtapa[e.etapa_id ?? e.no_id] } : e))
+        .map((e) => ({ ...e, etapa_id: e.no_id ?? e.etapa_id })),
+    [etapasBanco.data, esquemaAtivoId, rascunhoEtapa]
   )
   const ligacoesDaUnidade = useMemo(
-    () => (ligacoes.data || []).filter((l) => !unidadeAtual || l.unidade_id === unidadeAtual),
-    [ligacoes.data, unidadeAtual]
+    () => (ligacoes.data || []).filter((l) => l.esquema_id === esquemaAtivoId),
+    [ligacoes.data, esquemaAtivoId]
   )
   const etapaAberta = etapas.find((e) => e.etapa_id === etapaSel) || null
 
@@ -188,10 +215,11 @@ export default function Planta() {
 
   const adicionarEtapa = async () => {
     const nome = novaEtapa.trim()
-    if (!nome) return
+    if (!nome || !esquemaAtivoId) return
     try {
       const e = await criarEtapa.mutateAsync({
         unidade_id: unidadeAtual,
+        esquema_id: esquemaAtivoId,
         planta_id: planta.id,
         nome,
         pos_x_m: Number(planta.comprimento_m) / 2,
@@ -201,9 +229,38 @@ export default function Planta() {
       invalidar(...INVALIDAR_FLUXO)
       setNovaEtapa('')
       setEtapaSel(e.id)
-      avisar(`Etapa "${nome}" criada. Arraste para o lugar dela.`)
+      avisar(`"${nome}" criado. Arraste para o lugar dele.`)
     } catch (err) {
-      avisar(`Não consegui criar: ${err.message}`)
+      avisar(
+        /duplicate|unique/i.test(err.message)
+          ? `Já existe um item chamado "${nome}" nesse esquema.`
+          : `Não consegui criar: ${err.message}`
+      )
+    }
+  }
+
+  const adicionarEsquema = async () => {
+    const nome = novoEsquemaNome.trim()
+    if (!nome) return
+    try {
+      const es = await criarEsquema.mutateAsync({
+        unidade_id: unidadeAtual,
+        nome,
+        cor: novoEsquemaCor,
+        icone: 'Layers',
+        ordem: esquemas.length + 1,
+      })
+      invalidar(...INVALIDAR_ESQUEMAS)
+      setCriandoEsquema(false)
+      setNovoEsquemaNome('')
+      setEsquemaAtivoId(es.id)
+      avisar(`Esquema "${nome}" criado.`)
+    } catch (err) {
+      avisar(
+        /duplicate|unique/i.test(err.message)
+          ? `Já existe um esquema chamado "${nome}".`
+          : `Não consegui criar: ${err.message}`
+      )
     }
   }
 
@@ -372,15 +429,6 @@ export default function Planta() {
               ))}
             </Selecao>
           )}
-          <Botao
-            variante={mostrarFluxo ? 'primario' : 'secundario'}
-            onClick={() => {
-              setMostrarFluxo((v) => !v)
-              setEtapaSel(null)
-            }}
-          >
-            <Workflow size={15} /> Fluxo do processo
-          </Botao>
           {ehGestor && (
             <Botao
               variante={editando ? 'sucesso' : 'secundario'}
@@ -394,6 +442,91 @@ export default function Planta() {
             </Botao>
           )}
         </div>
+      </div>
+
+      {/* esquemas: cada um é um mapa próprio (Produção, Energia, Bombeiros…)
+          sobre a mesma planta. Um por vez, com a cor dele. */}
+      <div className="flex flex-wrap items-center gap-2">
+        {esquemas.map((es) => {
+          const Icone = ICONE_ESQUEMA[es.icone] || Layers
+          const ativo = esquemaAtivoId === es.id
+          return (
+            <button
+              key={es.id}
+              onClick={() => {
+                setEsquemaAtivoId(ativo ? null : es.id)
+                setEtapaSel(null)
+                setCriandoEsquema(false)
+              }}
+              className="flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium transition"
+              style={
+                ativo
+                  ? { background: es.cor, borderColor: es.cor, color: '#fff' }
+                  : { background: '#fff', borderColor: '#e2e8f0', color: '#475569' }
+              }
+            >
+              <Icone size={14} />
+              {es.nome}
+            </button>
+          )
+        })}
+
+        {ehGestor && !criandoEsquema && (
+          <button
+            onClick={() => setCriandoEsquema(true)}
+            className="flex items-center gap-1 rounded-full border border-dashed border-slate-300
+              px-3 py-1.5 text-sm text-slate-500 hover:border-slate-400 hover:text-slate-700"
+          >
+            <Plus size={14} /> Esquema
+          </button>
+        )}
+
+        {criandoEsquema && (
+          <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-white py-1 pr-1.5 pl-3">
+            <Entrada
+              autoFocus
+              value={novoEsquemaNome}
+              onChange={(e) => setNovoEsquemaNome(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && adicionarEsquema()}
+              placeholder="Nome (ex.: Segurança)"
+              className="h-7 w-40 border-0 px-0 text-sm focus:ring-0"
+            />
+            <div className="flex gap-1">
+              {CORES_ESQUEMA.map((c) => (
+                <button
+                  key={c}
+                  onClick={() => setNovoEsquemaCor(c)}
+                  aria-label={`Cor ${c}`}
+                  className="size-4 shrink-0 rounded-full"
+                  style={{
+                    background: c,
+                    outline: novoEsquemaCor === c ? '2px solid #0f172a' : 'none',
+                    outlineOffset: 1,
+                  }}
+                />
+              ))}
+            </div>
+            <button
+              onClick={adicionarEsquema}
+              disabled={!novoEsquemaNome.trim()}
+              className="flex size-6 shrink-0 items-center justify-center rounded-full bg-slate-900
+                text-white disabled:opacity-30"
+              aria-label="Criar esquema"
+            >
+              <Check size={13} />
+            </button>
+            <button
+              onClick={() => {
+                setCriandoEsquema(false)
+                setNovoEsquemaNome('')
+              }}
+              className="flex size-6 shrink-0 items-center justify-center rounded-full text-slate-400 hover:text-slate-600"
+              aria-label="Cancelar"
+            >
+              <X size={13} />
+            </button>
+          </div>
+        )}
       </div>
 
       {/* camada + legenda */}
@@ -461,7 +594,8 @@ export default function Planta() {
                 refCamera={camera}
                 etapas={etapas}
                 ligacoes={ligacoesDaUnidade}
-                mostrarFluxo={mostrarFluxo}
+                mostrarFluxo={Boolean(esquemaAtivoId)}
+                corEsquema={corAtiva}
                 etapaSelecionada={etapaSel}
                 aoSelecionarEtapa={(e) => setEtapaSel(e?.etapa_id ?? null)}
                 aoMoverEtapa={moverEtapa}
@@ -497,22 +631,24 @@ export default function Planta() {
         </div>
 
         <div className="space-y-3">
-          {mostrarFluxo && (
+          {esquemaAtivo && (
             <Cartao className="p-4">
               <div className="flex items-center justify-between gap-2">
-                <p className="text-sm font-semibold text-slate-800">Fluxo do processo</p>
-                <span className="text-xs text-slate-500">{etapas.length} etapas</span>
+                <p className="text-sm font-semibold" style={{ color: corAtiva }}>
+                  {esquemaAtivo.nome}
+                </p>
+                <span className="text-xs text-slate-500">{etapas.length} itens</span>
               </div>
               <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-600">
                 <span className="flex items-center gap-1.5">
-                  <span className="h-0.5 w-5 bg-indigo-700" /> caminho principal
+                  <span className="h-0.5 w-5" style={{ background: corAtiva }} /> sempre passa
                 </span>
                 <span className="flex items-center gap-1.5">
                   <span
-                    className="h-0.5 w-5"
-                    style={{ backgroundImage: 'repeating-linear-gradient(90deg,#7c3aed 0 3px,transparent 3px 6px)' }}
+                    className="h-0.5 w-5 opacity-70"
+                    style={{ backgroundImage: `repeating-linear-gradient(90deg,${corAtiva} 0 3px,transparent 3px 6px)` }}
                   />
-                  às vezes acontece
+                  só às vezes
                 </span>
               </div>
 
@@ -522,7 +658,7 @@ export default function Planta() {
                     value={novaEtapa}
                     onChange={(e) => setNovaEtapa(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && adicionarEtapa()}
-                    placeholder="Nova etapa (ex.: Costura)"
+                    placeholder={`Novo item (ex.: ${EXEMPLO_ITEM[esquemaAtivo.nome] || 'Item'})`}
                   />
                   <Botao onClick={adicionarEtapa} disabled={!novaEtapa.trim()}>
                     <Plus size={15} />
@@ -567,7 +703,7 @@ export default function Planta() {
               {etapaAberta && ehGestor && editando && (
                 <div className="mt-3 space-y-2 rounded-lg bg-slate-50 p-3">
                   <p className="text-xs font-medium text-slate-600">
-                    De <strong>{etapaAberta.nome}</strong>, o material vai para:
+                    De <strong>{etapaAberta.nome}</strong>, vai para:
                   </p>
                   <Selecao value={ligarA} onChange={(ev) => setLigarA(ev.target.value)}>
                     <option value="">Escolha a etapa seguinte…</option>
@@ -598,7 +734,7 @@ export default function Planta() {
                         <span className="min-w-0 flex-1 truncate text-slate-600">
                           → {l.para_nome}
                           {l.tipo === 'alternativa' && (
-                            <span className="text-violet-600"> · só às vezes</span>
+                            <span style={{ color: corAtiva }}> · só às vezes</span>
                           )}
                         </span>
                         <button
@@ -622,7 +758,7 @@ export default function Planta() {
                     }}
                     className="flex items-center gap-1.5 text-xs font-medium text-red-600 hover:text-red-700"
                   >
-                    <Trash2 size={13} /> Apagar a etapa {etapaAberta.nome}
+                    <Trash2 size={13} /> Apagar {etapaAberta.nome}
                   </button>
                 </div>
               )}

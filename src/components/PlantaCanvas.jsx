@@ -36,6 +36,7 @@ export default function PlantaCanvas({
   etapas = [],
   ligacoes = [],
   mostrarFluxo = false,
+  corEsquema = '#4338ca',
   etapaSelecionada,
   aoSelecionarEtapa,
   aoMoverEtapa,
@@ -251,13 +252,11 @@ export default function PlantaCanvas({
       }}
     >
       <defs>
-        <marker id="ponta-principal" viewBox="0 0 10 10" refX="9" refY="5"
+        {/* Um marcador só: a cor vem do esquema selecionado, não é fixa —
+            Produção, Energia e Bombeiros cada um desenha na cor dele. */}
+        <marker id="ponta-esquema" viewBox="0 0 10 10" refX="9" refY="5"
           markerWidth="5" markerHeight="5" orient="auto-start-reverse">
-          <path d="M 0 0 L 10 5 L 0 10 z" fill="#4338ca" />
-        </marker>
-        <marker id="ponta-alternativa" viewBox="0 0 10 10" refX="9" refY="5"
-          markerWidth="5" markerHeight="5" orient="auto-start-reverse">
-          <path d="M 0 0 L 10 5 L 0 10 z" fill="#7c3aed" />
+          <path d="M 0 0 L 10 5 L 0 10 z" fill={corEsquema} />
         </marker>
         <pattern id="hachura" width="1.4" height="1.4" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
           <line x1="0" y1="0" x2="0" y2="1.4" stroke="#cbd5e1" strokeWidth="0.35" />
@@ -501,8 +500,9 @@ export default function PlantaCanvas({
               const cDe = caixaEtapa(de)
               const alt = l.tipo === 'alternativa'
               const traco = alt ? '1.4 1' : undefined
-              const corLinha = alt ? '#7c3aed' : '#4338ca'
-              const ponta = alt ? 'url(#ponta-alternativa)' : 'url(#ponta-principal)'
+              const corLinha = corEsquema
+              const opacidade = alt ? 0.72 : 1
+              const ponta = 'url(#ponta-esquema)'
 
               const para = etapas.find((e) => e.etapa_id === l.para_id)
               const dentro = para && para.pos_x_m != null && para.planta_id === de.planta_id
@@ -513,7 +513,7 @@ export default function PlantaCanvas({
                 const saida = saidaNaParede(cDe, planta)
                 const ini = pontoNaBorda(cDe, saida.fora.x, saida.fora.y)
                 return (
-                  <g key={l.ligacao_id} pointerEvents="none">
+                  <g key={l.ligacao_id} pointerEvents="none" opacity={opacidade}>
                     <line
                       x1={ini.x}
                       y1={ini.y}
@@ -542,7 +542,7 @@ export default function PlantaCanvas({
               const a = pontoNaBorda(cDe, cPara.cx, cPara.cy)
               const b = pontoNaBorda(cPara, cDe.cx, cDe.cy)
               return (
-                <g key={l.ligacao_id} pointerEvents="none">
+                <g key={l.ligacao_id} pointerEvents="none" opacity={opacidade}>
                   <line
                     x1={a.x}
                     y1={a.y}
@@ -593,14 +593,14 @@ export default function PlantaCanvas({
                       rx={c.h / 2}
                       fill="#ffffff"
                       opacity={0.96}
-                      stroke={temParada ? '#dc2626' : escolhida ? '#0f172a' : '#4338ca'}
+                      stroke={temParada ? '#dc2626' : escolhida ? '#0f172a' : corEsquema}
                       strokeWidth={escolhida || temParada ? 0.36 : 0.22}
                     />
                     <text
                       x={c.cx}
                       y={c.cy + 0.48}
                       fontSize={1.35}
-                      fill={temParada ? '#991b1b' : '#3730a3'}
+                      fill={temParada ? '#991b1b' : corEsquema}
                       textAnchor="middle"
                       fontWeight="700"
                       pointerEvents="none"

@@ -196,21 +196,32 @@ mesmo, e o botão girar vira a máquina de 90 em 90 graus.
 Roda do mouse aproxima, arrastar anda pelo galpão. No celular, pinça aproxima e
 o toque abre uma folha embaixo com os dados.
 
-### Fluxo do processo
+### Esquemas: Produção, Energia, Bombeiros e o que mais precisar
 
-O botão **Fluxo do processo** desenha por cima da planta o caminho que o material
-faz. Não é uma fila: o caminho se divide, junta de novo, e tem tarefa que só às
-vezes acontece — desenhada tracejada. Quando o material sai para outro galpão (a
-capa de unibox que vai para a serraria vestir a base), a seta aponta para a parede
-mais próxima com o nome do destino escrito.
+As pastilhas acima da planta — **Produção**, **Energia**, **Bombeiros** — são
+mapas independentes desenhados sobre o mesmo galpão. Um de cada vez na tela,
+cada um com a cor dele. Clique numa pastilha para ligar aquele esquema; clique
+de novo para desligar. **Esquema** cria uma categoria nova (nome + cor), para o
+que mais precisar — Segurança, Manutenção Predial, o que fizer sentido.
 
-A etapa fica **vermelha quando tem máquina parada** debaixo dela. É o cruzamento
-que interessa: mostra que a etapa que está travando é justo a que todo mundo
-depende, sem precisar comparar duas telas.
+Em **Produção**, o desenho mostra o caminho que o material faz. Não é uma fila:
+o caminho se divide, junta de novo, e tem tarefa que só às vezes acontece —
+desenhada tracejada. Quando o material sai para outro galpão (a capa de unibox
+que vai para a serraria vestir a base), a seta aponta para a parede mais
+próxima com o nome do destino escrito.
 
-Em **Posicionar máquinas**, o gestor cria etapa, arrasta para o lugar e liga uma na
-outra escolhendo se o material *sempre passa por ali* ou *só às vezes*. Etapa sem
-posição é entendida como fora do galpão desenhado.
+O item de qualquer esquema fica **vermelho quando tem máquina parada**
+debaixo dele — no caso de Produção, isso é o cruzamento que interessa: mostra
+que a etapa que está travando é justo a que todo mundo depende, sem precisar
+comparar duas telas.
+
+Em **Posicionar máquinas**, o gestor cria item, arrasta para o lugar e liga um
+no outro escolhendo se *sempre passa por ali* ou *só às vezes*. Item sem
+posição é entendido como fora do galpão desenhado — é assim que a serraria
+aparece no esquema de Produção sem precisar ganhar uma planta própria.
+
+Uma ligação nunca atravessa dois esquemas — o banco recusa ligar um hidrante
+de Bombeiros numa etapa de Produção. É trava de banco, não só da tela.
 
 ## Etiqueta de QR para colar na máquina
 
