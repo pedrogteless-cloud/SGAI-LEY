@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from 'react'
+import { createContext, useContext, useEffect, useRef, useState } from 'react'
 import { Loader2, X, Inbox, AlertTriangle, CheckCircle2 } from 'lucide-react'
 
 /* ---------------------------------------------------------------- Botão */
@@ -30,9 +30,10 @@ export function Botao({
   return (
     <button
       disabled={disabled || carregando}
-      className={`inline-flex items-center justify-center rounded-lg font-medium transition
+      className={`inline-flex items-center justify-center rounded-lg font-medium
+        transition duration-150 ease-out active:scale-[0.96]
         focus-visible:outline-2 focus-visible:outline-offset-2
-        disabled:cursor-not-allowed disabled:opacity-50
+        disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100
         ${VARIANTES[variante]} ${TAMANHOS[tamanho]} ${className}`}
       {...props}
     >
@@ -47,7 +48,7 @@ export function Botao({
 export function Cartao({ className = '', children, ...props }) {
   return (
     <div
-      className={`rounded-xl border border-slate-200 bg-white shadow-xs ${className}`}
+      className={`rounded-xl border border-slate-200 bg-white shadow-xs transition duration-200 ${className}`}
       {...props}
     >
       {children}
@@ -147,6 +148,67 @@ export function Carregando({ texto = 'Carregando…' }) {
       {texto}
     </div>
   )
+}
+
+/** Placeholder do formato do que está vindo — some sensação de "travou", não só de "carregando". */
+export function Esqueleto({ className = '' }) {
+  return <div className={`esqueleto ${className}`} />
+}
+
+/** Grade de cartões de indicador no formato final, para trocar pelo conteúdo real assim que chegar. */
+export function EsqueletoIndicadores({ n = 4 }) {
+  return (
+    <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      {Array.from({ length: n }).map((_, i) => (
+        <Cartao key={i} className="p-4">
+          <div className="flex items-start justify-between">
+            <div className="min-w-0 flex-1 space-y-2">
+              <Esqueleto className="h-3 w-20" />
+              <Esqueleto className="h-6 w-14" />
+              <Esqueleto className="h-3 w-24" />
+            </div>
+            <Esqueleto className="size-5 shrink-0 rounded-full" />
+          </div>
+        </Cartao>
+      ))}
+    </div>
+  )
+}
+
+/**
+ * Número que sobe até o valor final em vez de aparecer pronto — o
+ * primeiro segundo de uma tela de KPI é quando ela mais parece viva.
+ * Só anima em mudanças de valor; a primeira aparição já entra no valor certo
+ * se a pessoa pediu menos movimento.
+ */
+export function NumeroAnimado({ valor, formatar = (v) => v, duracaoMs = 600 }) {
+  const [exibido, setExibido] = useState(valor)
+  const anterior = useRef(valor)
+  const reduzMovimento = useRef(
+    typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+  )
+
+  useEffect(() => {
+    const de = anterior.current
+    const para = Number(valor) || 0
+    anterior.current = para
+    if (reduzMovimento.current || de === para || Number.isNaN(de)) {
+      setExibido(para)
+      return
+    }
+    const t0 = performance.now()
+    let quadro
+    const passo = (agora) => {
+      const p = Math.min(1, (agora - t0) / duracaoMs)
+      const suave = 1 - (1 - p) * (1 - p) // ease-out
+      setExibido(de + (para - de) * suave)
+      if (p < 1) quadro = requestAnimationFrame(passo)
+    }
+    quadro = requestAnimationFrame(passo)
+    return () => cancelAnimationFrame(quadro)
+  }, [valor, duracaoMs])
+
+  return formatar(exibido)
 }
 
 export function Vazio({ icone: Icone = Inbox, titulo, descricao, acao }) {

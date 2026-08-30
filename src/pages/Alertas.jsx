@@ -107,7 +107,7 @@ export default function Alertas() {
   if (!perfil) return <Carregando />
 
   return (
-    <div className="space-y-5">
+    <div className="entra space-y-5">
       <div>
         <h1 className="text-xl font-bold text-slate-800 sm:text-2xl">Alertas</h1>
         <p className="mt-1 text-sm text-slate-500">

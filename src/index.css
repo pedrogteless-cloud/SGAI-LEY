@@ -25,6 +25,46 @@ body {
   @apply mb-1 block text-xs font-medium text-slate-600;
 }
 
+/* --------------------------------------------------- transição de página */
+/* Troca de rota com fade cruzado nativo do navegador — o que dá a
+   sensação de app instalado em vez de site recarregando pedaço por pedaço.
+   Só entra se o navegador suportar e a pessoa não tiver pedido menos
+   movimento nas configurações do sistema. */
+@media (prefers-reduced-motion: no-preference) {
+  @supports (view-transition-name: none) {
+    ::view-transition-old(root) {
+      animation: sgai-sai 0.15s cubic-bezier(0.4, 0, 1, 1) both;
+    }
+    ::view-transition-new(root) {
+      animation: sgai-entra 0.22s cubic-bezier(0.16, 1, 0.3, 1) both;
+    }
+  }
+}
+
+@keyframes sgai-sai {
+  to { opacity: 0; }
+}
+
+@keyframes sgai-entra {
+  from { opacity: 0; transform: translateY(4px); }
+}
+
+/* -------------------------------------------------------------- entrada */
+@media (prefers-reduced-motion: no-preference) {
+  .entra {
+    animation: sgai-entra-conteudo 0.28s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+}
+
+@keyframes sgai-entra-conteudo {
+  from { opacity: 0; transform: translateY(6px); }
+}
+
+/* -------------------------------------------------------------- esqueleto */
+.esqueleto {
+  @apply animate-pulse rounded-md bg-slate-200/70;
+}
+
 /* A etiqueta vive escondida na tela e só existe no papel. */
 .so-impressao {
   display: none;

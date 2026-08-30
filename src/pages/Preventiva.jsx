@@ -81,7 +81,7 @@ export default function Preventiva() {
   const proximas = lista.filter((p) => p.situacao === 'proxima').length
 
   return (
-    <div className="space-y-5">
+    <div className="entra space-y-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold text-slate-900">Revisões</h1>

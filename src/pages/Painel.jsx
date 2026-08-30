@@ -9,16 +9,25 @@ import {
 import { useTabela } from '../hooks/useDados'
 import { moeda, mesLabel, numero } from '../lib/format'
 import { M_CRITICIDADE, M_PRIORIDADE } from '../lib/constants'
-import { Botao, Cartao, CartaoTitulo, Etiqueta, Carregando, Vazio, Tabela, Th, Td } from '../components/ui'
+import {
+  Botao, Cartao, CartaoTitulo, Etiqueta, Carregando, Vazio, Tabela, Th, Td,
+  EsqueletoIndicadores, NumeroAnimado,
+} from '../components/ui'
 import LancarGasto from '../components/LancarGasto'
 
-function Indicador({ icone: Icone, rotulo, valor, detalhe, cor = 'text-sky-600', para }) {
+function Indicador({ icone: Icone, rotulo, valor, formatar, detalhe, cor = 'text-sky-600', para }) {
   const conteudo = (
-    <Cartao className="p-4 transition hover:shadow-sm">
+    <Cartao className="p-4 hover:-translate-y-0.5 hover:shadow-md">
       <div className="flex items-start justify-between">
         <div className="min-w-0">
           <p className="text-xs font-medium text-slate-500">{rotulo}</p>
-          <p className="mt-1 truncate text-2xl font-bold text-slate-900">{valor}</p>
+          <p className="mt-1 truncate text-2xl font-bold text-slate-900">
+            {typeof valor === 'number' ? (
+              <NumeroAnimado valor={valor} formatar={formatar || Math.round} />
+            ) : (
+              valor
+            )}
+          </p>
           {detalhe && <p className="mt-0.5 text-xs text-slate-400">{detalhe}</p>}
         </div>
         <Icone size={20} className={`shrink-0 ${cor}`} />
@@ -40,7 +49,17 @@ export default function Painel() {
     filtros: [['status', 'in', ['aberta', 'em_triagem']]],
   })
 
-  if (unidades.isLoading) return <Carregando />
+  if (unidades.isLoading) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-xl font-bold text-slate-900">Resumo</h1>
+          <p className="text-sm text-slate-500">Como está a manutenção hoje</p>
+        </div>
+        <EsqueletoIndicadores />
+      </div>
+    )
+  }
 
   const totais = (unidades.data || []).reduce(
     (acc, u) => ({
@@ -69,7 +88,7 @@ export default function Painel() {
   }))
 
   return (
-    <div className="space-y-6">
+    <div className="entra space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold text-slate-900">Resumo</h1>
@@ -86,7 +105,8 @@ export default function Painel() {
         <Indicador
           icone={Wallet}
           rotulo="Gasto no último ano"
-          valor={moeda(totais.custo12m)}
+          valor={totais.custo12m}
+          formatar={moeda}
           detalhe={`${totais.ativos} máquinas cadastradas`}
         />
         <Indicador

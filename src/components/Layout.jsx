@@ -55,16 +55,18 @@ export default function Layout() {
             key={para}
             to={para}
             end={fim}
+            viewTransition
             onClick={() => setMenuAberto(false)}
             className={({ isActive }) =>
-              `flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition ${
+              `group flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium
+               transition-colors duration-150 ${
                 isActive
                   ? 'bg-sky-50 text-sky-700'
                   : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
               }`
             }
           >
-            <Icone size={17} className="shrink-0" />
+            <Icone size={17} className="shrink-0 transition-transform duration-150 group-hover:scale-110" />
             <span className="flex-1">{rotulo}</span>
             {n > 0 && (
               <span className="rounded-full bg-red-100 px-1.5 py-0.5 text-[11px] font-semibold text-red-700">
