@@ -2243,6 +2243,83 @@ grant select on vw_esquema_ligacoes to authenticated;
 revoke all on vw_esquema_ligacoes from anon;
 
 -- =====================================================================
+-- 8.6 ALERTAS: SOM POR EVENTO E MÁQUINAS SILENCIADAS
+-- =====================================================================
+--
+-- Cada pessoa escolhe o próprio menu: qual som toca para qual evento, e
+-- quais máquinas ela não quer ouvir (a que está sempre parada porque foi
+-- desativada, por exemplo). Por isso a preferência é por perfil, não
+-- global — a TV do chão de fábrica tocando para todo mundo é uma escolha,
+-- não a única forma de usar.
+--
+-- Sem linha = padrão (evento ligado, som 'sino'). Só grava quando a pessoa
+-- muda algo, então a maioria nunca terá linha nenhuma aqui.
+
+create table if not exists alerta_preferencias (
+  perfil_id     uuid not null references perfis(id) on delete cascade,
+  evento        text not null check (evento in (
+                  'emergencia', 'maquina_parada', 'nova_solicitacao', 'os_pausada'
+                )),
+  som           text not null default 'sino',
+  ativo         boolean not null default true,
+  atualizado_em timestamptz not null default now(),
+  primary key (perfil_id, evento)
+);
+
+drop trigger if exists trg_alerta_prefs_atualizado on alerta_preferencias;
+create trigger trg_alerta_prefs_atualizado before update on alerta_preferencias
+  for each row execute function fn_atualizado_em();
+
+alter table alerta_preferencias enable row level security;
+drop policy if exists alerta_prefs_all on alerta_preferencias;
+create policy alerta_prefs_all on alerta_preferencias for all to authenticated
+  using (perfil_id = auth.uid()) with check (perfil_id = auth.uid());
+revoke all on alerta_preferencias from anon;
+
+create table if not exists alerta_ativos_silenciados (
+  perfil_id  uuid not null references perfis(id) on delete cascade,
+  ativo_id   uuid not null references ativos(id) on delete cascade,
+  criado_em  timestamptz not null default now(),
+  primary key (perfil_id, ativo_id)
+);
+
+alter table alerta_ativos_silenciados enable row level security;
+drop policy if exists alerta_silenc_all on alerta_ativos_silenciados;
+create policy alerta_silenc_all on alerta_ativos_silenciados for all to authenticated
+  using (perfil_id = auth.uid()) with check (perfil_id = auth.uid());
+revoke all on alerta_ativos_silenciados from anon;
+
+-- A TV escuta mudança em tempo real nessas três tabelas. Sem entrar na
+-- publicação, o canal do Supabase Realtime não recebe nada — e sem
+-- replica identity full, o evento de UPDATE chega sem o valor antigo,
+-- que é exatamente o que decide "acabou de parar" vs. "já estava parada".
+alter table ativos               replica identity full;
+alter table ordens_servico       replica identity full;
+alter table solicitacoes_servico replica identity full;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and tablename = 'ativos'
+  ) then
+    alter publication supabase_realtime add table ativos;
+  end if;
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and tablename = 'ordens_servico'
+  ) then
+    alter publication supabase_realtime add table ordens_servico;
+  end if;
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and tablename = 'solicitacoes_servico'
+  ) then
+    alter publication supabase_realtime add table solicitacoes_servico;
+  end if;
+end $$;
+
+-- =====================================================================
 -- 8.2 BUCKET DOS ÁUDIOS
 -- =====================================================================
 --

@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Package, ClipboardList, Inbox, Boxes, Truck,
-  Menu, X, LogOut, CalendarClock, LayoutGrid, MonitorPlay,
+  Menu, X, LogOut, CalendarClock, LayoutGrid, MonitorPlay, BellRing,
 } from 'lucide-react'
 import { useAuth } from '../hooks/useAuth'
 import { useTabela } from '../hooks/useDados'
@@ -17,6 +17,7 @@ const ITENS = [
   { para: '/almoxarifado', rotulo: 'Peças', icone: Boxes, contador: 'estoque' },
   { para: '/preventiva', rotulo: 'Revisões', icone: CalendarClock },
   { para: '/fornecedores', rotulo: 'Fornecedores', icone: Truck },
+  { para: '/alertas', rotulo: 'Alertas', icone: BellRing },
 ]
 
 function Contadores() {
