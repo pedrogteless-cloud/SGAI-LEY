@@ -144,28 +144,18 @@ export default function ReportarQR() {
           </div>
         </div>
 
-        <div className="mb-4 grid grid-cols-2 gap-2">
-          <button
-            type="button"
-            onClick={() => setModo('aviso')}
-            className={`flex items-center justify-center gap-1.5 rounded-lg py-2.5 text-sm font-semibold transition ${
-              modo === 'aviso' ? 'bg-slate-900 text-white' : 'bg-white text-slate-500 ring-1 ring-slate-200'
-            }`}
-          >
-            <AlertTriangle size={15} /> Avisar problema
-          </button>
-          <button
-            type="button"
-            onClick={() => setModo('gasto')}
-            className={`flex items-center justify-center gap-1.5 rounded-lg py-2.5 text-sm font-semibold transition ${
-              modo === 'gasto' ? 'bg-slate-900 text-white' : 'bg-white text-slate-500 ring-1 ring-slate-200'
-            }`}
-          >
-            <Wrench size={15} /> Lançar gasto
-          </button>
-        </div>
-
-        {modo === 'gasto' && <LancarGastoQR token={token} ativo={ativo} />}
+        {modo === 'gasto' && (
+          <div>
+            <button
+              type="button"
+              onClick={() => setModo('aviso')}
+              className="mb-3 text-xs font-medium text-slate-400 hover:text-slate-600"
+            >
+              ← voltar pra avisar problema
+            </button>
+            <LancarGastoQR token={token} ativo={ativo} />
+          </div>
+        )}
 
         {modo === 'aviso' && (
         <form onSubmit={enviar} className="space-y-5 rounded-xl border border-slate-200 bg-white p-5">
@@ -254,6 +244,16 @@ export default function ReportarQR() {
             <p className="-mt-3 text-center text-xs text-slate-400">Toque em "Parou" ou "Só avisando" ali em cima</p>
           )}
         </form>
+        )}
+
+        {modo === 'aviso' && (
+          <button
+            type="button"
+            onClick={() => setModo('gasto')}
+            className="mt-4 flex w-full items-center justify-center gap-1 text-xs text-slate-400 hover:text-slate-600"
+          >
+            <Wrench size={11} /> é técnico e já fez o serviço? lançar gasto
+          </button>
         )}
 
         <p className="mt-4 text-center text-xs text-slate-400">SGAI · Ley Colchões</p>
