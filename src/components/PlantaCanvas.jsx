@@ -2,7 +2,7 @@ import { useCallback, useEffect, useImperativeHandle, useRef, useState } from 'r
 import {
   caixa, cor, encaixar, prender, divisoes, endereco, letraFaixa,
   caixaEtapa, pontoNaBorda, saidaNaParede, ALTURA_ETAPA, PASSO,
-  caixaQuadro,
+  caixaQuadro, pontosCabo, caminhoSvg,
 } from '../lib/planta'
 
 /**
@@ -60,6 +60,9 @@ export default function PlantaCanvas({
   aoTerminarArrasteQuadro,
   aoLigarMaquina,
   aoClicarCabo,
+  rotaEditando,
+  aoCliqueVazioRota,
+  aoRemoverPontoRota,
 }) {
   const svgRef = useRef(null)
   const [vista, setVista] = useState({ x: 0, y: 0, k: 1 })
@@ -68,6 +71,9 @@ export default function PlantaCanvas({
   // leitura do ponto sob o cursor. Fica aqui e não na página de propósito:
   // muda a cada movimento do mouse e redesenharia a tela toda se subisse.
   const [cursor, setCursor] = useState(null)
+  const reduzMovimento = useRef(
+    typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+  ).current
 
   const ponteiros = useRef(new Map())
   const gesto = useRef(null)
@@ -301,8 +307,15 @@ export default function PlantaCanvas({
       viewBox={`${-FOLGA} ${-FOLGA} ${comp + FOLGA * 2} ${larg + FOLGA * 2}`}
       preserveAspectRatio="xMidYMid meet"
       className="h-full w-full touch-none select-none"
-      style={{ cursor: arrastando ? 'grabbing' : modoEditar ? 'default' : 'grab' }}
+      style={{
+        cursor: rotaEditando ? 'crosshair' : arrastando ? 'grabbing' : modoEditar ? 'default' : 'grab',
+      }}
       onPointerDown={(e) => {
+        if (rotaEditando) {
+          const p = paraMetros(e)
+          aoCliqueVazioRota?.(p.x, p.y)
+          return
+        }
         if (e.target === svgRef.current || e.target.dataset.fundo) {
           aoSelecionar?.(null)
         }
@@ -501,6 +514,11 @@ export default function PlantaCanvas({
               key={m.ativo_id}
               onPointerDown={(e) => {
                 e.stopPropagation()
+                if (rotaEditando) {
+                  const p = paraMetros(e)
+                  aoCliqueVazioRota?.(p.x, p.y)
+                  return
+                }
                 if (modoEnergia && quadroSelecionado) {
                   aoLigarMaquina?.(m.ativo_id)
                   return
@@ -601,38 +619,91 @@ export default function PlantaCanvas({
             "puxa corrente", é literalmente isso que se quer enxergar. */}
         {modoEnergia && (
           <g>
+            <defs>
+              {/* brilho da partícula de corrente — sem isso ela é só uma
+                  bolinha correndo, com isso parece elétrica de verdade */}
+              <filter id="brilho-energia" x="-200%" y="-200%" width="500%" height="500%">
+                <feGaussianBlur stdDeviation="0.11" result="halo" />
+                <feMerge>
+                  <feMergeNode in="halo" />
+                  <feMergeNode in="halo" />
+                  <feMergeNode in="SourceGraphic" />
+                </feMerge>
+              </filter>
+            </defs>
+
             {quadros
               .filter((q) => q.pos_x_m != null)
               .map((q) => {
-                const cQ = caixaQuadro(q)
                 const ligadas = maquinas.filter(
                   (m) => m.quadro_id === q.quadro_id && m.pos_x_m != null && m.pos_y_m != null
                 )
                 return ligadas.map((m) => {
-                  const cM = caixa(m)
-                  const cMc = { ...cM, cx: cM.x + cM.w / 2, cy: cM.y + cM.h / 2 }
-                  const a = pontoNaBorda(cQ, cMc.cx, cMc.cy, 0.15)
-                  const b = pontoNaBorda(cMc, cQ.cx, cQ.cy, 0.15)
+                  const emEdicao = rotaEditando?.ativoId === m.ativo_id
+                  const pontosMeio = emEdicao ? rotaEditando.pontos : m.cabo_pontos || []
+                  const pts = pontosCabo(q, pontosMeio, m)
+                  const d = caminhoSvg(pts)
                   const operando = m.situacao === 'operando'
                   return (
-                    <line
-                      key={`cabo-${q.quadro_id}-${m.ativo_id}`}
-                      x1={a.x}
-                      y1={a.y}
-                      x2={b.x}
-                      y2={b.y}
-                      stroke={corEsquema}
-                      strokeWidth={0.28}
-                      strokeLinecap="round"
-                      strokeDasharray={operando ? '0.5 0.35' : '0.22 0.5'}
-                      opacity={operando ? 0.95 : 0.45}
-                      className={operando ? 'cabo-fluxo' : undefined}
-                      style={{ cursor: 'pointer' }}
-                      onPointerDown={(e) => {
-                        e.stopPropagation()
-                        aoClicarCabo?.(m.ativo_id)
-                      }}
-                    />
+                    <g key={`cabo-${q.quadro_id}-${m.ativo_id}`}>
+                      {/* o fio físico — sempre visível, apagado quando parada */}
+                      <path
+                        d={d}
+                        fill="none"
+                        stroke={corEsquema}
+                        strokeWidth={emEdicao ? 0.24 : 0.2}
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeDasharray={operando ? undefined : '0.22 0.45'}
+                        opacity={emEdicao ? 1 : operando ? 0.55 : 0.4}
+                      />
+                      {/* área de clique mais larga — o fio fino sozinho é
+                          punheta de acertar no touch */}
+                      {!rotaEditando && (
+                        <path
+                          d={d}
+                          fill="none"
+                          stroke="transparent"
+                          strokeWidth={1}
+                          style={{ cursor: 'pointer' }}
+                          onPointerDown={(e) => {
+                            e.stopPropagation()
+                            aoClicarCabo?.(m.ativo_id)
+                          }}
+                        />
+                      )}
+                      {/* partículas de corrente correndo pelo caminho real,
+                          curvas incluídas — animateMotion segue o "d" certinho */}
+                      {operando &&
+                        !reduzMovimento &&
+                        [0, 1, 2].map((i) => (
+                          <circle key={i} r={0.16} fill="#fef9c3" filter="url(#brilho-energia)">
+                            <animateMotion
+                              dur="1.4s"
+                              begin={`${i * 0.47}s`}
+                              repeatCount="indefinite"
+                              path={d}
+                            />
+                          </circle>
+                        ))}
+                      {emEdicao &&
+                        pontosMeio.map((p, i) => (
+                          <circle
+                            key={i}
+                            cx={p.x}
+                            cy={p.y}
+                            r={0.28}
+                            fill="#ffffff"
+                            stroke={corEsquema}
+                            strokeWidth={0.14}
+                            style={{ cursor: 'pointer' }}
+                            onPointerDown={(e) => {
+                              e.stopPropagation()
+                              aoRemoverPontoRota?.(i)
+                            }}
+                          />
+                        ))}
+                    </g>
                   )
                 })
               })}
@@ -647,10 +718,15 @@ export default function PlantaCanvas({
                     key={q.quadro_id}
                     onPointerDown={(e) => {
                       e.stopPropagation()
+                      if (rotaEditando) {
+                        const p = paraMetros(e)
+                        aoCliqueVazioRota?.(p.x, p.y)
+                        return
+                      }
                       aoSelecionarQuadro?.(armado ? null : q)
                       aoApertar(e, null, q)
                     }}
-                    style={{ cursor: modoEditar ? 'move' : 'pointer' }}
+                    style={{ cursor: rotaEditando ? 'crosshair' : modoEditar ? 'move' : 'pointer' }}
                   >
                     {armado && (
                       <circle cx={cQ.cx} cy={cQ.cy} r={cQ.w * 0.95} fill="none"

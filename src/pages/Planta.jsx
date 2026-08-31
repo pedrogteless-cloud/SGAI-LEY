@@ -95,6 +95,7 @@ export default function Planta() {
   const [caboEditando, setCaboEditando] = useState(null) // ativo_id
   const [campoCabo, setCampoCabo] = useState(CAMPO_CABO_VAZIO)
   const [rascunhoQuadro, setRascunhoQuadro] = useState({})
+  const [rotaEditando, setRotaEditando] = useState(null) // { ativoId, quadroId, pontos: [{x,y}] }
 
   const unidades = useUnidades()
   const unidadeAtual = unidadeId || unidades.data?.[0]?.id || ''
@@ -573,6 +574,46 @@ export default function Planta() {
     }
   }
 
+  // ---------------------------------------------------- rota do cabo (curvas)
+  const iniciarRota = (ativoId, quadroId) => {
+    const m = noChao.find((x) => x.ativo_id === ativoId)
+    setCaboEditando(null)
+    setRotaEditando({ ativoId, quadroId, pontos: Array.isArray(m?.cabo_pontos) ? [...m.cabo_pontos] : [] })
+  }
+
+  const adicionarPontoRota = (x, y) => {
+    setRotaEditando((r) => {
+      if (!r) return r
+      const px = Math.round(encaixar(x, passoAjuste) * 100) / 100
+      const py = Math.round(encaixar(y, passoAjuste) * 100) / 100
+      return { ...r, pontos: [...r.pontos, { x: px, y: py }] }
+    })
+  }
+
+  const removerPontoRota = (i) =>
+    setRotaEditando((r) => (r ? { ...r, pontos: r.pontos.filter((_, j) => j !== i) } : r))
+
+  const desfazerUltimoPontoRota = () =>
+    setRotaEditando((r) => (r ? { ...r, pontos: r.pontos.slice(0, -1) } : r))
+
+  const limparRota = () => setRotaEditando((r) => (r ? { ...r, pontos: [] } : r))
+
+  const cancelarRota = () => setRotaEditando(null)
+
+  const salvarRota = async () => {
+    if (!rotaEditando) return
+    try {
+      await salvarCaboDb.mutateAsync({
+        ativoId: rotaEditando.ativoId,
+        campos: { cabo_pontos: rotaEditando.pontos },
+      })
+      avisar(rotaEditando.pontos.length ? 'Caminho do cabo salvo.' : 'Cabo voltou a ser reto.')
+      setRotaEditando(null)
+    } catch (e) {
+      avisar(`Não consegui salvar o caminho: ${e.message}`, 'erro')
+    }
+  }
+
   // ------------------------------------------------------------- telas
 
   if (plantas.isLoading || todas.isLoading) return <Carregando />
@@ -858,6 +899,7 @@ export default function Planta() {
               onClick={() => {
                 setEditando((v) => !v)
                 setSelecionada(null)
+                setRotaEditando(null)
               }}
             >
               {editando ? <Check size={15} /> : <Move size={15} />}
@@ -882,6 +924,7 @@ export default function Planta() {
                 setCriandoEsquema(false)
                 setQuadroArmado(null)
                 setCriandoQuadro(false)
+                setRotaEditando(null)
               }}
               className="flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium transition"
               style={
@@ -1034,9 +1077,50 @@ export default function Planta() {
                 aoTerminarArrasteQuadro={ehGestor && editando ? gravarQuadro : undefined}
                 aoLigarMaquina={ehGestor && editando ? aoClicarMaquinaEnergia : undefined}
                 aoClicarCabo={ehGestor && editando ? abrirEdicaoCabo : undefined}
+                rotaEditando={rotaEditando}
+                aoCliqueVazioRota={adicionarPontoRota}
+                aoRemoverPontoRota={removerPontoRota}
               />
             )}
           </Cartao>
+
+          {rotaEditando && (
+            <div className="nao-imprimir absolute top-3 left-3 z-10 flex max-w-[calc(100%-1.5rem)] flex-wrap
+              items-center gap-2 rounded-lg bg-slate-900/95 px-3 py-2 text-xs text-white shadow-lg">
+              <Cable size={14} className="shrink-0 text-amber-400" />
+              <span>
+                Clique na planta pra marcar uma curva ({rotaEditando.pontos.length} até agora). Clique num ponto pra tirá-lo.
+              </span>
+              <div className="flex shrink-0 gap-1.5">
+                <button
+                  onClick={desfazerUltimoPontoRota}
+                  disabled={!rotaEditando.pontos.length}
+                  className="rounded bg-white/10 px-2 py-1 font-medium hover:bg-white/20 disabled:opacity-30"
+                >
+                  Desfazer
+                </button>
+                <button
+                  onClick={limparRota}
+                  disabled={!rotaEditando.pontos.length}
+                  className="rounded bg-white/10 px-2 py-1 font-medium hover:bg-white/20 disabled:opacity-30"
+                >
+                  Limpar
+                </button>
+                <button
+                  onClick={cancelarRota}
+                  className="rounded bg-white/10 px-2 py-1 font-medium hover:bg-white/20"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={salvarRota}
+                  className="rounded bg-amber-500 px-2 py-1 font-semibold text-slate-900 hover:bg-amber-400"
+                >
+                  Salvar caminho
+                </button>
+              </div>
+            </div>
+          )}
 
           <div className="nao-imprimir absolute top-3 right-3 z-10 flex flex-col gap-1 rounded-lg
             bg-white/95 p-1 shadow ring-1 ring-slate-200 lg:top-auto lg:bottom-3">
@@ -1158,12 +1242,20 @@ export default function Planta() {
                               <Cable size={12} className="shrink-0 text-slate-400" />
                               <span className="min-w-0 flex-1 truncate text-slate-700">{m.nome}</span>
                               {ehGestor && editando && (
-                                <button
-                                  onClick={() => abrirEdicaoCabo(m.ativo_id)}
-                                  className="shrink-0 text-sky-600 hover:text-sky-700"
-                                >
-                                  especificar
-                                </button>
+                                <>
+                                  <button
+                                    onClick={() => iniciarRota(m.ativo_id, q.quadro_id)}
+                                    className="shrink-0 text-amber-600 hover:text-amber-700"
+                                  >
+                                    rota{Array.isArray(m.cabo_pontos) && m.cabo_pontos.length > 0 ? ` (${m.cabo_pontos.length})` : ''}
+                                  </button>
+                                  <button
+                                    onClick={() => abrirEdicaoCabo(m.ativo_id)}
+                                    className="shrink-0 text-sky-600 hover:text-sky-700"
+                                  >
+                                    especificar
+                                  </button>
+                                </>
                               )}
                             </div>
                           ))}

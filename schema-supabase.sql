@@ -1955,6 +1955,10 @@ alter table ativo_ficha_eletrica add column if not exists cabo_descricao text;
 alter table ativo_ficha_eletrica add column if not exists cabo_bitola_mm2 numeric(6,2);
 alter table ativo_ficha_eletrica add column if not exists cabo_comprimento_m numeric(8,2);
 alter table ativo_ficha_eletrica add column if not exists cabo_tipo_instalacao text;
+-- curvas do cabo: [{x,y}, ...] em metros, do quadro até a máquina — o
+-- caminho real (a eletrocalha na lateral, o desvio de um pilar), não a
+-- linha reta que a régua desenharia. Vazio = ainda é reto.
+alter table ativo_ficha_eletrica add column if not exists cabo_pontos jsonb not null default '[]'::jsonb;
 
 -- Todo mundo logado enxerga a planta; só o gestor mexe nela.
 alter table plantas enable row level security;
@@ -2042,7 +2046,8 @@ select
   fe.cabo_descricao,
   fe.cabo_bitola_mm2,
   fe.cabo_comprimento_m,
-  fe.cabo_tipo_instalacao
+  fe.cabo_tipo_instalacao,
+  coalesce(fe.cabo_pontos, '[]'::jsonb) as cabo_pontos
 from base b
 join unidades u             on u.id = b.unidade_id
 join categorias_ativo c     on c.id = b.categoria_id

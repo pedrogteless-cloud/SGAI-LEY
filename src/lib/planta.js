@@ -215,6 +215,27 @@ export function caixaQuadro(q) {
   }
 }
 
+/**
+ * Pontos do cabo, do quadro até a máquina, passando pelas curvas que a
+ * pessoa desenhou (a eletrocalha na lateral, o desvio do pilar). Sem
+ * curva nenhuma, cai na linha reta de antes — mesma conta, só que com
+ * zero pontos no meio.
+ */
+export function pontosCabo(quadro, pontos, maquina) {
+  const cQ = caixaQuadro(quadro)
+  const cM = caixa(maquina)
+  const centroM = { x: cM.x + cM.w / 2, y: cM.y + cM.h / 2 }
+  const meio = Array.isArray(pontos) ? pontos : []
+  const alvoQuadro = meio[0] || centroM
+  const alvoMaquina = meio[meio.length - 1] || { x: cQ.cx, y: cQ.cy }
+  const a = pontoNaBorda(cQ, alvoQuadro.x, alvoQuadro.y, 0.15)
+  const b = pontoNaBorda({ cx: centroM.x, cy: centroM.y, w: cM.w, h: cM.h }, alvoMaquina.x, alvoMaquina.y, 0.15)
+  return [a, ...meio, b]
+}
+
+/** Lista de pontos {x,y} virando o "d" de um <path> SVG, em segmentos retos. */
+export const caminhoSvg = (pts) => pts.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ')
+
 // ---------------------------------------------------------------- cores
 
 const CINZA = { fundo: '#f1f5f9', borda: '#94a3b8', texto: '#334155' }
