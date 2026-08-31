@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { CheckCircle2, AlertTriangle, Package, Octagon, Info } from 'lucide-react'
+import { CheckCircle2, AlertTriangle, Package, Octagon, Info, Wrench } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { Botao, Campo, Entrada, Area, Erro, Carregando } from '../components/ui'
 import GravadorAudio from '../components/GravadorAudio'
 import FotoCaptura from '../components/FotoCaptura'
+import LancarGastoQR from '../components/LancarGastoQR'
 
 /**
  * Tela pública: o operador escaneia o QR da máquina e reporta o problema.
@@ -20,6 +21,7 @@ export default function ReportarQR() {
   const [ativo, setAtivo] = useState(null)
   const [carregando, setCarregando] = useState(true)
   const [erro, setErro] = useState(null)
+  const [modo, setModo] = useState('aviso') // aviso | gasto
 
   const [descricao, setDescricao] = useState('')
   const [nome, setNome] = useState('')
@@ -142,6 +144,30 @@ export default function ReportarQR() {
           </div>
         </div>
 
+        <div className="mb-4 grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={() => setModo('aviso')}
+            className={`flex items-center justify-center gap-1.5 rounded-lg py-2.5 text-sm font-semibold transition ${
+              modo === 'aviso' ? 'bg-slate-900 text-white' : 'bg-white text-slate-500 ring-1 ring-slate-200'
+            }`}
+          >
+            <AlertTriangle size={15} /> Avisar problema
+          </button>
+          <button
+            type="button"
+            onClick={() => setModo('gasto')}
+            className={`flex items-center justify-center gap-1.5 rounded-lg py-2.5 text-sm font-semibold transition ${
+              modo === 'gasto' ? 'bg-slate-900 text-white' : 'bg-white text-slate-500 ring-1 ring-slate-200'
+            }`}
+          >
+            <Wrench size={15} /> Lançar gasto
+          </button>
+        </div>
+
+        {modo === 'gasto' && <LancarGastoQR token={token} ativo={ativo} />}
+
+        {modo === 'aviso' && (
         <form onSubmit={enviar} className="space-y-5 rounded-xl border border-slate-200 bg-white p-5">
           <div>
             <h1 className="text-lg font-bold text-slate-900">Avisar um problema</h1>
@@ -228,6 +254,7 @@ export default function ReportarQR() {
             <p className="-mt-3 text-center text-xs text-slate-400">Toque em "Parou" ou "Só avisando" ali em cima</p>
           )}
         </form>
+        )}
 
         <p className="mt-4 text-center text-xs text-slate-400">SGAI · Ley Colchões</p>
       </div>

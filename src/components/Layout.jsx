@@ -3,9 +3,11 @@ import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Package, ClipboardList, Inbox, Boxes, Truck,
   Menu, X, LogOut, CalendarClock, LayoutGrid, MonitorPlay, BellRing, FileSpreadsheet, Moon, Sun,
+  KeyRound,
 } from 'lucide-react'
 import { useAuth } from '../hooks/useAuth'
 import { useTabela } from '../hooks/useDados'
+import DefinirPin from './DefinirPin'
 
 const ITENS = [
   { para: '/', rotulo: 'Resumo', icone: LayoutDashboard, fim: true },
@@ -37,9 +39,10 @@ function Contadores() {
 }
 
 export default function Layout() {
-  const { perfil, sair } = useAuth()
+  const { perfil, ehGestor, ehTecnico, sair } = useAuth()
   const navegar = useNavigate()
   const [menuAberto, setMenuAberto] = useState(false)
+  const [pinAberto, setPinAberto] = useState(false)
   const [escuro, setEscuro] = useState(() => localStorage.getItem('sgai-tema') === 'escuro')
   const contadores = Contadores()
 
@@ -95,6 +98,15 @@ export default function Layout() {
           {perfil?.unidade?.nome ? ` · ${perfil.unidade.nome}` : ''}
         </p>
       </div>
+      {(ehGestor || ehTecnico) && (
+        <button
+          onClick={() => setPinAberto(true)}
+          className="mb-1 flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+          title="PIN pra lançar gasto pelo QR da máquina"
+        >
+          <KeyRound size={17} /> PIN de campo
+        </button>
+      )}
       <button onClick={() => setEscuro((valor) => !valor)} className="mb-1 flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900" title={escuro ? 'Usar modo claro' : 'Usar modo escuro'}>
         {escuro ? <Sun size={17} /> : <Moon size={17} />} {escuro ? 'Modo claro' : 'Modo escuro'}
       </button>
@@ -159,6 +171,8 @@ export default function Layout() {
           <Outlet />
         </main>
       </div>
+
+      <DefinirPin aberto={pinAberto} aoFechar={() => setPinAberto(false)} />
     </div>
   )
 }

@@ -1897,6 +1897,212 @@ revoke execute on function lancar_gasto(uuid, text, date, tipo_os, text, numeric
 grant execute on function lancar_gasto(uuid, text, date, tipo_os, text, numeric, text, numeric, uuid, text, numeric, numeric, numeric) to authenticated, service_role;
 
 -- =====================================================================
+-- 8.9 PIN DE CAMPO: LANÇAR GASTO PELO QR, SEM LOGIN COMPLETO
+-- =====================================================================
+--
+-- O técnico no chão de fábrica não vai digitar e-mail e senha no celular
+-- toda hora. Ele escaneia o QR da máquina e digita um PIN de 6 números —
+-- curto de decorar, curto de digitar, e ninguém além dele sabe o dele
+-- (é único: dois técnicos não podem ter o mesmo).
+--
+-- pgcrypto (extensions.crypt/gen_salt) guarda o PIN com hash, nunca em
+-- texto puro — igual senha de verdade, só que sem exigir sessão.
+--
+-- Importante sobre RAISE EXCEPTION aqui: estourar uma exceção desfaz a
+-- transação INTEIRA, inclusive o que a própria função já tinha escrito
+-- antes de estourar — como o contador de tentativas erradas, que é
+-- exatamente o que precisa sobreviver a um PIN errado. Por isso nenhuma
+-- destas funções levanta exceção: todas retornam normalmente, com o erro
+-- (se tiver) numa coluna "mensagem". Só assim a transação sempre
+-- confirma (commit) e o contador realmente conta.
+
+alter table perfis add column if not exists pin_hash text;
+
+-- tentativas de PIN por QR escaneado — trava a máquina específica, não a
+-- pessoa (que ainda não foi identificada quando o PIN está errado)
+create table if not exists pin_tentativas (
+  chave         text primary key,
+  tentativas    int not null default 0,
+  ultima_em     timestamptz not null default now(),
+  bloqueado_ate timestamptz
+);
+alter table pin_tentativas enable row level security;
+revoke all on pin_tentativas from anon, authenticated;
+
+-- helper interno: confere o PIN e, se errado, grava a tentativa. Não é
+-- exposto via API — só as duas funções abaixo chamam.
+create or replace function fn_validar_pin_qr(
+  p_token uuid, p_pin text,
+  out perfil_id uuid, out nome text, out custo_hora numeric, out mensagem text
+)
+language plpgsql security definer set search_path = public as $$
+declare
+  v_chave text := p_token::text;
+  v_tent record;
+begin
+  if not exists (select 1 from ativos where qr_token = p_token and ativo) then
+    mensagem := 'Não achei essa máquina.';
+    return;
+  end if;
+
+  select * into v_tent from pin_tentativas where chave = v_chave for update;
+  if v_tent.bloqueado_ate is not null and v_tent.bloqueado_ate > now() then
+    mensagem := 'Muitas tentativas erradas nesse QR. Espere uns minutos e tente de novo.';
+    return;
+  end if;
+
+  select p.id, p.nome, p.custo_hora into perfil_id, nome, custo_hora
+  from perfis p
+  where p.papel in ('tecnico', 'gestor') and p.ativo and p.pin_hash is not null
+    and p.pin_hash = extensions.crypt(p_pin, p.pin_hash)
+  limit 1;
+
+  if perfil_id is null then
+    if v_tent.chave is null then
+      insert into pin_tentativas (chave, tentativas, ultima_em) values (v_chave, 1, now());
+    elsif v_tent.ultima_em < now() - interval '30 minutes' then
+      update pin_tentativas set tentativas = 1, ultima_em = now(), bloqueado_ate = null where chave = v_chave;
+    else
+      update pin_tentativas
+      set tentativas = v_tent.tentativas + 1,
+          ultima_em = now(),
+          bloqueado_ate = case when v_tent.tentativas + 1 >= 5 then now() + interval '15 minutes' else v_tent.bloqueado_ate end
+      where chave = v_chave;
+    end if;
+    mensagem := 'PIN incorreto.';
+    return;
+  end if;
+
+  delete from pin_tentativas where chave = v_chave;
+end $$;
+
+revoke execute on function fn_validar_pin_qr(uuid, text) from public, anon, authenticated;
+
+-- pra tela do QR "testar" o PIN antes de mostrar o formulário todo
+create or replace function validar_pin_qr(p_token uuid, p_pin text)
+returns table(nome text, custo_hora numeric, mensagem text)
+language plpgsql security definer set search_path = public as $$
+begin
+  return query select v.nome, v.custo_hora, v.mensagem from fn_validar_pin_qr(p_token, p_pin) v;
+end $$;
+
+revoke execute on function validar_pin_qr(uuid, text) from public;
+grant execute on function validar_pin_qr(uuid, text) to anon, authenticated, service_role;
+
+-- o gasto em si, pelo QR + PIN — mesma lógica de lancar_gasto, só que o
+-- autor vem do PIN validado, não de auth.uid() (não tem sessão aqui).
+-- Sem fornecedor/nota fiscal de propósito: é o caminho simples, quem
+-- precisar desses campos usa o "Lançar gasto" de dentro do sistema.
+create or replace function lancar_gasto_qr(
+  p_token            uuid,
+  p_pin              text,
+  p_descricao        text,
+  p_data             date    default current_date,
+  p_tipo             tipo_os default 'corretiva',
+  p_peca_descricao   text    default null,
+  p_peca_valor       numeric default null,
+  p_servico_tipo     text    default null,
+  p_servico_valor    numeric default null,
+  p_horas            numeric default null,
+  p_custo_hora       numeric default null,
+  p_horas_parada     numeric default null
+)
+returns table(os_id uuid, os_numero text, tecnico_nome text, mensagem text)
+language plpgsql security definer set search_path = public as $$
+declare
+  v_perfil  uuid;
+  v_nome    text;
+  v_msg     text;
+  v_ativo   uuid;
+  v_os      uuid;
+  v_numero  text;
+  v_quando  timestamptz := coalesce(p_data, current_date)::timestamptz + interval '12 hours';
+begin
+  select v.perfil_id, v.nome, v.mensagem into v_perfil, v_nome, v_msg from fn_validar_pin_qr(p_token, p_pin) v;
+
+  if v_perfil is null then
+    return query select null::uuid, null::text, null::text, v_msg;
+    return;
+  end if;
+
+  select id into v_ativo from ativos where qr_token = p_token and ativo;
+
+  if length(btrim(coalesce(p_descricao, ''))) < 3 then
+    return query select null::uuid, null::text, null::text, 'Escreva o que foi feito'::text;
+    return;
+  end if;
+  if coalesce(p_peca_valor, 0) + coalesce(p_servico_valor, 0)
+     + (coalesce(p_horas, 0) * coalesce(p_custo_hora, 0)) <= 0 then
+    return query select null::uuid, null::text, null::text, 'Informe pelo menos um valor'::text;
+    return;
+  end if;
+
+  insert into ordens_servico (
+    ativo_id, tipo, status, titulo, prioridade,
+    aberta_em, aprovada_em, aprovada_por, iniciada_em, concluida_em,
+    tempo_parada_min, criado_por
+  ) values (
+    v_ativo, p_tipo, 'concluida', left(btrim(p_descricao), 120), 'media',
+    v_quando, v_quando, v_perfil, v_quando, v_quando,
+    round(coalesce(p_horas_parada, 0) * 60)::int, v_perfil
+  )
+  returning id, numero into v_os, v_numero;
+
+  if coalesce(p_peca_valor, 0) > 0 then
+    insert into os_pecas (os_id, descricao, quantidade, custo_unitario, registrado_por)
+    values (v_os, coalesce(nullif(btrim(p_peca_descricao), ''), 'Peça'), 1, p_peca_valor, v_perfil);
+  end if;
+
+  if coalesce(p_servico_valor, 0) > 0 then
+    insert into os_servicos_externos (os_id, tipo_servico, valor, data_servico, registrado_por)
+    values (v_os, coalesce(nullif(btrim(p_servico_tipo), ''), 'outro'), p_servico_valor, p_data, v_perfil);
+  end if;
+
+  if coalesce(p_horas, 0) > 0 and coalesce(p_custo_hora, 0) > 0 then
+    insert into os_mao_de_obra (os_id, tecnico_id, horas, custo_hora, data_execucao)
+    values (v_os, v_perfil, p_horas, p_custo_hora, p_data);
+  end if;
+
+  insert into auditoria (tabela, registro_id, operacao, dados_depois, autor_id)
+  values ('ordens_servico', v_os::text, 'lancar_gasto_qr',
+          jsonb_build_object('ativo_id', v_ativo, 'via', 'qr_pin'), v_perfil);
+
+  return query select v_os, v_numero, v_nome, null::text;
+end $$;
+
+revoke execute on function lancar_gasto_qr(uuid, text, text, date, tipo_os, text, numeric, text, numeric, numeric, numeric, numeric) from public;
+grant execute on function lancar_gasto_qr(uuid, text, text, date, tipo_os, text, numeric, text, numeric, numeric, numeric, numeric) to anon, authenticated, service_role;
+
+-- o técnico/gestor define o próprio PIN, logado no app de verdade. Aqui
+-- pode estourar exceção à vontade — é sessão normal, não tem contador
+-- de tentativas em jogo.
+create or replace function definir_meu_pin(p_pin text)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if auth.uid() is null then
+    raise exception 'Entre no sistema para definir o PIN';
+  end if;
+  if not eh_tecnico_ou_gestor() then
+    raise exception 'Só técnico ou gestor usa PIN de campo';
+  end if;
+  if p_pin !~ '^[0-9]{6}$' then
+    raise exception 'O PIN precisa ter 6 números';
+  end if;
+  if exists (
+    select 1 from perfis
+    where papel in ('tecnico', 'gestor') and ativo and pin_hash is not null
+      and id <> auth.uid()
+      and pin_hash = extensions.crypt(p_pin, pin_hash)
+  ) then
+    raise exception 'Esse PIN já é de outra pessoa. Escolha outro.';
+  end if;
+  update perfis set pin_hash = extensions.crypt(p_pin, extensions.gen_salt('bf')) where id = auth.uid();
+end $$;
+
+revoke execute on function definir_meu_pin(text) from public, anon;
+grant execute on function definir_meu_pin(text) to authenticated;
+
+-- =====================================================================
 -- 8.3 PLANTA DO GALPÃO
 -- =====================================================================
 --
