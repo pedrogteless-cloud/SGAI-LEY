@@ -12,6 +12,25 @@ body {
   @apply bg-slate-50 text-slate-800 antialiased;
 }
 
+/* Tema escuro global: cobre as classes utilitarias mais usadas no sistema,
+   mantendo a troca de tema leve e sem duplicar todos os componentes. */
+.dark body { @apply bg-slate-950 text-slate-200; }
+.dark .bg-white { background-color: #111827; }
+.dark .bg-slate-50 { background-color: #0f172a; }
+.dark .bg-slate-100 { background-color: #1e293b; }
+.dark .bg-slate-200 { background-color: #334155; }
+.dark .border-slate-200, .dark .border-slate-300 { border-color: #334155; }
+.dark .text-slate-900 { color: #f8fafc; }
+.dark .text-slate-800 { color: #e2e8f0; }
+.dark .text-slate-700 { color: #cbd5e1; }
+.dark .text-slate-600 { color: #94a3b8; }
+.dark .text-slate-500 { color: #94a3b8; }
+.dark .text-slate-400 { color: #64748b; }
+.dark .hover\\:bg-slate-50:hover { background-color: #1e293b; }
+.dark .hover\\:bg-slate-100:hover { background-color: #1e293b; }
+.dark .campo { background-color: #0f172a; border-color: #475569; color: #e2e8f0; }
+.dark .campo:disabled { background-color: #1e293b; color: #64748b; }
+
 /* Campos de formulário compartilham a mesma base visual */
 .campo {
   @apply w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm
