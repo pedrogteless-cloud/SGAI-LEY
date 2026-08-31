@@ -247,6 +247,12 @@ create table if not exists fornecedores (
   atualizado_em  timestamptz not null default now()
 );
 
+-- prestadores de manutenção de campo (pro picklist "quem fez o conserto")
+insert into fornecedores (nome, ativo)
+select v.nome, true
+from (values ('João Paulo Manutenção'), ('Mário Eletricista'), ('Idelfonso Almeida')) as v(nome)
+where not exists (select 1 from fornecedores f where f.nome = v.nome);
+
 -- (11) fornecedor_servicos --------------------------------------------
 create table if not exists fornecedor_servicos (
   id             uuid primary key default gen_random_uuid(),
@@ -425,7 +431,9 @@ create table if not exists os_pecas (
   movimento_id   uuid references estoque_movimentos(id) on delete set null,
   observacao     text,
   registrado_por uuid references perfis(id) on delete set null,
-  criado_em      timestamptz not null default now()
+  criado_em      timestamptz not null default now(),
+  fornecedor_id  uuid references fornecedores(id) on delete set null,
+  recuperada     boolean not null default false
 );
 
 -- ou vem do almoxarifado, ou o nome foi digitado na hora
@@ -434,6 +442,7 @@ alter table os_pecas add constraint os_pecas_identificacao
   check (peca_id is not null or nullif(btrim(descricao), '') is not null);
 
 create index if not exists idx_os_pecas_os on os_pecas(os_id);
+create index if not exists idx_os_pecas_forn on os_pecas(fornecedor_id);
 
 -- (20) os_servicos_externos -------------------------------------------
 create table if not exists os_servicos_externos (
@@ -1994,18 +2003,21 @@ grant execute on function validar_pin_qr(uuid, text) to anon, authenticated, ser
 -- Sem fornecedor/nota fiscal de propósito: é o caminho simples, quem
 -- precisar desses campos usa o "Lançar gasto" de dentro do sistema.
 create or replace function lancar_gasto_qr(
-  p_token            uuid,
-  p_pin              text,
-  p_descricao        text,
-  p_data             date    default current_date,
-  p_tipo             tipo_os default 'corretiva',
-  p_peca_descricao   text    default null,
-  p_peca_valor       numeric default null,
-  p_servico_tipo     text    default null,
-  p_servico_valor    numeric default null,
-  p_horas            numeric default null,
-  p_custo_hora       numeric default null,
-  p_horas_parada     numeric default null
+  p_token               uuid,
+  p_pin                 text,
+  p_descricao           text,
+  p_data                date    default current_date,
+  p_tipo                tipo_os default 'corretiva',
+  p_peca_descricao      text    default null,
+  p_peca_valor          numeric default null,
+  p_servico_tipo        text    default null,
+  p_servico_valor       numeric default null,
+  p_horas               numeric default null,
+  p_custo_hora          numeric default null,
+  p_horas_parada        numeric default null,
+  p_peca_fornecedor_id  uuid    default null,
+  p_peca_recuperada     boolean default false,
+  p_servico_fornecedor_id uuid  default null
 )
 returns table(os_id uuid, os_numero text, tecnico_nome text, mensagem text)
 language plpgsql security definer set search_path = public as $$
@@ -2049,13 +2061,15 @@ begin
   returning id, numero into v_os, v_numero;
 
   if coalesce(p_peca_valor, 0) > 0 then
-    insert into os_pecas (os_id, descricao, quantidade, custo_unitario, registrado_por)
-    values (v_os, coalesce(nullif(btrim(p_peca_descricao), ''), 'Peça'), 1, p_peca_valor, v_perfil);
+    insert into os_pecas (os_id, descricao, quantidade, custo_unitario, registrado_por, fornecedor_id, recuperada)
+    values (v_os, coalesce(nullif(btrim(p_peca_descricao), ''), 'Peça'), 1, p_peca_valor, v_perfil,
+            p_peca_fornecedor_id, coalesce(p_peca_recuperada, false));
   end if;
 
-  if coalesce(p_servico_valor, 0) > 0 then
-    insert into os_servicos_externos (os_id, tipo_servico, valor, data_servico, registrado_por)
-    values (v_os, coalesce(nullif(btrim(p_servico_tipo), ''), 'outro'), p_servico_valor, p_data, v_perfil);
+  if coalesce(p_servico_valor, 0) > 0 or p_servico_fornecedor_id is not null then
+    insert into os_servicos_externos (os_id, tipo_servico, valor, data_servico, registrado_por, fornecedor_id)
+    values (v_os, coalesce(nullif(btrim(p_servico_tipo), ''), 'outro'), coalesce(p_servico_valor, 0), p_data, v_perfil,
+            p_servico_fornecedor_id);
   end if;
 
   if coalesce(p_horas, 0) > 0 and coalesce(p_custo_hora, 0) > 0 then
@@ -2070,8 +2084,20 @@ begin
   return query select v_os, v_numero, v_nome, null::text;
 end $$;
 
-revoke execute on function lancar_gasto_qr(uuid, text, text, date, tipo_os, text, numeric, text, numeric, numeric, numeric, numeric) from public;
-grant execute on function lancar_gasto_qr(uuid, text, text, date, tipo_os, text, numeric, text, numeric, numeric, numeric, numeric) to anon, authenticated, service_role;
+revoke execute on function lancar_gasto_qr(uuid, text, text, date, tipo_os, text, numeric, text, numeric, numeric, numeric, numeric, uuid, boolean, uuid) from public;
+grant execute on function lancar_gasto_qr(uuid, text, text, date, tipo_os, text, numeric, text, numeric, numeric, numeric, numeric, uuid, boolean, uuid) to anon, authenticated, service_role;
+
+-- lista simples de fornecedores ativos, pro picklist "quem fez o conserto"
+-- no QR (anon não pode ler a tabela fornecedores direto por RLS).
+create or replace function fornecedores_para_qr()
+returns table(id uuid, nome text)
+language sql security definer set search_path = public
+stable as $$
+  select id, nome from fornecedores where ativo order by nome;
+$$;
+
+revoke execute on function fornecedores_para_qr() from public;
+grant execute on function fornecedores_para_qr() to anon, authenticated, service_role;
 
 -- o técnico/gestor define o próprio PIN, logado no app de verdade. Aqui
 -- pode estourar exceção à vontade — é sessão normal, não tem contador

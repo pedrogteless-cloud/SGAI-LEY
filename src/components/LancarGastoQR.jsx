@@ -1,32 +1,38 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { CheckCircle2, KeyRound, Wrench } from 'lucide-react'
 import { supabase } from '../lib/supabase'
-import { Botao, Campo, Entrada, Erro } from './ui'
+import { Botao, Campo, Entrada, Erro, Selecao } from './ui'
 
 const soDigitos = (v) => v.replace(/\D/g, '').slice(0, 6)
 const n = (v) => Number(String(v).replace(',', '.')) || 0
 
 const CAMPO_VAZIO = {
-  descricao: '', pecaDescricao: '', pecaValor: '', servicoTipo: '', servicoValor: '',
+  descricao: '', pecaDescricao: '', pecaValor: '', pecaFornecedorId: '', pecaRecuperada: false,
+  servicoTipo: '', servicoValor: '', servicoFornecedorId: '',
   horas: '', horasParada: '',
 }
 
 /**
  * Lançar gasto direto no QR, pra quem já tem PIN de campo (técnico ou
- * gestor). Sem fornecedor nem nota fiscal de propósito — é o caminho
- * curto pro chão de fábrica; quem precisar desses detalhes usa o
- * "Lançar gasto" de dentro do sistema.
+ * gestor). Sem nota fiscal de propósito — é o caminho curto pro chão
+ * de fábrica; quem precisar desse detalhe usa o "Lançar gasto" de
+ * dentro do sistema.
  */
 export default function LancarGastoQR({ token, ativo }) {
   const [pin, setPin] = useState('')
   const [validando, setValidando] = useState(false)
   const [erroPin, setErroPin] = useState(null)
   const [tecnico, setTecnico] = useState(null) // { nome, custoHora }
+  const [fornecedores, setFornecedores] = useState([])
 
   const [form, setForm] = useState(CAMPO_VAZIO)
   const [enviando, setEnviando] = useState(false)
   const [erro, setErro] = useState(null)
   const [resultado, setResultado] = useState(null) // { numero, tecnicoNome }
+
+  useEffect(() => {
+    supabase.rpc('fornecedores_para_qr').then(({ data }) => setFornecedores(data || []))
+  }, [])
 
   const entrar = async (e) => {
     e.preventDefault()
@@ -51,6 +57,7 @@ export default function LancarGastoQR({ token, ativo }) {
   }
 
   const mudar = (campo) => (e) => setForm((f) => ({ ...f, [campo]: e.target.value }))
+  const mudarChecado = (campo) => (e) => setForm((f) => ({ ...f, [campo]: e.target.checked }))
 
   const total = n(form.pecaValor) + n(form.servicoValor) + n(form.horas) * n(form.custoHora)
   const podeRegistrar = form.descricao.trim().length >= 3 && total > 0
@@ -70,6 +77,9 @@ export default function LancarGastoQR({ token, ativo }) {
       p_horas: n(form.horas) || null,
       p_custo_hora: n(form.custoHora) || null,
       p_horas_parada: n(form.horasParada) || null,
+      p_peca_fornecedor_id: form.pecaFornecedorId || null,
+      p_peca_recuperada: form.pecaRecuperada,
+      p_servico_fornecedor_id: form.servicoFornecedorId || null,
     })
     setEnviando(false)
     const linha = data?.[0]
@@ -171,6 +181,26 @@ export default function LancarGastoQR({ token, ativo }) {
           </Campo>
         </div>
 
+        <div className="grid grid-cols-3 gap-2 items-end">
+          <Campo rotulo="Fornecedor da peça" className="col-span-2">
+            <Selecao value={form.pecaFornecedorId} onChange={mudar('pecaFornecedorId')}>
+              <option value="">— não informado —</option>
+              {fornecedores.map((f) => (
+                <option key={f.id} value={f.id}>{f.nome}</option>
+              ))}
+            </Selecao>
+          </Campo>
+          <label className="flex items-center gap-1.5 pb-2 text-xs font-medium text-slate-600">
+            <input
+              type="checkbox"
+              checked={form.pecaRecuperada}
+              onChange={mudarChecado('pecaRecuperada')}
+              className="size-4 rounded border-slate-300"
+            />
+            Recuperada
+          </label>
+        </div>
+
         <div className="grid grid-cols-3 gap-2">
           <Campo rotulo="Serviço de fora" className="col-span-2">
             <Entrada value={form.servicoTipo} onChange={mudar('servicoTipo')} placeholder="Ex.: retífica" />
@@ -179,6 +209,15 @@ export default function LancarGastoQR({ token, ativo }) {
             <Entrada type="number" step="0.01" min="0" value={form.servicoValor} onChange={mudar('servicoValor')} />
           </Campo>
         </div>
+
+        <Campo rotulo="Quem fez o conserto">
+          <Selecao value={form.servicoFornecedorId} onChange={mudar('servicoFornecedorId')}>
+            <option value="">— não informado —</option>
+            {fornecedores.map((f) => (
+              <option key={f.id} value={f.id}>{f.nome}</option>
+            ))}
+          </Selecao>
+        </Campo>
 
         <div className="grid grid-cols-3 gap-2">
           <Campo rotulo="Horas da equipe" className="col-span-2">
