@@ -20,6 +20,7 @@ import Planta from './pages/Planta'
 import ReportarQR from './pages/ReportarQR'
 import ChaoDeFabrica from './pages/ChaoDeFabrica'
 import Alertas from './pages/Alertas'
+import Relatorios from './pages/Relatorios'
 
 const cliente = new QueryClient({
   defaultOptions: {
@@ -82,6 +83,7 @@ export default function App() {
                 <Route path="fornecedores" element={<Fornecedores />} />
                 <Route path="tv" element={<ChaoDeFabrica />} />
                 <Route path="alertas" element={<Alertas />} />
+                <Route path="relatorios" element={<Relatorios />} />
               </Route>
 
               <Route path="*" element={<Navigate to="/" replace />} />
