@@ -2406,6 +2406,25 @@ create policy audios_leitura on storage.objects
   for select to anon, authenticated
   using (bucket_id = 'audios');
 
+-- Mesma lógica pra foto: quem não sabe escrever bem, tira uma foto do
+-- problema. Mais simples de "ler" que qualquer frase.
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('fotos', 'fotos', true, 8388608,
+        array['image/jpeg','image/png','image/webp','image/heic','image/heif'])
+on conflict (id) do update
+  set public = true, file_size_limit = 8388608,
+      allowed_mime_types = excluded.allowed_mime_types;
+
+drop policy if exists fotos_envio_anonimo on storage.objects;
+create policy fotos_envio_anonimo on storage.objects
+  for insert to anon, authenticated
+  with check (bucket_id = 'fotos');
+
+drop policy if exists fotos_leitura on storage.objects;
+create policy fotos_leitura on storage.objects
+  for select to anon, authenticated
+  using (bucket_id = 'fotos');
+
 -- =====================================================================
 -- 8.1 CRIANDO USUÁRIO POR SQL (leia antes de usar)
 -- =====================================================================
