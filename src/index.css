@@ -60,6 +60,19 @@ body {
   from { opacity: 0; transform: translateY(6px); }
 }
 
+/* ------------------------------------------------ cabo de energia animado */
+/* O traço corre do quadro até a máquina — o efeito de "corrente passando"
+   que só faz sentido para quem está ligado (parada não anima). */
+@media (prefers-reduced-motion: no-preference) {
+  .cabo-fluxo {
+    animation: sgai-corrente 0.7s linear infinite;
+  }
+}
+
+@keyframes sgai-corrente {
+  to { stroke-dashoffset: -0.85; }
+}
+
 /* -------------------------------------------------------------- esqueleto */
 .esqueleto {
   @apply animate-pulse rounded-md bg-slate-200/70;

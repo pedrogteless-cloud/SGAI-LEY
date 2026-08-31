@@ -197,6 +197,24 @@ export function saidaNaParede(c, planta, avanco = 3.2) {
   }
 }
 
+// --------------------------------------------------------- quadro elétrico
+
+/** Tamanho fixo do símbolo do quadro, centrado na posição dele. */
+export const LADO_QUADRO = 1.8
+
+export function caixaQuadro(q) {
+  const w = LADO_QUADRO
+  const h = LADO_QUADRO
+  return {
+    x: Number(q.pos_x_m) - w / 2,
+    y: Number(q.pos_y_m) - h / 2,
+    w,
+    h,
+    cx: Number(q.pos_x_m),
+    cy: Number(q.pos_y_m),
+  }
+}
+
 // ---------------------------------------------------------------- cores
 
 const CINZA = { fundo: '#f1f5f9', borda: '#94a3b8', texto: '#334155' }

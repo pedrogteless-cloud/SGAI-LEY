@@ -1940,6 +1940,22 @@ alter table ativos add column if not exists rotacao   smallint not null default 
 
 create index if not exists idx_ativos_planta on ativos(planta_id) where planta_id is not null;
 
+-- Posição do quadro elétrico no desenho da planta de Energia — nulo até
+-- alguém colocá-lo lá (o quadro pode existir no cadastro sem estar
+-- desenhado ainda).
+alter table quadros_eletricos add column if not exists planta_id uuid references plantas(id) on delete set null;
+alter table quadros_eletricos add column if not exists pos_x_m   numeric(8,2);
+alter table quadros_eletricos add column if not exists pos_y_m   numeric(8,2);
+
+-- Especificação do cabo que sai do quadro até a máquina — ao lado do que já
+-- existe na ficha elétrica (quadro_id diz ONDE liga, circuito/disjuntor
+-- dizem em que proteção). Fica na mesma tabela porque é a mesma relação
+-- 1-para-1 com o ativo, só que faltava contar do fio em si.
+alter table ativo_ficha_eletrica add column if not exists cabo_descricao text;
+alter table ativo_ficha_eletrica add column if not exists cabo_bitola_mm2 numeric(6,2);
+alter table ativo_ficha_eletrica add column if not exists cabo_comprimento_m numeric(8,2);
+alter table ativo_ficha_eletrica add column if not exists cabo_tipo_instalacao text;
+
 -- Todo mundo logado enxerga a planta; só o gestor mexe nela.
 alter table plantas enable row level security;
 
@@ -2016,7 +2032,17 @@ select
                   greatest(ceil(b.planta_larg / b.celula)::int - 1, 0)),
             25))
     )
-  end as endereco
+  end as endereco,
+  -- especificação do cabo: até aqui vai a leitura do painel de Energia, sem
+  -- precisar de outra consulta
+  fe.circuito,
+  fe.disjuntor,
+  fe.tensao_v         as ficha_tensao_v,
+  fe.corrente_nominal_a,
+  fe.cabo_descricao,
+  fe.cabo_bitola_mm2,
+  fe.cabo_comprimento_m,
+  fe.cabo_tipo_instalacao
 from base b
 join unidades u             on u.id = b.unidade_id
 join categorias_ativo c     on c.id = b.categoria_id
@@ -2038,6 +2064,34 @@ where b.ativo;
 
 grant select on vw_planta_ativos to authenticated;
 revoke all on vw_planta_ativos from anon;
+
+-- Os quadros que já têm um lugar desenhado na planta, com a contagem de
+-- máquinas que cada um alimenta — para desenhar o nó do quadro sem precisar
+-- somar isso na tela.
+create or replace view vw_planta_quadros with (security_invoker = on) as
+select
+  q.id            as quadro_id,
+  q.unidade_id,
+  q.planta_id,
+  q.setor_id,
+  q.nome,
+  q.tag,
+  q.tensao_v,
+  q.corrente_a,
+  q.disjuntor_geral,
+  q.pos_x_m,
+  q.pos_y_m,
+  q.localizacao,
+  q.observacoes,
+  coalesce(m.qtd, 0) as qtd_maquinas
+from quadros_eletricos q
+left join lateral (
+  select count(*) as qtd from ativo_ficha_eletrica fe where fe.quadro_id = q.id
+) m on true
+where q.ativo;
+
+grant select on vw_planta_quadros to authenticated;
+revoke all on vw_planta_quadros from anon;
 
 -- =====================================================================
 -- 8.4 ESQUEMAS: PRODUÇÃO, ENERGIA, BOMBEIROS E O QUE MAIS PRECISAR
@@ -2063,6 +2117,10 @@ create table if not exists esquemas (
   ativo         boolean not null default true,
   criado_em     timestamptz not null default now(),
   atualizado_em timestamptz not null default now(),
+  -- 'energia' desenha quadro elétrico + cabo até a máquina, com o desenho
+  -- de nó/ligação genérico (esquema_nos/esquema_ligacoes) fora de cena; todo
+  -- o resto usa o genérico normalmente
+  tipo          text not null default 'fluxo' check (tipo in ('fluxo', 'energia')),
   unique (unidade_id, nome)
 );
 
@@ -2412,12 +2470,12 @@ from unidades where sigla = 'EUS'
 on conflict (unidade_id, nome) do nothing;
 
 -- Os três esquemas de cada galpão, prontos para desenhar em cima da planta.
-insert into esquemas (unidade_id, nome, cor, icone, ordem)
-select unidade_id, 'Produção', '#4338ca', 'Workflow', 1 from plantas
+insert into esquemas (unidade_id, nome, cor, icone, ordem, tipo)
+select unidade_id, 'Produção', '#4338ca', 'Workflow', 1, 'fluxo' from plantas
 union all
-select unidade_id, 'Energia', '#d97706', 'Zap', 2 from plantas
+select unidade_id, 'Energia', '#d97706', 'Zap', 2, 'energia' from plantas
 union all
-select unidade_id, 'Bombeiros', '#dc2626', 'Flame', 3 from plantas
+select unidade_id, 'Bombeiros', '#dc2626', 'Flame', 3, 'fluxo' from plantas
 on conflict (unidade_id, nome) do nothing;
 
 insert into categorias_ativo (nome, sigla, grupo) values

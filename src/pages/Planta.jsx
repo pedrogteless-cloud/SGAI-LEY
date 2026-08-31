@@ -1,13 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Maximize2, Plus, Minus, Move, Check, RotateCw, MapPin, X, ArrowRight, ArrowLeft,
   ArrowUp, ArrowDown, LayoutGrid, Workflow, Zap, Flame, Layers, Trash2, Link2, Save,
+  PlugZap, Cable,
 } from 'lucide-react'
 import {
   useTabela, useUnidades, useQuadros, useAtualizar, useInvalidar, useInserir, useRemover,
 } from '../hooks/useDados'
 import { useAuth } from '../hooks/useAuth'
+import { supabase } from '../lib/supabase'
 import { moeda, data } from '../lib/format'
 import { M_CRITICIDADE, M_SITUACAO } from '../lib/constants'
 import {
@@ -15,9 +18,22 @@ import {
   enderecoDaMaquina, CELULA_COMPRIMENTO, CELULA_LARGURA, encaixar, prender, PASSO,
 } from '../lib/planta'
 import {
-  Botao, Cartao, Etiqueta, Carregando, Vazio, Selecao, Entrada, Campo, useAviso,
+  Botao, Cartao, Etiqueta, Carregando, Vazio, Selecao, Entrada, Campo, Modal, useAviso,
 } from '../components/ui'
 import PlantaCanvas from '../components/PlantaCanvas'
+
+const TIPOS_INSTALACAO_CABO = [
+  { valor: 'aparente', label: 'Aparente' },
+  { valor: 'eletroduto', label: 'Eletroduto' },
+  { valor: 'eletrocalha', label: 'Eletrocalha' },
+  { valor: 'embutido', label: 'Embutido' },
+  { valor: 'subterraneo', label: 'Subterrâneo' },
+]
+const CAMPO_CABO_VAZIO = {
+  cabo_descricao: '', cabo_bitola_mm2: '', cabo_comprimento_m: '',
+  cabo_tipo_instalacao: 'eletrocalha', disjuntor: '', circuito: '',
+  ficha_tensao_v: '', corrente_nominal_a: '',
+}
 
 const INVALIDAR = ['vw_planta_ativos', 'ativos']
 const INVALIDAR_FLUXO = ['vw_esquema_nos', 'vw_esquema_ligacoes', 'esquema_nos', 'esquema_ligacoes']
@@ -72,6 +88,14 @@ export default function Planta() {
   const [ligarA, setLigarA] = useState('')
   const [ligarTipo, setLigarTipo] = useState('principal')
 
+  // -------------------------------------------------------------- energia
+  const [quadroArmado, setQuadroArmado] = useState(null)
+  const [novoQuadroNome, setNovoQuadroNome] = useState('')
+  const [criandoQuadro, setCriandoQuadro] = useState(false)
+  const [caboEditando, setCaboEditando] = useState(null) // ativo_id
+  const [campoCabo, setCampoCabo] = useState(CAMPO_CABO_VAZIO)
+  const [rascunhoQuadro, setRascunhoQuadro] = useState({})
+
   const unidades = useUnidades()
   const unidadeAtual = unidadeId || unidades.data?.[0]?.id || ''
   const quadros = useQuadros(unidadeAtual || undefined)
@@ -104,6 +128,47 @@ export default function Planta() {
   const removerEtapa = useRemover('esquema_nos', INVALIDAR_FLUXO)
   const criarLigacao = useInserir('esquema_ligacoes', INVALIDAR_FLUXO)
   const removerLigacao = useRemover('esquema_ligacoes', INVALIDAR_FLUXO)
+
+  // -------------------------------------------------------------- energia
+  const quadrosBanco = useTabela('vw_planta_quadros', {
+    filtros: [...(unidadeAtual ? [['unidade_id', 'eq', unidadeAtual]] : [])],
+    ordem: { coluna: 'nome' },
+  })
+  const criarQuadroDb = useInserir('quadros_eletricos', ['vw_planta_quadros', 'quadros_eletricos'])
+  const cliente = useQueryClient()
+  const invalidarEnergia = () => {
+    cliente.invalidateQueries({ queryKey: ['vw_planta_quadros'] })
+    cliente.invalidateQueries({ queryKey: ['vw_planta_ativos'] })
+  }
+
+  const moverQuadroDb = useMutation({
+    mutationFn: async ({ id, pos_x_m, pos_y_m }) =>
+      supabase.from('quadros_eletricos').update({ pos_x_m, pos_y_m }).eq('id', id)
+        .then(({ error }) => { if (error) throw new Error(error.message) }),
+    onSuccess: invalidarEnergia,
+  })
+
+  const ligarCaboDb = useMutation({
+    mutationFn: async ({ ativoId, quadroId }) =>
+      supabase.from('ativo_ficha_eletrica')
+        .upsert({ ativo_id: ativoId, quadro_id: quadroId }, { onConflict: 'ativo_id' })
+        .then(({ error }) => { if (error) throw new Error(error.message) }),
+    onSuccess: invalidarEnergia,
+  })
+
+  const salvarCaboDb = useMutation({
+    mutationFn: async ({ ativoId, campos }) =>
+      supabase.from('ativo_ficha_eletrica')
+        .upsert({ ativo_id: ativoId, ...campos }, { onConflict: 'ativo_id' })
+        .then(({ error }) => { if (error) throw new Error(error.message) }),
+    onSuccess: invalidarEnergia,
+  })
+
+  const quadrosEnergia = useMemo(
+    () => (quadrosBanco.data || []).map((q) => (rascunhoQuadro[q.quadro_id] ? { ...q, ...rascunhoQuadro[q.quadro_id] } : q)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [quadrosBanco.data]
+  )
 
   const esquemas = esquemasBanco.data || []
   const esquemaAtivo = esquemas.find((e) => e.id === esquemaAtivoId) || null
@@ -404,6 +469,107 @@ export default function Planta() {
           ? 'Essas duas etapas já estão ligadas.'
           : `Não consegui ligar: ${e.message}`
       )
+    }
+  }
+
+  const esquemaEnergiaAtivo = esquemaAtivo?.tipo === 'energia'
+
+  const moverQuadro = (id, x, y) => setRascunhoQuadro((r) => ({ ...r, [id]: { pos_x_m: x, pos_y_m: y } }))
+
+  const gravarQuadro = async (id) => {
+    const pos = rascunhoQuadro[id]
+    if (!pos) return
+    try {
+      await moverQuadroDb.mutateAsync({ id, ...pos })
+      setRascunhoQuadro((r) => {
+        const { [id]: _, ...resto } = r
+        return resto
+      })
+    } catch (e) {
+      avisar(`Não consegui salvar o quadro: ${e.message}`, 'erro')
+    }
+  }
+
+  const colocarQuadroNaPlanta = async (q) => {
+    try {
+      await moverQuadroDb.mutateAsync({
+        id: q.quadro_id,
+        pos_x_m: Number(planta.comprimento_m) / 2,
+        pos_y_m: Number(planta.largura_m) / 2,
+      })
+      await supabase.from('quadros_eletricos').update({ planta_id: planta.id }).eq('id', q.quadro_id)
+      invalidarEnergia()
+      setQuadroArmado(q.quadro_id)
+      avisar(`${q.nome} entrou na planta. Arraste para o lugar certo.`)
+    } catch (e) {
+      avisar(`Não consegui colocar o quadro: ${e.message}`, 'erro')
+    }
+  }
+
+  const criarQuadro = async () => {
+    const nome = novoQuadroNome.trim()
+    if (!nome || !unidadeAtual) return
+    try {
+      await criarQuadroDb.mutateAsync({ unidade_id: unidadeAtual, nome })
+      setCriandoQuadro(false)
+      setNovoQuadroNome('')
+      avisar(`Quadro "${nome}" criado. Coloque na planta para puxar o cabo.`)
+    } catch (err) {
+      avisar(
+        /duplicate|unique/i.test(err.message)
+          ? `Já existe um quadro chamado "${nome}".`
+          : `Não consegui criar: ${err.message}`
+      )
+    }
+  }
+
+  const aoClicarMaquinaEnergia = async (ativoId) => {
+    if (!quadroArmado) return
+    const m = noChao.find((x) => x.ativo_id === ativoId)
+    const jaLigada = m?.quadro_id === quadroArmado
+    try {
+      await ligarCaboDb.mutateAsync({ ativoId, quadroId: jaLigada ? null : quadroArmado })
+      avisar(jaLigada ? 'Cabo desligado.' : 'Cabo puxado. Clique nele para descrever a especificação.')
+    } catch (e) {
+      avisar(`Não consegui ligar o cabo: ${e.message}`, 'erro')
+    }
+  }
+
+  const abrirEdicaoCabo = (ativoId) => {
+    const m = noChao.find((x) => x.ativo_id === ativoId) || foraDaPlanta.find((x) => x.ativo_id === ativoId)
+    if (!m) return
+    setCampoCabo({
+      cabo_descricao: m.cabo_descricao || '',
+      cabo_bitola_mm2: paraCampo(m.cabo_bitola_mm2),
+      cabo_comprimento_m: paraCampo(m.cabo_comprimento_m),
+      cabo_tipo_instalacao: m.cabo_tipo_instalacao || 'eletrocalha',
+      disjuntor: m.disjuntor || '',
+      circuito: m.circuito || '',
+      ficha_tensao_v: paraCampo(m.ficha_tensao_v),
+      corrente_nominal_a: paraCampo(m.corrente_nominal_a),
+    })
+    setCaboEditando(ativoId)
+  }
+
+  const salvarCabo = async () => {
+    try {
+      await salvarCaboDb.mutateAsync({
+        ativoId: caboEditando,
+        campos: {
+          cabo_descricao: campoCabo.cabo_descricao || null,
+          cabo_bitola_mm2: campoCabo.cabo_bitola_mm2 === '' ? null : numeroCampo(campoCabo.cabo_bitola_mm2),
+          cabo_comprimento_m: campoCabo.cabo_comprimento_m === '' ? null : numeroCampo(campoCabo.cabo_comprimento_m),
+          cabo_tipo_instalacao: campoCabo.cabo_tipo_instalacao || null,
+          disjuntor: campoCabo.disjuntor || null,
+          circuito: campoCabo.circuito || null,
+          tensao_v: campoCabo.ficha_tensao_v === '' ? null : numeroCampo(campoCabo.ficha_tensao_v),
+          corrente_nominal_a: campoCabo.corrente_nominal_a === '' ? null : numeroCampo(campoCabo.corrente_nominal_a),
+        },
+      })
+      avisar('Especificação do cabo salva.')
+      setCaboEditando(null)
+    } catch (e) {
+      avisar(`Não consegui salvar: ${e.message}`, 'erro')
     }
   }
 
@@ -714,6 +880,8 @@ export default function Planta() {
                 setEsquemaAtivoId(ativo ? null : es.id)
                 setEtapaSel(null)
                 setCriandoEsquema(false)
+                setQuadroArmado(null)
+                setCriandoQuadro(false)
               }}
               className="flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium transition"
               style={
@@ -851,13 +1019,21 @@ export default function Planta() {
                 refCamera={camera}
                 etapas={etapas}
                 ligacoes={ligacoesDaUnidade}
-                mostrarFluxo={Boolean(esquemaAtivoId)}
+                mostrarFluxo={Boolean(esquemaAtivoId) && !esquemaEnergiaAtivo}
                 corEsquema={corAtiva}
                 etapaSelecionada={etapaSel}
                 aoSelecionarEtapa={(e) => setEtapaSel(e?.etapa_id ?? null)}
                 aoMoverEtapa={moverEtapa}
                 aoTerminarArrasteEtapa={gravarEtapa}
                 passoEncaixe={passoAjuste}
+                modoEnergia={esquemaEnergiaAtivo}
+                quadros={quadrosEnergia.filter((q) => q.pos_x_m != null && q.planta_id === planta.id)}
+                quadroSelecionado={quadroArmado}
+                aoSelecionarQuadro={(q) => setQuadroArmado((atual) => (q && q.quadro_id !== atual ? q.quadro_id : null))}
+                aoMoverQuadro={ehGestor && editando ? moverQuadro : undefined}
+                aoTerminarArrasteQuadro={ehGestor && editando ? gravarQuadro : undefined}
+                aoLigarMaquina={ehGestor && editando ? aoClicarMaquinaEnergia : undefined}
+                aoClicarCabo={ehGestor && editando ? abrirEdicaoCabo : undefined}
               />
             )}
           </Cartao>
@@ -889,7 +1065,121 @@ export default function Planta() {
         </div>
 
         <div className="space-y-3">
-          {esquemaAtivo && (
+          {esquemaEnergiaAtivo && (
+            <Cartao className="p-4">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-sm font-semibold" style={{ color: corAtiva }}>
+                  <Zap size={15} className="mr-1 inline" style={{ color: corAtiva }} />
+                  {esquemaAtivo.nome}
+                </p>
+                <span className="text-xs text-slate-500">{quadrosEnergia.length} quadro{quadrosEnergia.length === 1 ? '' : 's'}</span>
+              </div>
+
+              <p className="mt-2 text-xs text-slate-500">
+                {ehGestor && editando
+                  ? quadroArmado
+                    ? 'Clique numa máquina para puxar (ou tirar) o cabo. Clique num cabo já puxado para descrever a especificação.'
+                    : 'Clique num quadro para selecioná-lo, depois clique nas máquinas que ele alimenta.'
+                  : 'Cada linha é um cabo do quadro até a máquina. Anima enquanto a máquina está operando.'}
+              </p>
+
+              {ehGestor && editando && (
+                <div className="mt-3 flex gap-2">
+                  {criandoQuadro ? (
+                    <>
+                      <Entrada
+                        autoFocus
+                        value={novoQuadroNome}
+                        onChange={(e) => setNovoQuadroNome(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && criarQuadro()}
+                        placeholder="Nome (ex.: QGBT-2)"
+                      />
+                      <Botao onClick={criarQuadro} disabled={!novoQuadroNome.trim()}>
+                        <Check size={15} />
+                      </Botao>
+                      <Botao variante="secundario" onClick={() => setCriandoQuadro(false)}>
+                        <X size={15} />
+                      </Botao>
+                    </>
+                  ) : (
+                    <Botao variante="secundario" className="w-full" onClick={() => setCriandoQuadro(true)}>
+                      <PlugZap size={15} /> Novo quadro
+                    </Botao>
+                  )}
+                </div>
+              )}
+
+              <div className="mt-3 max-h-64 space-y-1 overflow-y-auto">
+                {quadrosEnergia.length === 0 && (
+                  <p className="py-4 text-center text-sm text-slate-400">
+                    Nenhum quadro cadastrado ainda.
+                  </p>
+                )}
+                {quadrosEnergia.map((q) => {
+                  const noChaoDaPlanta = q.pos_x_m != null && q.planta_id === planta.id
+                  const armado = quadroArmado === q.quadro_id
+                  return (
+                    <div key={q.quadro_id} className={`rounded-lg px-2 py-1.5 ${armado ? 'bg-amber-50 ring-1 ring-amber-300' : ''}`}>
+                      <div className="flex w-full items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (!noChaoDaPlanta) return
+                            setQuadroArmado(armado ? null : q.quadro_id)
+                          }}
+                          disabled={!noChaoDaPlanta}
+                          className="flex min-w-0 flex-1 items-center gap-2 text-left disabled:cursor-default"
+                        >
+                          <PlugZap size={14} className="shrink-0" style={{ color: corAtiva }} />
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-sm font-medium text-slate-800">
+                              {q.nome} {q.tag ? `(${q.tag})` : ''}
+                            </span>
+                            <span className="block text-xs text-slate-400">
+                              {q.qtd_maquinas} máquina{q.qtd_maquinas === 1 ? '' : 's'} ligada{q.qtd_maquinas === 1 ? '' : 's'}
+                            </span>
+                          </span>
+                        </button>
+                        {!noChaoDaPlanta && ehGestor && editando && (
+                          <Botao
+                            tamanho="sm"
+                            variante="secundario"
+                            onClick={() => colocarQuadroNaPlanta(q)}
+                          >
+                            <Plus size={13} /> Planta
+                          </Botao>
+                        )}
+                      </div>
+
+                      {armado && (
+                        <div className="mt-1.5 space-y-1 border-t border-amber-200 pt-1.5">
+                          {noChao.filter((m) => m.quadro_id === q.quadro_id).map((m) => (
+                            <div key={m.ativo_id} className="flex items-center gap-2 rounded bg-white px-2 py-1 text-xs">
+                              <Cable size={12} className="shrink-0 text-slate-400" />
+                              <span className="min-w-0 flex-1 truncate text-slate-700">{m.nome}</span>
+                              {ehGestor && editando && (
+                                <button
+                                  onClick={() => abrirEdicaoCabo(m.ativo_id)}
+                                  className="shrink-0 text-sky-600 hover:text-sky-700"
+                                >
+                                  especificar
+                                </button>
+                              )}
+                            </div>
+                          ))}
+                          {noChao.filter((m) => m.quadro_id === q.quadro_id).length === 0 && (
+                            <p className="px-2 py-1 text-xs text-slate-400">Nenhuma máquina ligada ainda.</p>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            </Cartao>
+          )}
+
+          {esquemaAtivo && !esquemaEnergiaAtivo && (
             <Cartao className="p-4">
               <div className="flex items-center justify-between gap-2">
                 <p className="text-sm font-semibold" style={{ color: corAtiva }}>
@@ -1084,6 +1374,92 @@ export default function Planta() {
           {cartaoDetalhe}
         </div>
       )}
+
+      <Modal
+        aberto={Boolean(caboEditando)}
+        aoFechar={() => setCaboEditando(null)}
+        titulo="Especificação do cabo"
+        rodape={
+          <>
+            <Botao variante="secundario" onClick={() => setCaboEditando(null)}>Cancelar</Botao>
+            <Botao onClick={salvarCabo} carregando={salvarCaboDb.isPending}>
+              <Save size={14} /> Salvar
+            </Botao>
+          </>
+        }
+      >
+        <div className="space-y-3">
+          <Campo rotulo="Descrição do cabo">
+            <Entrada
+              value={campoCabo.cabo_descricao}
+              onChange={(e) => setCampoCabo((v) => ({ ...v, cabo_descricao: e.target.value }))}
+              placeholder="Ex.: PP 3x2,5mm² + terra"
+            />
+          </Campo>
+          <div className="grid grid-cols-2 gap-2">
+            <Campo rotulo="Bitola (mm²)">
+              <Entrada
+                type="text"
+                inputMode="decimal"
+                value={campoCabo.cabo_bitola_mm2}
+                onChange={(e) => setCampoCabo((v) => ({ ...v, cabo_bitola_mm2: e.target.value }))}
+              />
+            </Campo>
+            <Campo rotulo="Comprimento (m)">
+              <Entrada
+                type="text"
+                inputMode="decimal"
+                value={campoCabo.cabo_comprimento_m}
+                onChange={(e) => setCampoCabo((v) => ({ ...v, cabo_comprimento_m: e.target.value }))}
+              />
+            </Campo>
+          </div>
+          <Campo rotulo="Tipo de instalação">
+            <Selecao
+              value={campoCabo.cabo_tipo_instalacao}
+              onChange={(e) => setCampoCabo((v) => ({ ...v, cabo_tipo_instalacao: e.target.value }))}
+            >
+              {TIPOS_INSTALACAO_CABO.map((t) => (
+                <option key={t.valor} value={t.valor}>{t.label}</option>
+              ))}
+            </Selecao>
+          </Campo>
+          <div className="grid grid-cols-2 gap-2">
+            <Campo rotulo="Disjuntor">
+              <Entrada
+                value={campoCabo.disjuntor}
+                onChange={(e) => setCampoCabo((v) => ({ ...v, disjuntor: e.target.value }))}
+                placeholder="Ex.: 32A tripolar"
+              />
+            </Campo>
+            <Campo rotulo="Circuito">
+              <Entrada
+                value={campoCabo.circuito}
+                onChange={(e) => setCampoCabo((v) => ({ ...v, circuito: e.target.value }))}
+                placeholder="Ex.: C-14"
+              />
+            </Campo>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <Campo rotulo="Tensão (V)">
+              <Entrada
+                type="text"
+                inputMode="decimal"
+                value={campoCabo.ficha_tensao_v}
+                onChange={(e) => setCampoCabo((v) => ({ ...v, ficha_tensao_v: e.target.value }))}
+              />
+            </Campo>
+            <Campo rotulo="Corrente nominal (A)">
+              <Entrada
+                type="text"
+                inputMode="decimal"
+                value={campoCabo.corrente_nominal_a}
+                onChange={(e) => setCampoCabo((v) => ({ ...v, corrente_nominal_a: e.target.value }))}
+              />
+            </Campo>
+          </div>
+        </div>
+      </Modal>
     </div>
   )
 }

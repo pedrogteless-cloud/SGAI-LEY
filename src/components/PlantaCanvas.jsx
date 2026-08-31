@@ -2,6 +2,7 @@ import { useCallback, useEffect, useImperativeHandle, useRef, useState } from 'r
 import {
   caixa, cor, encaixar, prender, divisoes, endereco, letraFaixa,
   caixaEtapa, pontoNaBorda, saidaNaParede, ALTURA_ETAPA, PASSO,
+  caixaQuadro,
 } from '../lib/planta'
 
 /**
@@ -50,6 +51,15 @@ export default function PlantaCanvas({
   aoMoverEtapa,
   aoTerminarArrasteEtapa,
   passoEncaixe = PASSO,
+  // ------------------------------------------------------------ energia
+  modoEnergia = false,
+  quadros = [],
+  quadroSelecionado,
+  aoSelecionarQuadro,
+  aoMoverQuadro,
+  aoTerminarArrasteQuadro,
+  aoLigarMaquina,
+  aoClicarCabo,
 }) {
   const svgRef = useRef(null)
   const [vista, setVista] = useState({ x: 0, y: 0, k: 1 })
@@ -114,7 +124,7 @@ export default function PlantaCanvas({
   const distancia = (a, b) => Math.hypot(a.x - b.x, a.y - b.y)
   const meio = (a, b) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 })
 
-  const aoApertar = (e, maquina = null) => {
+  const aoApertar = (e, maquina = null, quadro = null) => {
     // Prender o ponteiro mantém o arrasto vivo mesmo quando o dedo sai do
     // desenho. Falha em alguns casos de borda (ponteiro já solto, por exemplo)
     // e não pode derrubar o resto do gesto por causa disso.
@@ -129,6 +139,18 @@ export default function PlantaCanvas({
       const [a, b] = [...ponteiros.current.values()]
       gesto.current = { tipo: 'pinca', dist: distancia(a, b) }
       setArrastando(null)
+      return
+    }
+
+    if (quadro && modoEditar) {
+      const p = paraMetros(e)
+      gesto.current = {
+        tipo: 'quadro',
+        id: quadro.quadro_id,
+        dx: p.x - Number(quadro.pos_x_m),
+        dy: p.y - Number(quadro.pos_y_m),
+      }
+      setArrastando(`q-${quadro.quadro_id}`)
       return
     }
 
@@ -181,6 +203,19 @@ export default function PlantaCanvas({
       return
     }
 
+    if (gesto.current.tipo === 'quadro') {
+      const p = paraMetros(e)
+      const preso = prender(
+        encaixar(p.x - gesto.current.dx, passoEncaixe),
+        encaixar(p.y - gesto.current.dy, passoEncaixe),
+        0,
+        0,
+        planta
+      )
+      aoMoverQuadro?.(gesto.current.id, preso.x, preso.y)
+      return
+    }
+
     if (gesto.current.tipo === 'etapa') {
       const p = paraMetros(e)
       const x = Math.min(Math.max(encaixar(p.x - gesto.current.dx, passoEncaixe), 1), comp - 1)
@@ -218,6 +253,7 @@ export default function PlantaCanvas({
     ponteiros.current.delete(e.pointerId)
     if (gesto.current?.tipo === 'maquina') aoTerminarArraste?.(gesto.current.id)
     if (gesto.current?.tipo === 'etapa') aoTerminarArrasteEtapa?.(gesto.current.id)
+    if (gesto.current?.tipo === 'quadro') aoTerminarArrasteQuadro?.(gesto.current.id)
     if (ponteiros.current.size === 0) {
       gesto.current = null
       setArrastando(null)
@@ -465,6 +501,10 @@ export default function PlantaCanvas({
               key={m.ativo_id}
               onPointerDown={(e) => {
                 e.stopPropagation()
+                if (modoEnergia && quadroSelecionado) {
+                  aoLigarMaquina?.(m.ativo_id)
+                  return
+                }
                 aoSelecionar?.(m)
                 aoApertar(e, m)
               }}
@@ -553,6 +593,107 @@ export default function PlantaCanvas({
             </g>
           )
         })}
+
+        {/* -------------------------------------------------------- energia
+            Cabo do quadro até a máquina, clipado na borda das duas caixas
+            (senão a linha entra por baixo do retângulo e a ponta some).
+            Anima só quando a máquina está de fato operando — parada não
+            "puxa corrente", é literalmente isso que se quer enxergar. */}
+        {modoEnergia && (
+          <g>
+            {quadros
+              .filter((q) => q.pos_x_m != null)
+              .map((q) => {
+                const cQ = caixaQuadro(q)
+                const ligadas = maquinas.filter(
+                  (m) => m.quadro_id === q.quadro_id && m.pos_x_m != null && m.pos_y_m != null
+                )
+                return ligadas.map((m) => {
+                  const cM = caixa(m)
+                  const cMc = { ...cM, cx: cM.x + cM.w / 2, cy: cM.y + cM.h / 2 }
+                  const a = pontoNaBorda(cQ, cMc.cx, cMc.cy, 0.15)
+                  const b = pontoNaBorda(cMc, cQ.cx, cQ.cy, 0.15)
+                  const operando = m.situacao === 'operando'
+                  return (
+                    <line
+                      key={`cabo-${q.quadro_id}-${m.ativo_id}`}
+                      x1={a.x}
+                      y1={a.y}
+                      x2={b.x}
+                      y2={b.y}
+                      stroke={corEsquema}
+                      strokeWidth={0.28}
+                      strokeLinecap="round"
+                      strokeDasharray={operando ? '0.5 0.35' : '0.22 0.5'}
+                      opacity={operando ? 0.95 : 0.45}
+                      className={operando ? 'cabo-fluxo' : undefined}
+                      style={{ cursor: 'pointer' }}
+                      onPointerDown={(e) => {
+                        e.stopPropagation()
+                        aoClicarCabo?.(m.ativo_id)
+                      }}
+                    />
+                  )
+                })
+              })}
+
+            {quadros
+              .filter((q) => q.pos_x_m != null)
+              .map((q) => {
+                const cQ = caixaQuadro(q)
+                const armado = quadroSelecionado === q.quadro_id
+                return (
+                  <g
+                    key={q.quadro_id}
+                    onPointerDown={(e) => {
+                      e.stopPropagation()
+                      aoSelecionarQuadro?.(armado ? null : q)
+                      aoApertar(e, null, q)
+                    }}
+                    style={{ cursor: modoEditar ? 'move' : 'pointer' }}
+                  >
+                    {armado && (
+                      <circle cx={cQ.cx} cy={cQ.cy} r={cQ.w * 0.95} fill="none"
+                        stroke={corEsquema} strokeWidth={0.14} strokeDasharray="0.3 0.3" opacity={0.7} />
+                    )}
+                    <rect
+                      x={cQ.x}
+                      y={cQ.y}
+                      width={cQ.w}
+                      height={cQ.h}
+                      rx={0.2}
+                      fill="#0f172a"
+                      stroke={armado ? corEsquema : '#ffffff'}
+                      strokeWidth={armado ? 0.24 : 0.14}
+                      transform={`rotate(45 ${cQ.cx} ${cQ.cy})`}
+                    />
+                    <text
+                      x={cQ.cx}
+                      y={cQ.cy + 0.42}
+                      fontSize={0.85}
+                      fill="#ffffff"
+                      textAnchor="middle"
+                      fontWeight="700"
+                      pointerEvents="none"
+                    >
+                      ⚡
+                    </text>
+                    <text
+                      x={cQ.cx}
+                      y={cQ.y - 0.35}
+                      fontSize={1.05}
+                      fill={corEsquema}
+                      textAnchor="middle"
+                      fontWeight="700"
+                      pointerEvents="none"
+                    >
+                      {q.tag || q.nome}
+                    </text>
+                  </g>
+                )
+              })}
+          </g>
+        )}
 
         {/* ------------------------------------------------ fluxo do processo
             Desenhado por cima das máquinas de propósito: o caminho é a leitura
