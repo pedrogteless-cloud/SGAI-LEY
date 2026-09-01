@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Navigate } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { Botao, Campo, Entrada, Erro } from '../components/ui'
+import logoLey from '../assets/logo-ley.jpg'
 
 export default function Entrar() {
   const { sessao, entrar, carregando } = useAuth()
@@ -33,11 +34,9 @@ export default function Entrar() {
     <div className="flex min-h-screen items-center justify-center bg-slate-100 px-4">
       <div className="w-full max-w-sm">
         <div className="mb-6 text-center">
-          <div className="mx-auto mb-3 flex size-12 items-center justify-center rounded-xl bg-slate-900 text-lg font-bold text-sky-400">
-            S
-          </div>
+          <img src={logoLey} alt="Ley Colchões" className="mx-auto mb-3 h-10 w-auto" />
           <h1 className="text-xl font-bold text-slate-900">SGAI</h1>
-          <p className="text-sm text-slate-500">Controle de máquinas e manutenção · Ley Colchões</p>
+          <p className="text-sm text-slate-500">Controle de máquinas e manutenção</p>
         </div>
 
         <form

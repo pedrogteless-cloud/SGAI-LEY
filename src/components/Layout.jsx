@@ -8,6 +8,7 @@ import {
 import { useAuth } from '../hooks/useAuth'
 import { useTabela } from '../hooks/useDados'
 import DefinirPin from './DefinirPin'
+import logoLey from '../assets/logo-ley.jpg'
 
 // Agrupado por assunto, não por ordem de criação — assim quem procura
 // "onde mexo nas peças" ou "onde vejo a planta" acha mais rápido do
@@ -170,13 +171,9 @@ export default function Layout() {
 
   const marca = (
     <div className="flex items-center gap-2.5 px-5 py-4">
-      <div className="flex size-8 items-center justify-center rounded-lg bg-slate-900 text-sm font-bold text-sky-400">
-        S
-      </div>
-      <div>
-        <p className="text-sm leading-tight font-bold text-slate-900">SGAI</p>
-        <p className="text-[11px] leading-tight text-slate-400">Ley Colchões</p>
-      </div>
+      <img src={logoLey} alt="Ley Colchões" className="h-7 w-auto" />
+      <div className="h-6 w-px bg-slate-200" />
+      <p className="text-xs font-semibold tracking-wide text-slate-400">SGAI</p>
     </div>
   )
 
