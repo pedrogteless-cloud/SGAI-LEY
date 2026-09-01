@@ -250,9 +250,9 @@ export default function ReportarQR() {
           <button
             type="button"
             onClick={() => setModo('gasto')}
-            className="mt-4 flex w-full items-center justify-center gap-1 text-xs text-slate-400 hover:text-slate-600"
+            className="mt-4 flex w-full items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white py-2 text-sm font-medium text-slate-500 hover:border-slate-300 hover:text-slate-700"
           >
-            <Wrench size={11} /> é técnico e já fez o serviço? lançar gasto
+            <Wrench size={14} /> É técnico e já fez o serviço? Lançar gasto
           </button>
         )}
 
