@@ -248,9 +248,13 @@ create table if not exists fornecedores (
 );
 
 -- prestadores de manutenção de campo (pro picklist "quem fez o conserto")
-insert into fornecedores (nome, ativo)
-select v.nome, true
-from (values ('João Paulo Manutenção'), ('Mário Eletricista'), ('Idelfonso Almeida')) as v(nome)
+insert into fornecedores (nome, observacoes, ativo)
+select v.nome, v.observacoes, true
+from (values
+  ('João Paulo Manutenção', 'Manutenção interna da fábrica.'),
+  ('Mário Eletricista', 'Presta serviços elétricos avulsos.'),
+  ('Idelfonso Almeida', 'Eletricista, bastante experiência em fábrica de colchão.')
+) as v(nome, observacoes)
 where not exists (select 1 from fornecedores f where f.nome = v.nome);
 
 -- (11) fornecedor_servicos --------------------------------------------
