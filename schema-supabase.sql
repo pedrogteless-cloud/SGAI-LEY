@@ -252,8 +252,8 @@ insert into fornecedores (nome, observacoes, ativo)
 select v.nome, v.observacoes, true
 from (values
   ('João Paulo Manutenção', 'Manutenção interna da fábrica.'),
-  ('Mário Eletricista', 'Presta serviços elétricos avulsos.'),
-  ('Idelfonso Almeida', 'Eletricista, bastante experiência em fábrica de colchão.')
+  ('Mário Eletricista', null),
+  ('Idelfonso Almeida', null)
 ) as v(nome, observacoes)
 where not exists (select 1 from fornecedores f where f.nome = v.nome);
 
