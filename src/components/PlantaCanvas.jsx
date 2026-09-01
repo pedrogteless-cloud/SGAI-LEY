@@ -86,6 +86,13 @@ export default function PlantaCanvas({
     encaixar: encaixarNaTela,
     aproximar: () => setVista((v) => ({ ...v, k: limitar(v.k * 1.3, MIN_K, MAX_K) })),
     afastar: () => setVista((v) => ({ ...v, k: limitar(v.k / 1.3, MIN_K, MAX_K) })),
+    // centraliza a câmera num ponto do galpão (em metros), com um zoom
+    // que dá pra ver a máquina sem precisar catar com o dedo — usado
+    // pela busca por nome/código.
+    centralizar: (mx, my, k = 2.4) => {
+      const kk = limitar(k, MIN_K, MAX_K)
+      setVista({ k: kk, x: comp / 2 - mx * kk, y: larg / 2 - my * kk })
+    },
   }))
 
   /** Ponto do evento nas unidades do viewBox (antes do zoom/arrasto). */

@@ -4,7 +4,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Maximize2, Plus, Minus, Move, Check, RotateCw, MapPin, X, ArrowRight, ArrowLeft,
   ArrowUp, ArrowDown, LayoutGrid, Workflow, Zap, Flame, Layers, Trash2, Link2, Save,
-  PlugZap, Cable,
+  PlugZap, Cable, Search, Expand, Shrink,
 } from 'lucide-react'
 import {
   useTabela, useUnidades, useQuadros, useAtualizar, useInvalidar, useInserir, useRemover,
@@ -68,6 +68,9 @@ export default function Planta() {
 
   const [unidadeId, setUnidadeId] = useState('')
   const [camada, setCamada] = useState('situacao')
+  const [busca, setBusca] = useState('')
+  const [buscaAberta, setBuscaAberta] = useState(false)
+  const [expandido, setExpandido] = useState(false)
   const [editando, setEditando] = useState(false)
   const [selecionada, setSelecionada] = useState(null)
   const [sobMouse, setSobMouse] = useState(null)
@@ -207,6 +210,29 @@ export default function Planta() {
     [daUnidade, planta?.id]
   )
 
+  // busca rápida: achar uma máquina pelo nome/código/endereço sem precisar
+  // catar com o dedo no mapa — importante quando tem muita máquina no chão.
+  const resultadosBusca = useMemo(() => {
+    const termo = busca.trim().toLowerCase()
+    if (!termo) return []
+    return noChao
+      .filter(
+        (m) =>
+          m.nome?.toLowerCase().includes(termo) ||
+          m.codigo?.toLowerCase().includes(termo) ||
+          m.endereco?.toLowerCase().includes(termo)
+      )
+      .slice(0, 6)
+  }, [busca, noChao])
+
+  const irParaMaquina = (m) => {
+    const c = caixa(m)
+    setSelecionada(m.ativo_id)
+    camera.current?.centralizar(c.x + c.w / 2, c.y + c.h / 2)
+    setBusca('')
+    setBuscaAberta(false)
+  }
+
   const ctx = useMemo(() => contexto(noChao, quadros.data || []), [noChao, quadros.data])
   const itensLegenda = useMemo(() => legenda(camada, noChao, ctx), [camada, noChao, ctx])
 
@@ -214,6 +240,19 @@ export default function Planta() {
   const detalhe = selecionada
     ? maquinaSelecionada || foraDaPlanta.find((m) => m.ativo_id === selecionada)
     : sobMouse
+
+  // tela cheia: útil no celular, onde o mapa some numa faixa de 38vh — aqui
+  // ele toma a tela toda pra tocar e ler o endereço das máquinas direito
+  useEffect(() => {
+    if (!expandido) return
+    document.body.style.overflow = 'hidden'
+    const aoTeclar = (e) => e.key === 'Escape' && setExpandido(false)
+    window.addEventListener('keydown', aoTeclar)
+    return () => {
+      document.body.style.overflow = ''
+      window.removeEventListener('keydown', aoTeclar)
+    }
+  }, [expandido])
 
   useEffect(() => {
     if (!maquinaSelecionada || !editando || !ehGestor) {
@@ -909,6 +948,48 @@ export default function Planta() {
         </div>
       </div>
 
+      {noChao.length > 0 && (
+        <div className="relative max-w-xs">
+          <Search size={15} className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-slate-400" />
+          <input
+            type="text"
+            value={busca}
+            onChange={(e) => {
+              setBusca(e.target.value)
+              setBuscaAberta(true)
+            }}
+            onFocus={() => setBuscaAberta(true)}
+            onBlur={() => setTimeout(() => setBuscaAberta(false), 150)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && resultadosBusca[0]) irParaMaquina(resultadosBusca[0])
+              if (e.key === 'Escape') { setBusca(''); e.target.blur() }
+            }}
+            placeholder="Achar uma máquina no mapa…"
+            className="campo pl-9"
+          />
+          {buscaAberta && busca.trim() && (
+            <div className="absolute z-20 mt-1 w-full overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg">
+              {resultadosBusca.length === 0 ? (
+                <p className="px-3 py-2 text-sm text-slate-400">Nenhuma máquina posicionada com esse nome.</p>
+              ) : (
+                resultadosBusca.map((m) => (
+                  <button
+                    key={m.ativo_id}
+                    type="button"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => irParaMaquina(m)}
+                    className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-slate-50"
+                  >
+                    <span className="min-w-0 truncate font-medium text-slate-800">{m.nome}</span>
+                    <span className="shrink-0 font-mono text-xs text-slate-400">{m.endereco}</span>
+                  </button>
+                ))
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* esquemas: cada um é um mapa próprio (Produção, Energia, Bombeiros…)
           sobre a mesma planta. Um por vez, com a cor dele. */}
       <div className="flex flex-wrap items-center gap-2">
@@ -1034,8 +1115,16 @@ export default function Planta() {
               700px e estoura a tela do celular inteira. Por isso a proporção
               só entra a partir de lg, onde a altura é auto. */}
           <Cartao
-            className="h-[38vh] overflow-hidden lg:h-auto lg:aspect-[var(--proporcao)]"
-            style={{ '--proporcao': `${Number(planta.comprimento_m) + 12} / ${Number(planta.largura_m) + 12}` }}
+            className={
+              expandido
+                ? 'fixed inset-0 z-40 h-screen w-screen overflow-hidden !rounded-none'
+                : 'h-[38vh] overflow-hidden lg:h-auto lg:aspect-[var(--proporcao)]'
+            }
+            style={
+              expandido
+                ? undefined
+                : { '--proporcao': `${Number(planta.comprimento_m) + 12} / ${Number(planta.largura_m) + 12}` }
+            }
           >
             {noChao.length === 0 && !editando ? (
               <Vazio
@@ -1085,8 +1174,8 @@ export default function Planta() {
           </Cartao>
 
           {rotaEditando && (
-            <div className="nao-imprimir absolute top-3 left-3 z-10 flex max-w-[calc(100%-1.5rem)] flex-wrap
-              items-center gap-2 rounded-lg bg-slate-900/95 px-3 py-2 text-xs text-white shadow-lg">
+            <div className={`nao-imprimir ${expandido ? 'fixed' : 'absolute'} top-3 left-3 z-50 flex max-w-[calc(100%-1.5rem)] flex-wrap
+              items-center gap-2 rounded-lg bg-slate-900/95 px-3 py-2 text-xs text-white shadow-lg`}>
               <Cable size={14} className="shrink-0 text-amber-400" />
               <span>
                 Clique na planta pra marcar uma curva ({rotaEditando.pontos.length} até agora). Clique num ponto pra tirá-lo.
@@ -1122,8 +1211,8 @@ export default function Planta() {
             </div>
           )}
 
-          <div className="nao-imprimir absolute top-3 right-3 z-10 flex flex-col gap-1 rounded-lg
-            bg-white/95 p-1 shadow ring-1 ring-slate-200 lg:top-auto lg:bottom-3">
+          <div className={`nao-imprimir ${expandido ? 'fixed' : 'absolute'} top-3 right-3 z-50 flex flex-col gap-1 rounded-lg
+            bg-white/95 p-1 shadow ring-1 ring-slate-200 ${expandido ? '' : 'lg:top-auto lg:bottom-3'}`}>
             <button
               onClick={() => camera.current?.aproximar()}
               className="rounded p-1.5 text-slate-600 hover:bg-slate-100"
@@ -1144,6 +1233,14 @@ export default function Planta() {
               aria-label="Encaixar na tela"
             >
               <Maximize2 size={16} />
+            </button>
+            <button
+              onClick={() => setExpandido((v) => !v)}
+              className="rounded p-1.5 text-slate-600 hover:bg-slate-100"
+              aria-label={expandido ? 'Sair da tela cheia' : 'Ver em tela cheia'}
+              title={expandido ? 'Sair da tela cheia' : 'Ver em tela cheia'}
+            >
+              {expandido ? <Shrink size={16} /> : <Expand size={16} />}
             </button>
           </div>
         </div>
