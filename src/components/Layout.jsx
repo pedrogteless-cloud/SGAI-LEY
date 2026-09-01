@@ -96,11 +96,11 @@ export default function Layout() {
       ?.rotulo || 'SGAI'
 
   const navegacao = (
-    <nav className="flex flex-1 flex-col gap-3 px-3">
+    <nav className="flex flex-1 flex-col gap-4 overflow-y-auto px-3 py-1">
       {GRUPOS.map((grupo, i) => (
         <div key={grupo.titulo || `g${i}`} className="flex flex-col gap-0.5">
           {grupo.titulo && (
-            <p className="px-3 pb-1 text-[11px] font-semibold tracking-wide text-slate-400 uppercase">
+            <p className="px-3 pb-1.5 text-[10px] font-bold tracking-[0.1em] text-slate-400 uppercase">
               {grupo.titulo}
             </p>
           )}
@@ -113,21 +113,38 @@ export default function Layout() {
                 end={fim}
                 viewTransition
                 onClick={() => setMenuAberto(false)}
+                style={{ transitionTimingFunction: 'var(--ease-mola)' }}
                 className={({ isActive }) =>
-                  `group flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium
-                   transition-colors duration-150 ${
+                  `group relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm
+                   transition-all duration-200 ${
                     isActive
-                      ? 'bg-sky-50 text-sky-700'
-                      : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                      ? 'bg-sky-50 font-semibold text-sky-700'
+                      : 'font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900'
                   }`
                 }
               >
-                <Icone size={17} className="shrink-0 transition-transform duration-150 group-hover:scale-110" />
-                <span className="flex-1">{rotulo}</span>
-                {n > 0 && (
-                  <span className="rounded-full bg-red-100 px-1.5 py-0.5 text-[11px] font-semibold text-red-700">
-                    {n}
-                  </span>
+                {({ isActive }) => (
+                  <>
+                    {/* Fio vertical na borda esquerda do item ativo: marca
+                        onde você está sem precisar gritar com cor. */}
+                    <span
+                      aria-hidden
+                      className={`absolute top-1.5 bottom-1.5 -left-3 w-[3px] rounded-r-full bg-sky-500
+                        transition-all duration-300 ${isActive ? 'opacity-100' : 'scale-y-0 opacity-0'}`}
+                      style={{ transitionTimingFunction: 'var(--ease-mola)' }}
+                    />
+                    <Icone
+                      size={17}
+                      strokeWidth={isActive ? 2.2 : 1.85}
+                      className="shrink-0 transition-transform duration-200 group-hover:scale-110 group-active:scale-95"
+                    />
+                    <span className="flex-1 truncate">{rotulo}</span>
+                    {n > 0 && (
+                      <span className="rounded-full bg-red-100 px-1.5 py-0.5 text-[11px] font-bold text-red-700 tabular-nums">
+                        {n}
+                      </span>
+                    )}
+                  </>
                 )}
               </NavLink>
             )
@@ -137,33 +154,55 @@ export default function Layout() {
     </nav>
   )
 
+  const iniciais = (perfil?.nome || '?')
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((p) => p[0])
+    .join('')
+    .toUpperCase()
+
+  const botaoRodape = `flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium
+    text-slate-600 transition-all duration-200 hover:bg-slate-100 hover:text-slate-900
+    active:scale-[0.98]`
+
   const rodape = (
-    <div className="border-t border-slate-200 p-3">
-      <div className="mb-2 px-2">
-        <p className="truncate text-sm font-medium text-slate-800">{perfil?.nome}</p>
-        <p className="text-xs text-slate-400 capitalize">
-          {perfil?.papel}
-          {perfil?.unidade?.nome ? ` · ${perfil.unidade.nome}` : ''}
-        </p>
+    <div className="p-3" style={{ borderTop: '1px solid var(--traco)' }}>
+      <div className="mb-2 flex items-center gap-2.5 px-2 py-1">
+        <div
+          className="flex size-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br
+            from-sky-500 to-indigo-600 text-[11px] font-bold text-white"
+          style={{ boxShadow: '0 2px 6px -1px rgb(2 132 199 / 0.45)' }}
+        >
+          {iniciais}
+        </div>
+        <div className="min-w-0">
+          <p className="truncate text-sm font-semibold text-slate-800">{perfil?.nome}</p>
+          <p className="truncate text-xs text-slate-400 capitalize">
+            {perfil?.papel}
+            {perfil?.unidade?.nome ? ` · ${perfil.unidade.nome}` : ''}
+          </p>
+        </div>
       </div>
       {(ehGestor || ehTecnico) && (
         <button
           onClick={() => setPinAberto(true)}
-          className="mb-1 flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+          className={`mb-0.5 ${botaoRodape}`}
           title="PIN pra lançar gasto pelo QR da máquina"
         >
-          <KeyRound size={17} /> PIN de campo
+          <KeyRound size={17} strokeWidth={1.85} /> PIN de campo
         </button>
       )}
-      <button onClick={() => setEscuro((valor) => !valor)} className="mb-1 flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900" title={escuro ? 'Usar modo claro' : 'Usar modo escuro'}>
-        {escuro ? <Sun size={17} /> : <Moon size={17} />} {escuro ? 'Modo claro' : 'Modo escuro'}
-      </button>
       <button
-        onClick={sairDoSistema}
-        className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm
-          font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+        onClick={() => setEscuro((valor) => !valor)}
+        className={`mb-0.5 ${botaoRodape}`}
+        title={escuro ? 'Usar modo claro' : 'Usar modo escuro'}
       >
-        <LogOut size={17} />
+        {escuro ? <Sun size={17} strokeWidth={1.85} /> : <Moon size={17} strokeWidth={1.85} />}
+        {escuro ? 'Modo claro' : 'Modo escuro'}
+      </button>
+      <button onClick={sairDoSistema} className={botaoRodape}>
+        <LogOut size={17} strokeWidth={1.85} />
         Sair
       </button>
     </div>
@@ -171,16 +210,22 @@ export default function Layout() {
 
   const marca = (
     <div className="flex items-center gap-2.5 px-5 py-4">
-      <img src={logoLey} alt="Ley Colchões" className="h-7 w-auto" />
-      <div className="h-6 w-px bg-slate-200" />
-      <p className="text-xs font-semibold tracking-wide text-slate-400">SGAI</p>
+      {/* A logo é azul-marinho sobre branco. No tema escuro ela ganha uma
+          placa branca em vez de ser recolorida: cor de marca não se
+          inverte, se emoldura. */}
+      <img src={logoLey} alt="Ley Colchões" className="marca-logo h-7 w-auto" />
+      <div className="h-6 w-px" style={{ backgroundColor: 'var(--traco-forte)' }} />
+      <p className="text-xs font-bold tracking-[0.08em] text-slate-400">SGAI</p>
     </div>
   )
 
   return (
     <div className="flex min-h-screen">
       {/* Barra lateral fixa (desktop) */}
-      <aside className="nao-imprimir fixed inset-y-0 left-0 hidden w-60 flex-col border-r border-slate-200 bg-white lg:flex">
+      <aside
+        className="nao-imprimir fixed inset-y-0 left-0 hidden w-60 flex-col lg:flex"
+        style={{ backgroundColor: 'var(--sup-cartao)', borderRight: '1px solid var(--traco)' }}
+      >
         {marca}
         {navegacao}
         {rodape}
@@ -189,11 +234,26 @@ export default function Layout() {
       {/* Gaveta (mobile) */}
       {menuAberto && (
         <div className="nao-imprimir fixed inset-0 z-50 lg:hidden">
-          <div className="absolute inset-0 bg-slate-900/50" onClick={() => setMenuAberto(false)} />
-          <aside className="relative flex h-full w-64 flex-col overflow-y-auto bg-white">
+          <div
+            className="absolute inset-0 bg-slate-900/40 backdrop-blur-[3px]"
+            style={{ animation: 'sgai-entra 0.2s ease-out both' }}
+            onClick={() => setMenuAberto(false)}
+          />
+          <aside
+            className="relative flex h-full w-[17rem] flex-col overflow-y-auto"
+            style={{
+              backgroundColor: 'var(--sup-cartao)',
+              boxShadow: 'var(--alt-4)',
+              animation: 'sgai-gaveta 0.32s var(--ease-mola) both',
+            }}
+          >
             <div className="flex items-center justify-between pr-3">
               {marca}
-              <button onClick={() => setMenuAberto(false)} className="p-2 text-slate-400">
+              <button
+                onClick={() => setMenuAberto(false)}
+                className="rounded-lg p-2 text-slate-400 transition-colors hover:bg-slate-100"
+                aria-label="Fechar menu"
+              >
                 <X size={20} />
               </button>
             </div>
@@ -204,14 +264,27 @@ export default function Layout() {
       )}
 
       <div className="flex min-w-0 flex-1 flex-col lg:pl-60">
-        <header className="nao-imprimir sticky top-0 z-30 flex items-center gap-3 border-b border-slate-200 bg-white/90 px-4 py-3 backdrop-blur lg:hidden">
-          <button onClick={() => setMenuAberto(true)} className="p-1 text-slate-600">
+        {/* Header do celular: fundo translúcido com desfoque, então o
+            conteúdo passa por baixo em vez de sumir atrás de uma faixa. */}
+        <header
+          className="nao-imprimir sticky top-0 z-30 flex items-center gap-3 px-4 py-3
+            backdrop-blur-xl lg:hidden"
+          style={{
+            backgroundColor: 'color-mix(in srgb, var(--sup-cartao) 82%, transparent)',
+            borderBottom: '1px solid var(--traco)',
+          }}
+        >
+          <button
+            onClick={() => setMenuAberto(true)}
+            className="-m-1 rounded-lg p-1 text-slate-600 transition-transform active:scale-90"
+            aria-label="Abrir menu"
+          >
             <Menu size={22} />
           </button>
-          <span className="text-sm font-bold text-slate-900">{paginaAtual}</span>
+          <span className="text-sm font-semibold text-slate-900">{paginaAtual}</span>
         </header>
 
-        <main className="flex-1 px-4 py-6 sm:px-6 lg:px-8">
+        <main className="flex-1 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
           <Outlet />
         </main>
       </div>

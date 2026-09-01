@@ -1,7 +1,82 @@
 @import 'tailwindcss';
 
+/* Inter de verdade, empacotada junto com o app — nada de buscar em CDN:
+   a fábrica não depende da internet estar boa pro sistema abrir bonito.
+   Só o alfabeto latino entra; grego, cirílico e vietnamita seriam peso
+   morto num sistema que só fala português. */
+@font-face {
+  font-family: 'Inter Variable';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url('@fontsource-variable/inter/files/inter-latin-wght-normal.woff2') format('woff2-variations');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC,
+    U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215,
+    U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'Inter Variable';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url('@fontsource-variable/inter/files/inter-latin-ext-wght-normal.woff2') format('woff2-variations');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304,
+    U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0,
+    U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+/* =====================================================================
+   FUNDAÇÕES
+   =====================================================================
+   Um punhado de variáveis manda no visual inteiro. Trocar o tema, a cor
+   da marca ou o arredondamento é mexer aqui, não em 17 telas.        */
+
 @theme {
-  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-sans: 'Inter Variable', 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+
+  /* Curvas de movimento. A primeira é a de sempre (saída suave); a
+     segunda tem um empurrãozinho no fim, que é o que dá sensação de
+     coisa física respondendo ao toque. */
+  --ease-saida: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-mola: cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+:root {
+  /* superfícies, do fundo pro que está mais "em cima" */
+  --sup-fundo: #f6f8fa;
+  --sup-cartao: #ffffff;
+  --sup-alto: #ffffff;
+  --sup-suave: #f1f5f9;
+
+  /* traços e divisórias — fio de cabelo, nunca uma cerca */
+  --traco: rgb(15 23 42 / 0.08);
+  --traco-forte: rgb(15 23 42 / 0.14);
+
+  /* Elevação em camadas: uma sombra curta que "cola" o objeto na página
+     e uma longa e difusa que dá a altura. Uma sombra só sempre parece
+     adesivo; duas parecem objeto. */
+  --alt-1: 0 1px 2px rgb(15 23 42 / 0.04), 0 1px 3px rgb(15 23 42 / 0.03);
+  --alt-2: 0 1px 2px rgb(15 23 42 / 0.04), 0 4px 12px -2px rgb(15 23 42 / 0.07);
+  --alt-3: 0 2px 4px rgb(15 23 42 / 0.04), 0 12px 28px -6px rgb(15 23 42 / 0.12);
+  --alt-4: 0 4px 8px rgb(15 23 42 / 0.05), 0 24px 48px -12px rgb(15 23 42 / 0.18);
+}
+
+.dark {
+  --sup-fundo: #0a0f1a;
+  --sup-cartao: #121a29;
+  --sup-alto: #1a2536;
+  --sup-suave: #1a2536;
+
+  --traco: rgb(148 163 184 / 0.14);
+  --traco-forte: rgb(148 163 184 / 0.24);
+
+  /* No escuro a sombra some; quem cria a altura é uma linha de luz em
+     cima da peça, como acontece com objeto real embaixo de luz. */
+  --alt-1: 0 1px 2px rgb(0 0 0 / 0.4), inset 0 1px 0 rgb(255 255 255 / 0.04);
+  --alt-2: 0 2px 8px rgb(0 0 0 / 0.45), inset 0 1px 0 rgb(255 255 255 / 0.05);
+  --alt-3: 0 8px 28px -6px rgb(0 0 0 / 0.6), inset 0 1px 0 rgb(255 255 255 / 0.06);
+  --alt-4: 0 20px 48px -12px rgb(0 0 0 / 0.7), inset 0 1px 0 rgb(255 255 255 / 0.07);
 }
 
 html {
@@ -9,51 +84,154 @@ html {
 }
 
 body {
-  @apply bg-slate-50 text-slate-800 antialiased;
+  background-color: var(--sup-fundo);
+  @apply text-slate-800 antialiased;
+  /* Inter fica bem melhor com o kerning e as ligaduras ligados, e com o
+     tamanho óptico acompanhando o corpo do texto. */
+  font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+  font-optical-sizing: auto;
 }
 
-/* Tema escuro global: cobre as classes utilitarias mais usadas no sistema,
-   mantendo a troca de tema leve e sem duplicar todos os componentes. */
-.dark body { @apply bg-slate-950 text-slate-200; }
-.dark .bg-white { background-color: #111827; }
-.dark .bg-slate-50 { background-color: #0f172a; }
-.dark .bg-slate-100 { background-color: #1e293b; }
-.dark .bg-slate-200 { background-color: #334155; }
-.dark .border-slate-200, .dark .border-slate-300 { border-color: #334155; }
-.dark .text-slate-900 { color: #f8fafc; }
+/* Títulos: quanto maior o corpo, mais apertado o espaço entre letras —
+   sem isso, título grande parece esparramado. */
+h1, h2, h3, h4 {
+  letter-spacing: -0.018em;
+}
+
+h1 {
+  letter-spacing: -0.028em;
+}
+
+/* Número em tabela e indicador precisa de dígito de largura fixa, senão
+   a coluna "dança" a cada atualização e a vírgula desalinha. */
+.numero,
+table td,
+table th {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum';
+}
+
+/* ------------------------------------------------------ tema escuro */
+/* O sistema tem 17 telas escritas com as classes utilitárias direto.
+   Em vez de reescrever todas, o tema escuro remapeia o significado de
+   cada classe — "bg-white" quer dizer "superfície de cartão", e no
+   escuro superfície de cartão é outra cor. */
+.dark body { @apply text-slate-200; }
+
+.dark .bg-white { background-color: var(--sup-cartao); }
+.dark .bg-slate-50 { background-color: var(--sup-suave); }
+.dark .bg-slate-100 { background-color: var(--sup-alto); }
+.dark .bg-slate-200 { background-color: #24324a; }
+.dark .bg-slate-50\/70 { background-color: rgb(26 37 54 / 0.7); }
+.dark .bg-white\/90 { background-color: rgb(18 26 41 / 0.9); }
+.dark .bg-white\/95 { background-color: rgb(18 26 41 / 0.95); }
+
+.dark .border-slate-200,
+.dark .border-slate-300,
+.dark .border-slate-100 { border-color: var(--traco); }
+.dark .ring-slate-200,
+.dark .ring-slate-300 { --tw-ring-color: var(--traco); }
+.dark .divide-slate-100 > * + * { border-color: var(--traco); }
+
+.dark .text-slate-900 { color: #f1f5f9; }
 .dark .text-slate-800 { color: #e2e8f0; }
 .dark .text-slate-700 { color: #cbd5e1; }
-.dark .text-slate-600 { color: #94a3b8; }
-.dark .text-slate-500 { color: #94a3b8; }
-.dark .text-slate-400 { color: #64748b; }
-.dark .campo { background-color: #0f172a; border-color: #475569; color: #e2e8f0; }
-.dark .campo:disabled { background-color: #1e293b; color: #64748b; }
+.dark .text-slate-600 { color: #a9b6c8; }
+.dark .text-slate-500 { color: #93a3b8; }
+.dark .text-slate-400 { color: #74839a; }
 
-/* Campos de formulário compartilham a mesma base visual */
+/* As etiquetas coloridas (situação, prioridade, importância) são o
+   código de cor que a fábrica lê de longe. No escuro elas não podem
+   virar pastel lavado: fundo fica translúcido e o texto, luminoso. */
+.dark .bg-emerald-50, .dark .bg-emerald-100 { background-color: rgb(16 185 129 / 0.15); }
+.dark .bg-red-50, .dark .bg-red-100 { background-color: rgb(239 68 68 / 0.15); }
+.dark .bg-amber-50, .dark .bg-amber-100 { background-color: rgb(245 158 11 / 0.15); }
+.dark .bg-sky-50, .dark .bg-sky-100 { background-color: rgb(14 165 233 / 0.15); }
+.dark .bg-indigo-50, .dark .bg-indigo-100 { background-color: rgb(99 102 241 / 0.15); }
+.dark .bg-orange-50, .dark .bg-orange-100 { background-color: rgb(249 115 22 / 0.15); }
+
+.dark .text-emerald-700, .dark .text-emerald-800 { color: #6ee7b7; }
+.dark .text-red-700, .dark .text-red-800 { color: #fca5a5; }
+.dark .text-red-600 { color: #f87171; }
+.dark .text-amber-700, .dark .text-amber-800 { color: #fcd34d; }
+.dark .text-sky-700, .dark .text-sky-800 { color: #7dd3fc; }
+.dark .text-sky-600 { color: #38bdf8; }
+.dark .text-indigo-700 { color: #a5b4fc; }
+.dark .text-orange-700 { color: #fdba74; }
+
+.dark .ring-emerald-200 { --tw-ring-color: rgb(16 185 129 / 0.3); }
+.dark .ring-red-200 { --tw-ring-color: rgb(239 68 68 / 0.3); }
+.dark .ring-amber-200 { --tw-ring-color: rgb(245 158 11 / 0.3); }
+.dark .ring-sky-200 { --tw-ring-color: rgb(14 165 233 / 0.3); }
+.dark .ring-indigo-200 { --tw-ring-color: rgb(99 102 241 / 0.3); }
+
+.dark .hover\:bg-slate-50:hover { background-color: rgb(255 255 255 / 0.03); }
+.dark .hover\:bg-slate-100:hover { background-color: rgb(255 255 255 / 0.06); }
+
+.dark .campo { background-color: rgb(255 255 255 / 0.04); border-color: var(--traco-forte); color: #e2e8f0; }
+.dark .campo:disabled { background-color: rgb(255 255 255 / 0.02); color: #64748b; }
+.dark .esqueleto { background-color: rgb(255 255 255 / 0.07); }
+
+/* A logo é arquivo de fundo branco. No escuro, em vez de recolorir a
+   marca (o que nenhum manual de marca permite), ela ganha uma placa
+   branca com respiro — vira crachá, não mancha. */
+.dark .marca-logo {
+  background-color: #fff;
+  border-radius: 6px;
+  padding: 3px 6px;
+  box-sizing: content-box;
+}
+
+/* ------------------------------------------------------- superfícies */
+/* Usadas pelos primitivos novos, onde dá pra falar em token direto. */
+.superficie {
+  background-color: var(--sup-cartao);
+  box-shadow: var(--alt-1), 0 0 0 1px var(--traco);
+}
+
+.elevado {
+  background-color: var(--sup-alto);
+  box-shadow: var(--alt-3), 0 0 0 1px var(--traco);
+}
+
+/* ---------------------------------------------------------- campos */
 .campo {
   @apply w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm
-         shadow-xs outline-none transition
+         outline-none
          placeholder:text-slate-400
-         focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20
          disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500;
+  box-shadow: var(--alt-1);
+  transition: border-color 0.15s var(--ease-saida), box-shadow 0.15s var(--ease-saida);
+}
+
+.campo:focus {
+  @apply border-sky-500;
+  box-shadow: 0 0 0 3px rgb(14 165 233 / 0.15);
 }
 
 .rotulo {
-  @apply mb-1 block text-xs font-medium text-slate-600;
+  @apply mb-1.5 block text-xs font-medium text-slate-600;
+}
+
+/* --------------------------------------------------- foco de teclado */
+/* Quem navega por teclado precisa enxergar onde está — mas o anel só
+   aparece pra teclado, nunca no clique de mouse. */
+:focus-visible {
+  outline: 2px solid rgb(14 165 233 / 0.7);
+  outline-offset: 2px;
+  border-radius: 4px;
 }
 
 /* --------------------------------------------------- transição de página */
 /* Troca de rota com fade cruzado nativo do navegador — o que dá a
-   sensação de app instalado em vez de site recarregando pedaço por pedaço.
-   Só entra se o navegador suportar e a pessoa não tiver pedido menos
-   movimento nas configurações do sistema. */
+   sensação de app instalado em vez de site recarregando pedaço por pedaço. */
 @media (prefers-reduced-motion: no-preference) {
   @supports (view-transition-name: none) {
     ::view-transition-old(root) {
-      animation: sgai-sai 0.15s cubic-bezier(0.4, 0, 1, 1) both;
+      animation: sgai-sai 0.14s cubic-bezier(0.4, 0, 1, 1) both;
     }
     ::view-transition-new(root) {
-      animation: sgai-entra 0.22s cubic-bezier(0.16, 1, 0.3, 1) both;
+      animation: sgai-entra 0.28s var(--ease-mola) both;
     }
   }
 }
@@ -63,23 +241,107 @@ body {
 }
 
 @keyframes sgai-entra {
-  from { opacity: 0; transform: translateY(4px); }
+  from { opacity: 0; transform: translateY(6px); }
 }
 
 /* -------------------------------------------------------------- entrada */
 @media (prefers-reduced-motion: no-preference) {
   .entra {
-    animation: sgai-entra-conteudo 0.28s cubic-bezier(0.16, 1, 0.3, 1) both;
+    animation: sgai-entra-conteudo 0.32s var(--ease-mola) both;
+  }
+
+  /* Lista que entra em cascata: cada item um tiquinho depois do outro.
+     É o detalhe que separa "a tela apareceu" de "a tela se montou". */
+  .cascata > * {
+    animation: sgai-entra-conteudo 0.34s var(--ease-mola) both;
+  }
+  .cascata > *:nth-child(1) { animation-delay: 0ms; }
+  .cascata > *:nth-child(2) { animation-delay: 40ms; }
+  .cascata > *:nth-child(3) { animation-delay: 80ms; }
+  .cascata > *:nth-child(4) { animation-delay: 120ms; }
+  .cascata > *:nth-child(5) { animation-delay: 160ms; }
+  .cascata > *:nth-child(6) { animation-delay: 200ms; }
+
+  .surge {
+    animation: sgai-surge 0.26s var(--ease-mola) both;
+  }
+
+  .sobe {
+    animation: sgai-sobe 0.32s var(--ease-mola) both;
   }
 }
 
 @keyframes sgai-entra-conteudo {
-  from { opacity: 0; transform: translateY(6px); }
+  from { opacity: 0; transform: translateY(8px); }
+}
+
+@keyframes sgai-surge {
+  from { opacity: 0; transform: scale(0.96); }
+}
+
+@keyframes sgai-sobe {
+  from { opacity: 0; transform: translateY(100%); }
+}
+
+@keyframes sgai-gaveta {
+  from { transform: translateX(-100%); }
 }
 
 /* -------------------------------------------------------------- esqueleto */
+/* Brilho passando por cima em vez de piscar: piscar chama atenção pro
+   vazio, o brilho conta que tem coisa vindo. */
 .esqueleto {
-  @apply animate-pulse rounded-md bg-slate-200/70;
+  @apply rounded-md;
+  background-color: rgb(148 163 184 / 0.18);
+  position: relative;
+  overflow: hidden;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .esqueleto::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.35), transparent);
+    animation: sgai-brilho 1.6s infinite;
+  }
+  .dark .esqueleto::after {
+    background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.07), transparent);
+  }
+}
+
+@keyframes sgai-brilho {
+  100% { transform: translateX(100%); }
+}
+
+/* ------------------------------------------------------------- barras */
+/* Barra de rolagem discreta, no tom da interface — a padrão do Windows
+   é a coisa que mais denuncia "isto é uma página web". */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(148 163 184 / 0.35) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background-color: rgb(148 163 184 / 0.35);
+  border-radius: 999px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background-color: rgb(148 163 184 / 0.55);
+  background-clip: content-box;
 }
 
 /* A etiqueta vive escondida na tela e só existe no papel. */

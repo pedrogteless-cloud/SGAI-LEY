@@ -18,7 +18,7 @@ import {
   enderecoDaMaquina, CELULA_COMPRIMENTO, CELULA_LARGURA, encaixar, prender, PASSO,
 } from '../lib/planta'
 import {
-  Botao, Cartao, Etiqueta, Carregando, Vazio, Selecao, Entrada, Campo, Modal, useAviso,
+  Botao, Cartao, Etiqueta, Carregando, Vazio, Selecao, Entrada, Campo, Modal, Segmentado, useAviso,
 } from '../components/ui'
 import PlantaCanvas from '../components/PlantaCanvas'
 
@@ -899,22 +899,14 @@ export default function Planta() {
         </div>
         <div className="flex flex-wrap gap-2">
           {editando && ehGestor && (
-            <div className="flex items-center gap-1 rounded-lg bg-white p-1 ring-1 ring-slate-200">
-              {PASSOS_AJUSTE.map((p) => (
-                <button
-                  key={p}
-                  type="button"
-                  onClick={() => setPassoAjuste(p)}
-                  className={`rounded-md px-2.5 py-1.5 text-xs font-medium transition ${
-                    passoAjuste === p
-                      ? 'bg-slate-900 text-white'
-                      : 'text-slate-500 hover:bg-slate-100 hover:text-slate-700'
-                  }`}
-                >
-                  {String(p).replace('.', ',')} m
-                </button>
-              ))}
-            </div>
+            <Segmentado
+              valor={passoAjuste}
+              aoMudar={setPassoAjuste}
+              opcoes={PASSOS_AJUSTE.map((p) => ({
+                valor: p,
+                rotulo: `${String(p).replace('.', ',')} m`,
+              }))}
+            />
           )}
           {(unidades.data || []).length > 1 && (
             <Selecao

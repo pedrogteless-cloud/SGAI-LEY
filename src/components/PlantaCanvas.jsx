@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react'
+import { usePaletaPlanta } from '../hooks/useTema'
 import {
   caixa, cor, encaixar, prender, divisoes, endereco, letraFaixa,
   caixaEtapa, pontoNaBorda, saidaNaParede, ALTURA_ETAPA, PASSO,
@@ -65,6 +66,9 @@ export default function PlantaCanvas({
   aoRemoverPontoRota,
 }) {
   const svgRef = useRef(null)
+  // A estrutura do desenho (piso, parede, pilar, cota) segue o tema; a cor
+  // das máquinas não — verde e vermelho ali querem dizer coisa.
+  const tema = usePaletaPlanta()
   const [vista, setVista] = useState({ x: 0, y: 0, k: 1 })
   const [arrastando, setArrastando] = useState(null)
   const [sobMouse, setSobMouse] = useState(null)
@@ -345,7 +349,7 @@ export default function PlantaCanvas({
           <path d="M 0 0 L 10 5 L 0 10 z" fill={corEsquema} />
         </marker>
         <pattern id="hachura" width="1.4" height="1.4" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
-          <line x1="0" y1="0" x2="0" y2="1.4" stroke="#cbd5e1" strokeWidth="0.35" />
+          <line x1="0" y1="0" x2="0" y2="1.4" stroke={tema.hachura} strokeWidth="0.35" />
         </pattern>
       </defs>
 
@@ -357,7 +361,7 @@ export default function PlantaCanvas({
           width={comp + 1.4}
           height={larg + 1.4}
           fill="url(#hachura)"
-          stroke="#334155"
+          stroke={tema.parede}
           strokeWidth={0.18}
         />
 
@@ -368,8 +372,8 @@ export default function PlantaCanvas({
           y={0}
           width={comp}
           height={larg}
-          fill="#ffffff"
-          stroke="#334155"
+          fill={tema.piso}
+          stroke={tema.parede}
           strokeWidth={0.18}
         />
 
@@ -410,7 +414,7 @@ export default function PlantaCanvas({
         )}
 
         {/* grade do endereço */}
-        <g pointerEvents="none" stroke="#cbd5e1" strokeWidth={0.07} strokeDasharray="0.9 0.7">
+        <g pointerEvents="none" stroke={tema.grade} strokeWidth={0.07} strokeDasharray="0.9 0.7">
           {vaos.slice(1, -1).map((x) => (
             <line key={`v${x}`} x1={x} y1={0} x2={x} y2={larg} />
           ))}
@@ -421,7 +425,7 @@ export default function PlantaCanvas({
 
         {/* pilares das duas laterais, plantados em cima da linha da parede */}
         {temPilar && (
-          <g fill="#334155">
+          <g fill={tema.pilar}>
             {pilares.map((x) => (
               <g key={`pil${x}`}>
                 <rect
@@ -449,7 +453,7 @@ export default function PlantaCanvas({
             x={-1.5}
             y={(y + faixas[i + 1]) / 2 + fonteRegua * 0.35}
             fontSize={fonteRegua}
-            fill="#94a3b8"
+            fill={tema.cota}
             textAnchor="middle"
             pointerEvents="none"
           >
@@ -464,7 +468,7 @@ export default function PlantaCanvas({
               x={(x + vaos[i + 1]) / 2}
               y={-0.9}
               fontSize={fonteRegua}
-              fill="#94a3b8"
+              fill={tema.cota}
               textAnchor="middle"
               pointerEvents="none"
             >
@@ -473,7 +477,7 @@ export default function PlantaCanvas({
         ))}
 
         {/* cotas do galpão */}
-        <g stroke="#94a3b8" strokeWidth={0.07} fill="#64748b">
+        <g stroke={tema.cota} strokeWidth={0.07} fill={tema.texto}>
           <line x1={0} y1={-2.4} x2={comp} y2={-2.4} />
           <line x1={0} y1={-3} x2={0} y2={-1.8} />
           <line x1={comp} y1={-3} x2={comp} y2={-1.8} />

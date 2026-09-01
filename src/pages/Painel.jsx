@@ -1,12 +1,13 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
-  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, LineChart, Line,
+  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Area, AreaChart,
 } from 'recharts'
 import {
   Wallet, ClipboardList, AlertTriangle, PackageX, TrendingUp, ArrowRight, Plus,
 } from 'lucide-react'
 import { useTabela } from '../hooks/useDados'
+import { useTemaEscuro } from '../hooks/useTema'
 import { moeda, mesLabel, numero } from '../lib/format'
 import { M_CRITICIDADE, M_PRIORIDADE } from '../lib/constants'
 import {
@@ -15,30 +16,73 @@ import {
 } from '../components/ui'
 import LancarGasto from '../components/LancarGasto'
 
-function Indicador({ icone: Icone, rotulo, valor, formatar, detalhe, cor = 'text-sky-600', para }) {
+/* Cada indicador tem um tom próprio, aplicado no quadradinho do ícone.
+   É o que deixa a fileira de números legível de relance: a pessoa
+   aprende a cor antes de ler o rótulo. */
+const TONS = {
+  sky: 'text-sky-600 bg-sky-50 ring-sky-100',
+  indigo: 'text-indigo-600 bg-indigo-50 ring-indigo-100',
+  red: 'text-red-600 bg-red-50 ring-red-100',
+  amber: 'text-amber-600 bg-amber-50 ring-amber-100',
+}
+
+function Indicador({ icone: Icone, rotulo, valor, formatar, detalhe, tom = 'sky', para }) {
   const conteudo = (
-    <Cartao className="p-4 hover:-translate-y-0.5 hover:shadow-md">
-      <div className="flex items-start justify-between">
+    <Cartao flutua={Boolean(para)} className="group h-full p-4">
+      <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-xs font-medium text-slate-500">{rotulo}</p>
-          <p className="mt-1 truncate text-2xl font-bold text-slate-900">
+          <p className="numero mt-1.5 truncate text-[1.75rem] leading-none font-bold tracking-tight text-slate-900">
             {typeof valor === 'number' ? (
               <NumeroAnimado valor={valor} formatar={formatar || Math.round} />
             ) : (
               valor
             )}
           </p>
-          {detalhe && <p className="mt-0.5 text-xs text-slate-400">{detalhe}</p>}
+          {detalhe && <p className="mt-2 truncate text-xs text-slate-400">{detalhe}</p>}
         </div>
-        <Icone size={20} className={`shrink-0 ${cor}`} />
+        <div
+          className={`shrink-0 rounded-xl p-2 ring-1 ring-inset transition-transform duration-300
+            group-hover:scale-110 ${TONS[tom]}`}
+          style={{ transitionTimingFunction: 'var(--ease-mola)' }}
+        >
+          <Icone size={18} strokeWidth={2} />
+        </div>
       </div>
+      {para && (
+        <span
+          className="mt-3 flex items-center gap-1 text-xs font-medium text-slate-400
+            transition-colors group-hover:text-sky-600"
+        >
+          ver detalhe
+          <ArrowRight
+            size={12}
+            className="transition-transform duration-300 group-hover:translate-x-0.5"
+          />
+        </span>
+      )}
     </Cartao>
   )
-  return para ? <Link to={para}>{conteudo}</Link> : conteudo
+  return para ? (
+    <Link to={para} viewTransition className="block h-full">
+      {conteudo}
+    </Link>
+  ) : (
+    conteudo
+  )
+}
+
+/** Cores dos gráficos seguem o tema — recharts não herda CSS sozinho. */
+function useTemaGrafico() {
+  const escuro = useTemaEscuro()
+  return escuro
+    ? { grade: '#25324a', eixo: '#74839a', rotulo: '#93a3b8', caixa: '#1a2536', traco: '#25324a', texto: '#e2e8f0' }
+    : { grade: '#e8edf3', eixo: '#94a3b8', rotulo: '#64748b', caixa: '#ffffff', traco: '#e2e8f0', texto: '#0f172a' }
 }
 
 export default function Painel() {
   const [gasto, setGasto] = useState(false)
+  const tema = useTemaGrafico()
   const unidades = useTabela('vw_kpi_comparativo_unidades')
   const mensal = useTabela('vw_kpi_custo_mensal', { ordem: { coluna: 'mes' } })
   const ranking = useTabela('vw_kpi_ranking_ativos', { ordem: { coluna: 'posicao' }, limite: 8 })
@@ -53,8 +97,8 @@ export default function Painel() {
     return (
       <div className="space-y-6">
         <div>
-          <h1 className="text-xl font-bold text-slate-900">Resumo</h1>
-          <p className="text-sm text-slate-500">Como está a manutenção hoje</p>
+          <h1 className="text-2xl font-bold text-slate-900">Resumo</h1>
+          <p className="mt-0.5 text-sm text-slate-500">Como está a manutenção hoje</p>
         </div>
         <EsqueletoIndicadores />
       </div>
@@ -91,8 +135,8 @@ export default function Painel() {
     <div className="entra space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold text-slate-900">Resumo</h1>
-          <p className="text-sm text-slate-500">Como está a manutenção hoje</p>
+          <h1 className="text-2xl font-bold text-slate-900">Resumo</h1>
+          <p className="mt-0.5 text-sm text-slate-500">Como está a manutenção hoje</p>
         </div>
         <Botao tamanho="lg" onClick={() => setGasto(true)}>
           <Plus size={16} /> Lançar gasto
@@ -101,7 +145,7 @@ export default function Painel() {
 
       <LancarGasto aberto={gasto} aoFechar={() => setGasto(false)} />
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="cascata grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Indicador
           icone={Wallet}
           rotulo="Gasto no último ano"
@@ -114,7 +158,7 @@ export default function Painel() {
           rotulo="Serviços em aberto"
           valor={totais.osAbertas}
           detalhe={`${solicitacoes.data?.length || 0} avisos esperando`}
-          cor="text-indigo-600"
+          tom="indigo"
           para="/os"
         />
         <Indicador
@@ -122,7 +166,7 @@ export default function Painel() {
           rotulo="Serviços atrasados"
           valor={atrasadas.length}
           detalhe={`${numero(totais.paradaHoras, 1)} h de máquina parada`}
-          cor="text-red-600"
+          tom="red"
           para="/os"
         />
         <Indicador
@@ -130,7 +174,7 @@ export default function Painel() {
           rotulo="Peças acabando"
           valor={estoqueBaixo.data?.length || 0}
           detalhe="abaixo do mínimo"
-          cor="text-amber-600"
+          tom="amber"
           para="/almoxarifado"
         />
       </div>
@@ -147,34 +191,53 @@ export default function Painel() {
               />
             ) : (
               <ResponsiveContainer width="100%" height={240}>
-                <LineChart data={porMes} margin={{ top: 5, right: 10, bottom: 5, left: -10 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
+                <AreaChart data={porMes} margin={{ top: 5, right: 10, bottom: 5, left: -10 }}>
+                  {/* O degradê embaixo da linha dá peso ao gasto acumulado
+                      sem precisar de uma barra pra cada mês. */}
+                  <defs>
+                    <linearGradient id="grad-custo" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#0ea5e9" stopOpacity={0.28} />
+                      <stop offset="100%" stopColor="#0ea5e9" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke={tema.grade} vertical={false} />
                   <XAxis
                     dataKey="mes"
                     tickFormatter={mesLabel}
-                    tick={{ fontSize: 11, fill: '#94a3b8' }}
+                    tick={{ fontSize: 11, fill: tema.eixo }}
                     tickLine={false}
                     axisLine={false}
+                    dy={4}
                   />
                   <YAxis
                     tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`}
-                    tick={{ fontSize: 11, fill: '#94a3b8' }}
+                    tick={{ fontSize: 11, fill: tema.eixo }}
                     tickLine={false}
                     axisLine={false}
                   />
                   <Tooltip
                     formatter={(v) => [moeda(v), 'Gasto']}
                     labelFormatter={mesLabel}
-                    contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid #e2e8f0' }}
+                    cursor={{ stroke: tema.eixo, strokeDasharray: '4 4' }}
+                    contentStyle={{
+                      fontSize: 12,
+                      borderRadius: 12,
+                      border: `1px solid ${tema.traco}`,
+                      background: tema.caixa,
+                      color: tema.texto,
+                      boxShadow: '0 12px 28px -6px rgb(15 23 42 / 0.18)',
+                    }}
                   />
-                  <Line
+                  <Area
                     type="monotone"
                     dataKey="custo"
-                    stroke="#0284c7"
-                    strokeWidth={2}
-                    dot={{ r: 3 }}
+                    stroke="#0ea5e9"
+                    strokeWidth={2.5}
+                    fill="url(#grad-custo)"
+                    dot={false}
+                    activeDot={{ r: 4, strokeWidth: 2, stroke: tema.caixa }}
                   />
-                </LineChart>
+                </AreaChart>
               </ResponsiveContainer>
             )}
           </div>
@@ -204,11 +267,17 @@ export default function Painel() {
                   layout="vertical"
                   margin={{ top: 5, right: 15, bottom: 5, left: 5 }}
                 >
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" horizontal={false} />
+                  <defs>
+                    <linearGradient id="grad-barra" x1="0" y1="0" x2="1" y2="0">
+                      <stop offset="0%" stopColor="#0284c7" />
+                      <stop offset="100%" stopColor="#38bdf8" />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke={tema.grade} horizontal={false} />
                   <XAxis
                     type="number"
                     tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`}
-                    tick={{ fontSize: 11, fill: '#94a3b8' }}
+                    tick={{ fontSize: 11, fill: tema.eixo }}
                     tickLine={false}
                     axisLine={false}
                   />
@@ -216,15 +285,23 @@ export default function Painel() {
                     type="category"
                     dataKey="nome"
                     width={130}
-                    tick={{ fontSize: 11, fill: '#64748b' }}
+                    tick={{ fontSize: 11, fill: tema.rotulo }}
                     tickLine={false}
                     axisLine={false}
                   />
                   <Tooltip
                     formatter={(v) => [moeda(v), 'Gasto no ano']}
-                    contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid #e2e8f0' }}
+                    cursor={{ fill: tema.grade, opacity: 0.5 }}
+                    contentStyle={{
+                      fontSize: 12,
+                      borderRadius: 12,
+                      border: `1px solid ${tema.traco}`,
+                      background: tema.caixa,
+                      color: tema.texto,
+                      boxShadow: '0 12px 28px -6px rgb(15 23 42 / 0.18)',
+                    }}
                   />
-                  <Bar dataKey="custo" fill="#0284c7" radius={[0, 4, 4, 0]} />
+                  <Bar dataKey="custo" fill="url(#grad-barra)" radius={[0, 6, 6, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             )}
