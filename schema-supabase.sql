@@ -3382,7 +3382,6 @@ create or replace function concluir_relatorio_chao(
 returns table(id uuid, mensagem text)
 language plpgsql security definer set search_path = public as $$
 declare
-  v_pendentes int;
   v_tem_desperdicio boolean;
   v_tem_reaproveitamento boolean;
 begin
@@ -3391,17 +3390,9 @@ begin
     return;
   end if;
 
-  select count(*) into v_pendentes
-    from relatorio_chao_setores
-   where relatorio_chao_setores.relatorio_id = p_relatorio_id
-     and relatorio_chao_setores.nota is null
-     and relatorio_chao_setores.nao_inspecionado = false;
-
-  if v_pendentes > 0 then
-    return query select null::uuid,
-      format('Faltam %s setor(es) sem avaliação de limpeza nem justificativa.', v_pendentes)::text;
-    return;
-  end if;
+  -- Avaliação por setor fica opcional: a adesão à inspeção completa é
+  -- gradual, de acordo com o avanço do encarregado, e não deve travar a
+  -- conclusão do relatório.
 
   select exists(
     select 1 from residuo_lancamentos
