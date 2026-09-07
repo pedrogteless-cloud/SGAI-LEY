@@ -172,57 +172,96 @@ export default function OrdensServico() {
             descricao="Mude os filtros, ou abra um serviço a partir de um aviso da produção."
           />
         ) : (
-          <Tabela>
-            <thead>
-              <tr>
-                <Th>Serviço</Th>
-                <Th>Máquina</Th>
-                <Th>Status</Th>
-                <Th>Urgência</Th>
-                <Th>Quem faz</Th>
-                <Th>Aberto em</Th>
-                <Th>Parada</Th>
-                <Th className="text-right">Gasto</Th>
-              </tr>
-            </thead>
-            <tbody>
+          <>
+            {/* Cartão no celular em vez de tabela de 8 colunas — ninguém
+                lê "parada: 2h" depois de arrastar a tela três vezes pro
+                lado. No computador a densidade da tabela ganha. */}
+            <ul className="cascata divide-y sm:hidden" style={{ borderColor: 'var(--traco)' }}>
               {lista.map((o) => (
-                <tr key={o.id} className="hover:bg-slate-50">
-                  <Td>
-                    <Link
-                      to={`/os/${o.id}`}
-                      className="font-mono text-xs font-medium text-sky-600 hover:underline"
-                    >
-                      {o.numero}
-                    </Link>
-                    <p className="max-w-56 truncate text-xs text-slate-500">{o.titulo}</p>
-                  </Td>
-                  <Td>
-                    <p className="max-w-48 truncate text-slate-700">{o.ativo?.nome}</p>
-                    <p className="text-xs text-slate-400">
-                      {o.ativo?.setor?.nome || o.ativo?.unidade?.nome}
+                <li key={o.id}>
+                  <Link
+                    to={`/os/${o.id}`}
+                    className="flex flex-col gap-1.5 px-4 py-3.5 transition-colors active:bg-slate-50"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <span className="font-mono text-[11px] font-medium text-sky-600">{o.numero}</span>
+                        <p className="truncate text-sm font-medium text-slate-800">{o.titulo}</p>
+                      </div>
+                      <span className="shrink-0 font-medium text-slate-800">{moeda(o.custo_total)}</span>
+                    </div>
+                    <p className="truncate text-xs text-slate-400">
+                      {o.ativo?.nome}
+                      {(o.ativo?.setor?.nome || o.ativo?.unidade?.nome) &&
+                        ` · ${o.ativo?.setor?.nome || o.ativo?.unidade?.nome}`}
                     </p>
-                  </Td>
-                  <Td>
-                    <Etiqueta cor={M_STATUS_OS[o.status]?.cor}>
-                      {M_STATUS_OS[o.status]?.label}
-                    </Etiqueta>
-                  </Td>
-                  <Td>
-                    <Etiqueta cor={M_PRIORIDADE[o.prioridade]?.cor}>
-                      {M_PRIORIDADE[o.prioridade]?.label}
-                    </Etiqueta>
-                  </Td>
-                  <Td className="text-slate-600">{o.responsavel?.nome || '—'}</Td>
-                  <Td className="text-slate-600">{data(o.aberta_em)}</Td>
-                  <Td className="text-slate-600">
-                    {o.tempo_parada_min ? duracao(o.tempo_parada_min) : '—'}
-                  </Td>
-                  <Td className="text-right font-medium">{moeda(o.custo_total)}</Td>
-                </tr>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <Etiqueta cor={M_STATUS_OS[o.status]?.cor}>{M_STATUS_OS[o.status]?.label}</Etiqueta>
+                      <Etiqueta cor={M_PRIORIDADE[o.prioridade]?.cor}>{M_PRIORIDADE[o.prioridade]?.label}</Etiqueta>
+                      <span className="text-xs text-slate-400">{data(o.aberta_em)}</span>
+                      {o.tempo_parada_min > 0 && (
+                        <span className="text-xs text-slate-400">· parada {duracao(o.tempo_parada_min)}</span>
+                      )}
+                    </div>
+                  </Link>
+                </li>
               ))}
-            </tbody>
-          </Tabela>
+            </ul>
+
+            <div className="hidden sm:block">
+              <Tabela>
+                <thead>
+                  <tr>
+                    <Th>Serviço</Th>
+                    <Th>Máquina</Th>
+                    <Th>Status</Th>
+                    <Th>Urgência</Th>
+                    <Th>Quem faz</Th>
+                    <Th>Aberto em</Th>
+                    <Th>Parada</Th>
+                    <Th className="text-right">Gasto</Th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {lista.map((o) => (
+                    <tr key={o.id} className="hover:bg-slate-50">
+                      <Td>
+                        <Link
+                          to={`/os/${o.id}`}
+                          className="font-mono text-xs font-medium text-sky-600 hover:underline"
+                        >
+                          {o.numero}
+                        </Link>
+                        <p className="max-w-56 truncate text-xs text-slate-500">{o.titulo}</p>
+                      </Td>
+                      <Td>
+                        <p className="max-w-48 truncate text-slate-700">{o.ativo?.nome}</p>
+                        <p className="text-xs text-slate-400">
+                          {o.ativo?.setor?.nome || o.ativo?.unidade?.nome}
+                        </p>
+                      </Td>
+                      <Td>
+                        <Etiqueta cor={M_STATUS_OS[o.status]?.cor}>
+                          {M_STATUS_OS[o.status]?.label}
+                        </Etiqueta>
+                      </Td>
+                      <Td>
+                        <Etiqueta cor={M_PRIORIDADE[o.prioridade]?.cor}>
+                          {M_PRIORIDADE[o.prioridade]?.label}
+                        </Etiqueta>
+                      </Td>
+                      <Td className="text-slate-600">{o.responsavel?.nome || '—'}</Td>
+                      <Td className="text-slate-600">{data(o.aberta_em)}</Td>
+                      <Td className="text-slate-600">
+                        {o.tempo_parada_min ? duracao(o.tempo_parada_min) : '—'}
+                      </Td>
+                      <Td className="text-right font-medium">{moeda(o.custo_total)}</Td>
+                    </tr>
+                  ))}
+                </tbody>
+              </Tabela>
+            </div>
+          </>
         )}
       </Cartao>
 

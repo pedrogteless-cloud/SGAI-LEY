@@ -208,29 +208,30 @@ export function Modal({ aberto, aoFechar, titulo, largura = 'max-w-lg', children
           backgroundColor: 'var(--sup-alto)',
           boxShadow: 'var(--alt-4), 0 0 0 1px var(--traco)',
         }}
-        className={`relative flex max-h-[92vh] w-full ${largura} flex-col rounded-t-2xl
+        className={`area-segura-lados relative flex max-h-[92vh] w-full ${largura} flex-col rounded-t-2xl
           sobe sm:surge sm:rounded-2xl`}
       >
         <div className="shrink-0 pt-2 pb-0 sm:hidden">
           <div className="mx-auto h-1 w-9 rounded-full bg-slate-300" />
         </div>
         <div
-          className="flex items-center justify-between px-5 py-3.5"
+          className="flex items-center justify-between gap-3 px-5 py-3.5"
           style={{ borderBottom: '1px solid var(--traco)' }}
         >
           <h2 className="text-base font-semibold text-slate-800">{titulo}</h2>
           <button
             onClick={aoFechar}
             aria-label="Fechar"
-            className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"
+            className="-m-1.5 rounded-lg p-2.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600 active:scale-90"
           >
             <X size={18} />
           </button>
         </div>
-        <div className="flex-1 overflow-y-auto px-5 py-4">{children}</div>
+        <div className="flex-1 overflow-y-auto overscroll-contain px-5 py-4">{children}</div>
         {rodape && (
           <div
-            className="flex justify-end gap-2 px-5 py-3"
+            className="area-segura-base flex flex-col-reverse gap-2 px-5 py-3 [&>*]:w-full
+              sm:flex-row sm:justify-end sm:[&>*]:w-auto"
             style={{ borderTop: '1px solid var(--traco)' }}
           >
             {rodape}
@@ -394,8 +395,8 @@ export function ProvedorAviso({ children }) {
       {/* No celular o aviso desce do topo (onde o polegar não tapa e não
           briga com o teclado); no computador fica no canto de baixo. */}
       <div
-        className="nao-imprimir pointer-events-none fixed inset-x-4 top-4 z-100 flex flex-col gap-2
-          sm:inset-x-auto sm:top-auto sm:right-5 sm:bottom-5 sm:items-end"
+        className="nao-imprimir area-segura-topo pointer-events-none fixed inset-x-4 top-4 z-100 flex flex-col gap-2
+          sm:inset-x-auto sm:top-auto sm:right-5 sm:bottom-5 sm:items-end sm:pt-0"
       >
         {avisos.map((a) => (
           <div

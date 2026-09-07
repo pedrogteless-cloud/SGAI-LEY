@@ -158,87 +158,148 @@ export default function Ativos() {
             }
           />
         ) : (
-          <Tabela>
-            <thead>
-              <tr>
-                <Th>Código</Th>
-                <Th>Máquina</Th>
-                <Th>Onde fica</Th>
-                <Th>Importância</Th>
-                <Th>Como está</Th>
-                <Th className="text-right">Gasto no ano</Th>
-              </tr>
-            </thead>
-            <tbody>
+          <>
+            {/* No celular a tabela vira uma lista de cartões — dedo não
+                acerta coluna estreita, e rolar de lado escondia informação
+                em vez de mostrar. No computador a tabela densa continua
+                sendo a leitura mais rápida. */}
+            <ul className="cascata divide-y sm:hidden" style={{ borderColor: 'var(--traco)' }}>
               {lista.map((a) => (
-                <tr key={a.id} className="hover:bg-slate-50">
-                  <Td>
-                    <Link
-                      to={`/ativos/${a.id}`}
-                      className="font-mono text-xs font-medium text-sky-600 hover:text-sky-700"
-                    >
-                      {a.codigo}
-                    </Link>
-                  </Td>
-                  <Td>
-                    <div className="flex items-center gap-2.5">
-                      {a.foto_capa_url ? (
-                        <img
-                          src={a.foto_capa_url}
-                          alt=""
-                          className="size-8 shrink-0 rounded-md object-cover"
-                        />
-                      ) : (
-                        <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-slate-100 text-slate-400">
-                          <Package size={14} />
-                        </div>
-                      )}
-                      <div className="min-w-0">
-                        <p className="truncate font-medium text-slate-800">
-                          {a.ativo_pai_id && (
-                            <span className="mr-1 text-xs text-slate-400">↳</span>
-                          )}
-                          {a.nome}
-                        </p>
-                        <p className="truncate text-xs text-slate-400">
-                          {[a.fabricante, a.modelo].filter(Boolean).join(' · ') ||
-                            a.categoria?.nome}
-                        </p>
+                <li key={a.id}>
+                  <Link
+                    to={`/ativos/${a.id}`}
+                    className="flex items-center gap-3 px-4 py-3.5 transition-colors active:bg-slate-50"
+                  >
+                    {a.foto_capa_url ? (
+                      <img
+                        src={a.foto_capa_url}
+                        alt=""
+                        className="size-11 shrink-0 rounded-lg object-cover"
+                      />
+                    ) : (
+                      <div className="flex size-11 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-400">
+                        <Package size={18} />
+                      </div>
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-mono text-[11px] font-medium text-sky-600">{a.codigo}</span>
+                        {enderecoPorAtivo[a.id] && (
+                          <span
+                            className="shrink-0 rounded bg-slate-900 px-1.5 py-0.5 font-mono
+                              text-[10px] font-semibold text-white"
+                          >
+                            {enderecoPorAtivo[a.id]}
+                          </span>
+                        )}
+                      </div>
+                      <p className="truncate text-sm font-medium text-slate-800">
+                        {a.ativo_pai_id && <span className="mr-1 text-xs text-slate-400">↳</span>}
+                        {a.nome}
+                      </p>
+                      <p className="truncate text-xs text-slate-400">
+                        {a.setor?.nome || '—'}
+                        {a.unidade?.nome ? ` · ${a.unidade.nome}` : ''}
+                      </p>
+                      <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                        <Etiqueta cor={M_CRITICIDADE[a.criticidade]?.cor}>{a.criticidade}</Etiqueta>
+                        <Etiqueta cor={M_SITUACAO[a.situacao]?.cor}>{M_SITUACAO[a.situacao]?.label}</Etiqueta>
+                        {custoPorAtivo[a.id] > 0 && (
+                          <span className="text-xs font-medium text-slate-500">
+                            {moeda(custoPorAtivo[a.id])}/ano
+                          </span>
+                        )}
                       </div>
                     </div>
-                  </Td>
-                  <Td className="text-slate-600">
-                    <div className="flex items-center gap-2">
-                      {enderecoPorAtivo[a.id] && (
-                        <span
-                          className="shrink-0 rounded bg-slate-900 px-1.5 py-0.5 font-mono
-                            text-[11px] font-semibold text-white"
-                          title="Endereço no galpão"
-                        >
-                          {enderecoPorAtivo[a.id]}
-                        </span>
-                      )}
-                      <div className="min-w-0">
-                        <p className="truncate">{a.setor?.nome || '—'}</p>
-                        <p className="truncate text-xs text-slate-400">{a.unidade?.nome}</p>
-                      </div>
-                    </div>
-                  </Td>
-                  <Td>
-                    <Etiqueta cor={M_CRITICIDADE[a.criticidade]?.cor}>{a.criticidade}</Etiqueta>
-                  </Td>
-                  <Td>
-                    <Etiqueta cor={M_SITUACAO[a.situacao]?.cor}>
-                      {M_SITUACAO[a.situacao]?.label}
-                    </Etiqueta>
-                  </Td>
-                  <Td className="text-right font-medium">
-                    {custoPorAtivo[a.id] ? moeda(custoPorAtivo[a.id]) : '—'}
-                  </Td>
-                </tr>
+                  </Link>
+                </li>
               ))}
-            </tbody>
-          </Tabela>
+            </ul>
+
+            <div className="hidden sm:block">
+              <Tabela>
+                <thead>
+                  <tr>
+                    <Th>Código</Th>
+                    <Th>Máquina</Th>
+                    <Th>Onde fica</Th>
+                    <Th>Importância</Th>
+                    <Th>Como está</Th>
+                    <Th className="text-right">Gasto no ano</Th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {lista.map((a) => (
+                    <tr key={a.id} className="hover:bg-slate-50">
+                      <Td>
+                        <Link
+                          to={`/ativos/${a.id}`}
+                          className="font-mono text-xs font-medium text-sky-600 hover:text-sky-700"
+                        >
+                          {a.codigo}
+                        </Link>
+                      </Td>
+                      <Td>
+                        <div className="flex items-center gap-2.5">
+                          {a.foto_capa_url ? (
+                            <img
+                              src={a.foto_capa_url}
+                              alt=""
+                              className="size-8 shrink-0 rounded-md object-cover"
+                            />
+                          ) : (
+                            <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-slate-100 text-slate-400">
+                              <Package size={14} />
+                            </div>
+                          )}
+                          <div className="min-w-0">
+                            <p className="truncate font-medium text-slate-800">
+                              {a.ativo_pai_id && (
+                                <span className="mr-1 text-xs text-slate-400">↳</span>
+                              )}
+                              {a.nome}
+                            </p>
+                            <p className="truncate text-xs text-slate-400">
+                              {[a.fabricante, a.modelo].filter(Boolean).join(' · ') ||
+                                a.categoria?.nome}
+                            </p>
+                          </div>
+                        </div>
+                      </Td>
+                      <Td className="text-slate-600">
+                        <div className="flex items-center gap-2">
+                          {enderecoPorAtivo[a.id] && (
+                            <span
+                              className="shrink-0 rounded bg-slate-900 px-1.5 py-0.5 font-mono
+                                text-[11px] font-semibold text-white"
+                              title="Endereço no galpão"
+                            >
+                              {enderecoPorAtivo[a.id]}
+                            </span>
+                          )}
+                          <div className="min-w-0">
+                            <p className="truncate">{a.setor?.nome || '—'}</p>
+                            <p className="truncate text-xs text-slate-400">{a.unidade?.nome}</p>
+                          </div>
+                        </div>
+                      </Td>
+                      <Td>
+                        <Etiqueta cor={M_CRITICIDADE[a.criticidade]?.cor}>{a.criticidade}</Etiqueta>
+                      </Td>
+                      <Td>
+                        <Etiqueta cor={M_SITUACAO[a.situacao]?.cor}>
+                          {M_SITUACAO[a.situacao]?.label}
+                        </Etiqueta>
+                      </Td>
+                      <Td className="text-right font-medium">
+                        {custoPorAtivo[a.id] ? moeda(custoPorAtivo[a.id]) : '—'}
+                      </Td>
+                    </tr>
+                  ))}
+                </tbody>
+              </Tabela>
+            </div>
+          </>
         )}
       </Cartao>
     </div>

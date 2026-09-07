@@ -121,8 +121,8 @@ export default function Layout() {
                 onClick={() => setMenuAberto(false)}
                 style={{ transitionTimingFunction: 'var(--ease-mola)' }}
                 className={({ isActive }) =>
-                  `group relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm
-                   transition-all duration-200 ${
+                  `group relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm
+                   transition-all duration-200 active:scale-[0.98] ${
                     isActive
                       ? 'bg-sky-50 font-semibold text-sky-700'
                       : 'font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900'
@@ -246,7 +246,7 @@ export default function Layout() {
             onClick={() => setMenuAberto(false)}
           />
           <aside
-            className="relative flex h-full w-[17rem] flex-col overflow-y-auto"
+            className="area-segura-topo area-segura-base relative flex h-full w-[17rem] flex-col overflow-y-auto"
             style={{
               backgroundColor: 'var(--sup-cartao)',
               boxShadow: 'var(--alt-4)',
@@ -257,7 +257,7 @@ export default function Layout() {
               {marca}
               <button
                 onClick={() => setMenuAberto(false)}
-                className="rounded-lg p-2 text-slate-400 transition-colors hover:bg-slate-100"
+                className="rounded-lg p-2.5 text-slate-400 transition-colors hover:bg-slate-100 active:scale-90"
                 aria-label="Fechar menu"
               >
                 <X size={20} />
@@ -273,7 +273,7 @@ export default function Layout() {
         {/* Header do celular: fundo translúcido com desfoque, então o
             conteúdo passa por baixo em vez de sumir atrás de uma faixa. */}
         <header
-          className="nao-imprimir sticky top-0 z-30 flex items-center gap-3 px-4 py-3
+          className="nao-imprimir area-segura-topo sticky top-0 z-30 flex items-center gap-3 px-4 py-3
             backdrop-blur-xl lg:hidden"
           style={{
             backgroundColor: 'color-mix(in srgb, var(--sup-cartao) 82%, transparent)',
@@ -282,15 +282,15 @@ export default function Layout() {
         >
           <button
             onClick={() => setMenuAberto(true)}
-            className="-m-1 rounded-lg p-1 text-slate-600 transition-transform active:scale-90"
+            className="-m-2 rounded-lg p-2 text-slate-600 transition-transform active:scale-90"
             aria-label="Abrir menu"
           >
             <Menu size={22} />
           </button>
-          <span className="text-sm font-semibold text-slate-900">{paginaAtual}</span>
+          <span className="truncate text-sm font-semibold text-slate-900">{paginaAtual}</span>
         </header>
 
-        <main className="flex-1 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+        <main className="area-segura-base flex-1 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
           <Outlet />
         </main>
       </div>

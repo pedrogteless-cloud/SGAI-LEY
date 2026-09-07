@@ -83,6 +83,24 @@ html {
   -webkit-text-size-adjust: 100%;
 }
 
+/* Sem isso o dedo deixa uma mancha cinza em cada toque em botão/link —
+   a sombra e o active:scale já dão o feedback de toque, então a mancha
+   nativa só some com a sensação de app. */
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* iOS entende "vou ajudar você a ler" e dá zoom sozinho em qualquer campo
+   com fonte abaixo de 16px — em telas de formulário longas (a maioria
+   deste sistema) isso significa a página pulando de tamanho a cada toque.
+   Só no celular, porque no desktop o texto menor (text-sm) é o certo. */
+@media (max-width: 767px) {
+  input, select, textarea {
+    font-size: 16px;
+  }
+}
+
+
 body {
   background-color: var(--sup-fundo);
   @apply text-slate-800 antialiased;
@@ -342,6 +360,21 @@ table th {
 *::-webkit-scrollbar-thumb:hover {
   background-color: rgb(148 163 184 / 0.55);
   background-clip: content-box;
+}
+
+/* ------------------------------------------------------- área segura */
+/* iPhone com notch/Dynamic Island e a barra de gestos embaixo cobrem
+   conteúdo que fica colado na borda — cada tela cheia (cabeçalho fixo,
+   gaveta, folha de modal) reserva esse respiro além do padding normal. */
+.area-segura-topo {
+  padding-top: env(safe-area-inset-top);
+}
+.area-segura-base {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.area-segura-lados {
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
 }
 
 /* A etiqueta vive escondida na tela e só existe no papel. */
