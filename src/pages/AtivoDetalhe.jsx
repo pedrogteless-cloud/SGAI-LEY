@@ -299,39 +299,58 @@ export default function AtivoDetalhe() {
       {(componentes.data || []).length > 0 && (
         <Cartao>
           <CartaoTitulo>Peças cadastradas separado</CartaoTitulo>
-          <Tabela>
-            <thead>
-              <tr>
-                <Th>Código</Th>
-                <Th>Peça</Th>
-                <Th>Importância</Th>
-                <Th>Como está</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {componentes.data.map((c) => (
-                <tr key={c.id} className="hover:bg-slate-50">
-                  <Td>
-                    <Link
-                      to={`/ativos/${c.id}`}
-                      className="font-mono text-xs text-sky-600 hover:underline"
-                    >
-                      {c.codigo}
-                    </Link>
-                  </Td>
-                  <Td className="font-medium text-slate-800">{c.nome}</Td>
-                  <Td>
+          <ul className="cascata divide-y sm:hidden" style={{ borderColor: 'var(--traco)' }}>
+            {componentes.data.map((c) => (
+              <li key={c.id}>
+                <Link to={`/ativos/${c.id}`} className="flex items-center justify-between gap-3 px-4 py-3 active:bg-slate-50">
+                  <div className="min-w-0">
+                    <p className="font-medium text-slate-800">{c.nome}</p>
+                    <p className="font-mono text-xs text-slate-400">{c.codigo}</p>
+                  </div>
+                  <div className="flex shrink-0 flex-col items-end gap-1">
                     <Etiqueta cor={M_CRITICIDADE[c.criticidade]?.cor}>{c.criticidade}</Etiqueta>
-                  </Td>
-                  <Td>
-                    <Etiqueta cor={M_SITUACAO[c.situacao]?.cor}>
-                      {M_SITUACAO[c.situacao]?.label}
-                    </Etiqueta>
-                  </Td>
+                    <Etiqueta cor={M_SITUACAO[c.situacao]?.cor}>{M_SITUACAO[c.situacao]?.label}</Etiqueta>
+                  </div>
+                </Link>
+              </li>
+            ))}
+          </ul>
+
+          <div className="hidden sm:block">
+            <Tabela>
+              <thead>
+                <tr>
+                  <Th>Código</Th>
+                  <Th>Peça</Th>
+                  <Th>Importância</Th>
+                  <Th>Como está</Th>
                 </tr>
-              ))}
-            </tbody>
-          </Tabela>
+              </thead>
+              <tbody>
+                {componentes.data.map((c) => (
+                  <tr key={c.id} className="hover:bg-slate-50">
+                    <Td>
+                      <Link
+                        to={`/ativos/${c.id}`}
+                        className="font-mono text-xs text-sky-600 hover:underline"
+                      >
+                        {c.codigo}
+                      </Link>
+                    </Td>
+                    <Td className="font-medium text-slate-800">{c.nome}</Td>
+                    <Td>
+                      <Etiqueta cor={M_CRITICIDADE[c.criticidade]?.cor}>{c.criticidade}</Etiqueta>
+                    </Td>
+                    <Td>
+                      <Etiqueta cor={M_SITUACAO[c.situacao]?.cor}>
+                        {M_SITUACAO[c.situacao]?.label}
+                      </Etiqueta>
+                    </Td>
+                  </tr>
+                ))}
+              </tbody>
+            </Tabela>
+          </div>
         </Cartao>
       )}
 
@@ -346,43 +365,70 @@ export default function AtivoDetalhe() {
         ) : (ordens.data || []).length === 0 ? (
           <Vazio titulo="Nada registrado ainda" descricao="Nenhum serviço foi aberto para esta máquina." />
         ) : (
-          <Tabela>
-            <thead>
-              <tr>
-                <Th>Serviço</Th>
-                <Th>Serviço</Th>
-                <Th>Status</Th>
-                <Th>Quando</Th>
-                <Th>Parada</Th>
-                <Th className="text-right">Gasto</Th>
-              </tr>
-            </thead>
-            <tbody>
+          <>
+            <ul className="cascata divide-y sm:hidden" style={{ borderColor: 'var(--traco)' }}>
               {ordens.data.map((o) => (
-                <tr key={o.id} className="hover:bg-slate-50">
-                  <Td>
-                    <Link to={`/os/${o.id}`} className="font-medium text-sky-600 hover:underline">
-                      {o.numero}
-                    </Link>
-                  </Td>
-                  <Td>
-                    <p className="max-w-xs truncate text-slate-700">{o.titulo}</p>
-                    <p className="text-xs text-slate-400 capitalize">{o.tipo}</p>
-                  </Td>
-                  <Td>
-                    <Etiqueta cor={M_STATUS_OS[o.status]?.cor}>
-                      {M_STATUS_OS[o.status]?.label}
-                    </Etiqueta>
-                  </Td>
-                  <Td className="text-slate-600">{data(o.aberta_em)}</Td>
-                  <Td className="text-slate-600">
-                    {o.tempo_parada_min ? duracao(o.tempo_parada_min) : '—'}
-                  </Td>
-                  <Td className="text-right font-medium">{moeda(o.custo_total)}</Td>
-                </tr>
+                <li key={o.id}>
+                  <Link to={`/os/${o.id}`} className="flex flex-col gap-1 px-4 py-3 active:bg-slate-50">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <span className="font-mono text-[11px] font-medium text-sky-600">{o.numero}</span>
+                        <p className="truncate text-sm text-slate-700">{o.titulo}</p>
+                      </div>
+                      <span className="shrink-0 font-medium text-slate-800">{moeda(o.custo_total)}</span>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <Etiqueta cor={M_STATUS_OS[o.status]?.cor}>{M_STATUS_OS[o.status]?.label}</Etiqueta>
+                      <span className="text-xs text-slate-400">{data(o.aberta_em)}</span>
+                      {o.tempo_parada_min > 0 && (
+                        <span className="text-xs text-slate-400">· parada {duracao(o.tempo_parada_min)}</span>
+                      )}
+                    </div>
+                  </Link>
+                </li>
               ))}
-            </tbody>
-          </Tabela>
+            </ul>
+
+            <div className="hidden sm:block">
+              <Tabela>
+                <thead>
+                  <tr>
+                    <Th>Serviço</Th>
+                    <Th>Serviço</Th>
+                    <Th>Status</Th>
+                    <Th>Quando</Th>
+                    <Th>Parada</Th>
+                    <Th className="text-right">Gasto</Th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {ordens.data.map((o) => (
+                    <tr key={o.id} className="hover:bg-slate-50">
+                      <Td>
+                        <Link to={`/os/${o.id}`} className="font-medium text-sky-600 hover:underline">
+                          {o.numero}
+                        </Link>
+                      </Td>
+                      <Td>
+                        <p className="max-w-xs truncate text-slate-700">{o.titulo}</p>
+                        <p className="text-xs text-slate-400 capitalize">{o.tipo}</p>
+                      </Td>
+                      <Td>
+                        <Etiqueta cor={M_STATUS_OS[o.status]?.cor}>
+                          {M_STATUS_OS[o.status]?.label}
+                        </Etiqueta>
+                      </Td>
+                      <Td className="text-slate-600">{data(o.aberta_em)}</Td>
+                      <Td className="text-slate-600">
+                        {o.tempo_parada_min ? duracao(o.tempo_parada_min) : '—'}
+                      </Td>
+                      <Td className="text-right font-medium">{moeda(o.custo_total)}</Td>
+                    </tr>
+                  ))}
+                </tbody>
+              </Tabela>
+            </div>
+          </>
         )}
       </Cartao>
 

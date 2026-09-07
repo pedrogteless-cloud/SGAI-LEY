@@ -74,46 +74,69 @@ export default function MateriaisResiduo() {
         ) : (materiais.data || []).length === 0 ? (
           <Vazio icone={Recycle} titulo="Nenhum material cadastrado" />
         ) : (
-          <Tabela>
-            <thead>
-              <tr>
-                <Th>Material</Th>
-                <Th>Categoria</Th>
-                <Th>Unidade principal</Th>
-                <Th>Reaproveitável</Th>
-                <Th>Situação</Th>
-                <Th />
-              </tr>
-            </thead>
-            <tbody>
+          <>
+            <ul className="cascata divide-y sm:hidden" style={{ borderColor: 'var(--traco)' }}>
               {materiais.data.map((m) => (
-                <tr key={m.id} className="hover:bg-slate-50">
-                  <Td className="font-medium text-slate-800">{m.nome}</Td>
-                  <Td className="text-slate-600">{m.categoria}</Td>
-                  <Td className="text-slate-600">
-                    {UNIDADES_MEDIDA_RESIDUO.find((u) => u.valor === m.unidade_principal)?.label}
-                  </Td>
-                  <Td>
-                    <Etiqueta cor={m.permite_reaproveitamento ? 'bg-emerald-100 text-emerald-700 ring-emerald-200' : 'bg-slate-100 text-slate-500 ring-slate-200'}>
-                      {m.permite_reaproveitamento ? 'Sim' : 'Não'}
+                <li key={m.id} className="flex items-start justify-between gap-3 px-4 py-3">
+                  <button onClick={() => abrir(m)} className="min-w-0 flex-1 text-left active:opacity-70">
+                    <p className="font-medium text-slate-800">{m.nome}</p>
+                    <p className="text-xs text-slate-400">
+                      {m.categoria} · {UNIDADES_MEDIDA_RESIDUO.find((u) => u.valor === m.unidade_principal)?.label}
+                      {m.permite_reaproveitamento ? ' · reaproveitável' : ''}
+                    </p>
+                  </button>
+                  <button onClick={() => alternarAtivo(m)} className="shrink-0">
+                    <Etiqueta cor={m.ativo ? 'bg-emerald-100 text-emerald-700 ring-emerald-200' : 'bg-slate-100 text-slate-500 ring-slate-200'}>
+                      {m.ativo ? 'Ativo' : 'Inativo'}
                     </Etiqueta>
-                  </Td>
-                  <Td>
-                    <button onClick={() => alternarAtivo(m)}>
-                      <Etiqueta cor={m.ativo ? 'bg-emerald-100 text-emerald-700 ring-emerald-200' : 'bg-slate-100 text-slate-500 ring-slate-200'}>
-                        {m.ativo ? 'Ativo' : 'Inativo'}
-                      </Etiqueta>
-                    </button>
-                  </Td>
-                  <Td className="text-right">
-                    <button onClick={() => abrir(m)} className="text-xs font-medium text-sky-600 hover:text-sky-700">
-                      editar
-                    </button>
-                  </Td>
-                </tr>
+                  </button>
+                </li>
               ))}
-            </tbody>
-          </Tabela>
+            </ul>
+
+            <div className="hidden sm:block">
+              <Tabela>
+                <thead>
+                  <tr>
+                    <Th>Material</Th>
+                    <Th>Categoria</Th>
+                    <Th>Unidade principal</Th>
+                    <Th>Reaproveitável</Th>
+                    <Th>Situação</Th>
+                    <Th />
+                  </tr>
+                </thead>
+                <tbody>
+                  {materiais.data.map((m) => (
+                    <tr key={m.id} className="hover:bg-slate-50">
+                      <Td className="font-medium text-slate-800">{m.nome}</Td>
+                      <Td className="text-slate-600">{m.categoria}</Td>
+                      <Td className="text-slate-600">
+                        {UNIDADES_MEDIDA_RESIDUO.find((u) => u.valor === m.unidade_principal)?.label}
+                      </Td>
+                      <Td>
+                        <Etiqueta cor={m.permite_reaproveitamento ? 'bg-emerald-100 text-emerald-700 ring-emerald-200' : 'bg-slate-100 text-slate-500 ring-slate-200'}>
+                          {m.permite_reaproveitamento ? 'Sim' : 'Não'}
+                        </Etiqueta>
+                      </Td>
+                      <Td>
+                        <button onClick={() => alternarAtivo(m)}>
+                          <Etiqueta cor={m.ativo ? 'bg-emerald-100 text-emerald-700 ring-emerald-200' : 'bg-slate-100 text-slate-500 ring-slate-200'}>
+                            {m.ativo ? 'Ativo' : 'Inativo'}
+                          </Etiqueta>
+                        </button>
+                      </Td>
+                      <Td className="text-right">
+                        <button onClick={() => abrir(m)} className="text-xs font-medium text-sky-600 hover:text-sky-700">
+                          editar
+                        </button>
+                      </Td>
+                    </tr>
+                  ))}
+                </tbody>
+              </Tabela>
+            </div>
+          </>
         )}
       </Cartao>
 

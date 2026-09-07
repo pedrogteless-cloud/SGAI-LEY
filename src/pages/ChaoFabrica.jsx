@@ -251,35 +251,59 @@ export default function ChaoFabrica() {
             ) : (historico.data || []).length === 0 ? (
               <Vazio icone={History} titulo="Nenhum relatório ainda" />
             ) : (
-              <Tabela>
-                <thead>
-                  <tr>
-                    <Th>Relatório</Th>
-                    <Th>Responsável</Th>
-                    <Th>Status</Th>
-                    <Th className="text-right">Limpeza</Th>
-                    <Th className="text-right">Desperdício</Th>
-                    <Th className="text-right">Reaproveitamento</Th>
-                  </tr>
-                </thead>
-                <tbody>
+              <>
+                <ul className="cascata divide-y sm:hidden" style={{ borderColor: 'var(--traco)' }}>
                   {historico.data.map((r) => (
-                    <tr key={r.id} className="hover:bg-slate-50">
-                      <Td>
-                        <Link to={`/desperdicios/${r.id}`} className="font-medium text-sky-600 hover:text-sky-700">
-                          {r.numero}
-                        </Link>
-                        <p className="text-xs text-slate-400">{fmtData(r.data)}{r.turno ? ` · ${r.turno}` : ''}</p>
-                      </Td>
-                      <Td className="text-slate-700">{r.responsavel || '—'}</Td>
-                      <Td><Etiqueta cor={M_STATUS_CHAO[r.status]?.cor}>{M_STATUS_CHAO[r.status]?.label}</Etiqueta></Td>
-                      <Td className="text-right">{r.nota_media != null ? numero(r.nota_media, 1) : '—'}</Td>
-                      <Td className="text-right">{r.qtd_desperdicios}</Td>
-                      <Td className="text-right">{r.qtd_reaproveitamentos}</Td>
-                    </tr>
+                    <li key={r.id}>
+                      <Link to={`/desperdicios/${r.id}`} className="flex items-start justify-between gap-3 px-4 py-3.5 active:bg-slate-50">
+                        <div className="min-w-0">
+                          <p className="font-medium text-sky-600">{r.numero}</p>
+                          <p className="text-xs text-slate-400">
+                            {fmtData(r.data)}{r.turno ? ` · ${r.turno}` : ''}{r.responsavel ? ` · ${r.responsavel}` : ''}
+                          </p>
+                          <p className="mt-1 text-xs text-slate-500">
+                            {r.nota_media != null ? `nota ${numero(r.nota_media, 1)}` : 'sem nota'}
+                            {' · '}{r.qtd_desperdicios} desperdício(s) · {r.qtd_reaproveitamentos} reaproveitamento(s)
+                          </p>
+                        </div>
+                        <Etiqueta cor={M_STATUS_CHAO[r.status]?.cor}>{M_STATUS_CHAO[r.status]?.label}</Etiqueta>
+                      </Link>
+                    </li>
                   ))}
-                </tbody>
-              </Tabela>
+                </ul>
+
+                <div className="hidden sm:block">
+                  <Tabela>
+                    <thead>
+                      <tr>
+                        <Th>Relatório</Th>
+                        <Th>Responsável</Th>
+                        <Th>Status</Th>
+                        <Th className="text-right">Limpeza</Th>
+                        <Th className="text-right">Desperdício</Th>
+                        <Th className="text-right">Reaproveitamento</Th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {historico.data.map((r) => (
+                        <tr key={r.id} className="hover:bg-slate-50">
+                          <Td>
+                            <Link to={`/desperdicios/${r.id}`} className="font-medium text-sky-600 hover:text-sky-700">
+                              {r.numero}
+                            </Link>
+                            <p className="text-xs text-slate-400">{fmtData(r.data)}{r.turno ? ` · ${r.turno}` : ''}</p>
+                          </Td>
+                          <Td className="text-slate-700">{r.responsavel || '—'}</Td>
+                          <Td><Etiqueta cor={M_STATUS_CHAO[r.status]?.cor}>{M_STATUS_CHAO[r.status]?.label}</Etiqueta></Td>
+                          <Td className="text-right">{r.nota_media != null ? numero(r.nota_media, 1) : '—'}</Td>
+                          <Td className="text-right">{r.qtd_desperdicios}</Td>
+                          <Td className="text-right">{r.qtd_reaproveitamentos}</Td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </Tabela>
+                </div>
+              </>
             )}
           </Cartao>
         </div>
@@ -579,34 +603,60 @@ function PainelIndicadores({ saldos, unidadeAtual }) {
         {lista.length === 0 ? (
           <Vazio icone={Recycle} titulo="Ainda não há lançamento" descricao="Os saldos aparecem assim que o primeiro relatório for preenchido." />
         ) : (
-          <Tabela>
-            <thead>
-              <tr>
-                <Th>Material</Th>
-                <Th>Unidade</Th>
-                <Th className="text-right">Gerado</Th>
-                <Th className="text-right">Separado</Th>
-                <Th className="text-right">Moído</Th>
-                <Th className="text-right">Reutilizado</Th>
-                <Th className="text-right">Descartado</Th>
-                <Th className="text-right">Saldo</Th>
-              </tr>
-            </thead>
-            <tbody>
+          <>
+            {/* 8 colunas não cabem no celular nem esticando — cada material
+                vira um cartãozinho com os mesmos números num grid 3x2. */}
+            <ul className="cascata divide-y sm:hidden" style={{ borderColor: 'var(--traco)' }}>
               {lista.map((s) => (
-                <tr key={`${s.material_id}-${s.unidade_medida}`} className="hover:bg-slate-50">
-                  <Td className="text-slate-700">{s.material_nome}</Td>
-                  <Td className="text-slate-500">{s.unidade_medida}</Td>
-                  <Td className="text-right">{numero(s.gerado, 1)}</Td>
-                  <Td className="text-right">{numero(s.separado, 1)}</Td>
-                  <Td className="text-right">{numero(s.moido, 1)}</Td>
-                  <Td className="text-right">{numero(s.reutilizado_interno, 1)}</Td>
-                  <Td className="text-right">{numero(s.descartado, 1)}</Td>
-                  <Td className="text-right font-semibold">{numero(s.saldo, 1)}</Td>
-                </tr>
+                <li key={`${s.material_id}-${s.unidade_medida}`} className="px-4 py-3">
+                  <div className="flex items-baseline justify-between">
+                    <p className="font-medium text-slate-800">{s.material_nome}</p>
+                    <p className="text-sm font-semibold text-slate-800">
+                      {numero(s.saldo, 1)} {s.unidade_medida}
+                    </p>
+                  </div>
+                  <div className="mt-1.5 grid grid-cols-3 gap-x-3 gap-y-1 text-xs text-slate-500">
+                    <span>Gerado: {numero(s.gerado, 1)}</span>
+                    <span>Separado: {numero(s.separado, 1)}</span>
+                    <span>Moído: {numero(s.moido, 1)}</span>
+                    <span>Reutilizado: {numero(s.reutilizado_interno, 1)}</span>
+                    <span>Descartado: {numero(s.descartado, 1)}</span>
+                  </div>
+                </li>
               ))}
-            </tbody>
-          </Tabela>
+            </ul>
+
+            <div className="hidden sm:block">
+              <Tabela>
+                <thead>
+                  <tr>
+                    <Th>Material</Th>
+                    <Th>Unidade</Th>
+                    <Th className="text-right">Gerado</Th>
+                    <Th className="text-right">Separado</Th>
+                    <Th className="text-right">Moído</Th>
+                    <Th className="text-right">Reutilizado</Th>
+                    <Th className="text-right">Descartado</Th>
+                    <Th className="text-right">Saldo</Th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {lista.map((s) => (
+                    <tr key={`${s.material_id}-${s.unidade_medida}`} className="hover:bg-slate-50">
+                      <Td className="text-slate-700">{s.material_nome}</Td>
+                      <Td className="text-slate-500">{s.unidade_medida}</Td>
+                      <Td className="text-right">{numero(s.gerado, 1)}</Td>
+                      <Td className="text-right">{numero(s.separado, 1)}</Td>
+                      <Td className="text-right">{numero(s.moido, 1)}</Td>
+                      <Td className="text-right">{numero(s.reutilizado_interno, 1)}</Td>
+                      <Td className="text-right">{numero(s.descartado, 1)}</Td>
+                      <Td className="text-right font-semibold">{numero(s.saldo, 1)}</Td>
+                    </tr>
+                  ))}
+                </tbody>
+              </Tabela>
+            </div>
+          </>
         )}
       </Cartao>
       {topMaterialSaldo && (

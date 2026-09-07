@@ -327,83 +327,129 @@ export default function Painel() {
         ) : (backlog.data || []).length === 0 ? (
           <Vazio titulo="Nenhum serviço em aberto" descricao="Tudo em dia por aqui." />
         ) : (
-          <Tabela>
-            <thead>
-              <tr>
-                <Th>Serviço</Th>
-                <Th>Máquina</Th>
-                <Th>Urgência</Th>
-                <Th>Aberto há</Th>
-                <Th className="text-right">Gasto</Th>
-              </tr>
-            </thead>
-            <tbody>
+          <>
+            <ul className="cascata divide-y sm:hidden" style={{ borderColor: 'var(--traco)' }}>
               {backlog.data.slice(0, 10).map((o) => (
-                <tr key={o.id} className="hover:bg-slate-50">
-                  <Td>
-                    <Link to={`/os/${o.id}`} className="font-medium text-sky-600 hover:text-sky-700">
-                      {o.numero}
-                    </Link>
-                    <p className="max-w-xs truncate text-xs text-slate-400">{o.titulo}</p>
-                  </Td>
-                  <Td>
-                    <span className="text-slate-700">{o.ativo_nome}</span>
-                    <p className="text-xs text-slate-400">
-                      {o.setor || o.unidade}
-                      {o.criticidade && ` · importância ${o.criticidade}`}
-                    </p>
-                  </Td>
-                  <Td>
-                    <Etiqueta cor={M_PRIORIDADE[o.prioridade]?.cor}>
-                      {M_PRIORIDADE[o.prioridade]?.label}
-                    </Etiqueta>
-                  </Td>
-                  <Td>
-                    <span className={o.atrasada ? 'font-medium text-red-600' : 'text-slate-600'}>
-                      {o.dias_aberta} {o.dias_aberta === 1 ? 'dia' : 'dias'}
-                    </span>
-                  </Td>
-                  <Td className="text-right font-medium">{moeda(o.custo_total)}</Td>
-                </tr>
+                <li key={o.id}>
+                  <Link to={`/os/${o.id}`} className="flex flex-col gap-1 px-4 py-3 active:bg-slate-50">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <span className="font-mono text-[11px] font-medium text-sky-600">{o.numero}</span>
+                        <p className="truncate text-sm text-slate-700">{o.ativo_nome}</p>
+                      </div>
+                      <span className="shrink-0 font-medium text-slate-800">{moeda(o.custo_total)}</span>
+                    </div>
+                    <p className="truncate text-xs text-slate-400">{o.titulo}</p>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <Etiqueta cor={M_PRIORIDADE[o.prioridade]?.cor}>{M_PRIORIDADE[o.prioridade]?.label}</Etiqueta>
+                      <span className={`text-xs ${o.atrasada ? 'font-medium text-red-600' : 'text-slate-400'}`}>
+                        aberto há {o.dias_aberta} {o.dias_aberta === 1 ? 'dia' : 'dias'}
+                      </span>
+                    </div>
+                  </Link>
+                </li>
               ))}
-            </tbody>
-          </Tabela>
+            </ul>
+
+            <div className="hidden sm:block">
+              <Tabela>
+                <thead>
+                  <tr>
+                    <Th>Serviço</Th>
+                    <Th>Máquina</Th>
+                    <Th>Urgência</Th>
+                    <Th>Aberto há</Th>
+                    <Th className="text-right">Gasto</Th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {backlog.data.slice(0, 10).map((o) => (
+                    <tr key={o.id} className="hover:bg-slate-50">
+                      <Td>
+                        <Link to={`/os/${o.id}`} className="font-medium text-sky-600 hover:text-sky-700">
+                          {o.numero}
+                        </Link>
+                        <p className="max-w-xs truncate text-xs text-slate-400">{o.titulo}</p>
+                      </Td>
+                      <Td>
+                        <span className="text-slate-700">{o.ativo_nome}</span>
+                        <p className="text-xs text-slate-400">
+                          {o.setor || o.unidade}
+                          {o.criticidade && ` · importância ${o.criticidade}`}
+                        </p>
+                      </Td>
+                      <Td>
+                        <Etiqueta cor={M_PRIORIDADE[o.prioridade]?.cor}>
+                          {M_PRIORIDADE[o.prioridade]?.label}
+                        </Etiqueta>
+                      </Td>
+                      <Td>
+                        <span className={o.atrasada ? 'font-medium text-red-600' : 'text-slate-600'}>
+                          {o.dias_aberta} {o.dias_aberta === 1 ? 'dia' : 'dias'}
+                        </span>
+                      </Td>
+                      <Td className="text-right font-medium">{moeda(o.custo_total)}</Td>
+                    </tr>
+                  ))}
+                </tbody>
+              </Tabela>
+            </div>
+          </>
         )}
       </Cartao>
 
       {(unidades.data || []).length > 1 && (
         <Cartao>
           <CartaoTitulo>Eusébio x Timon</CartaoTitulo>
-          <Tabela>
-            <thead>
-              <tr>
-                <Th>Unidade</Th>
-                <Th className="text-right">Máquinas</Th>
-                <Th className="text-right">Importância A</Th>
-                <Th className="text-right">Em aberto</Th>
-                <Th className="text-right">Parada (h)</Th>
-                <Th className="text-right">Gasto no ano</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {unidades.data.map((u) => (
-                <tr key={u.unidade_id} className="hover:bg-slate-50">
-                  <Td className="font-medium text-slate-800">{u.unidade}</Td>
-                  <Td className="text-right">{u.qtd_ativos}</Td>
-                  <Td className="text-right">
-                    {u.ativos_criticos > 0 ? (
-                      <Etiqueta cor={M_CRITICIDADE.A.cor}>{u.ativos_criticos}</Etiqueta>
-                    ) : (
-                      '—'
-                    )}
-                  </Td>
-                  <Td className="text-right">{u.os_abertas}</Td>
-                  <Td className="text-right">{numero(u.parada_horas, 1)}</Td>
-                  <Td className="text-right font-medium">{moeda(u.custo_12m)}</Td>
+          <ul className="cascata divide-y sm:hidden" style={{ borderColor: 'var(--traco)' }}>
+            {unidades.data.map((u) => (
+              <li key={u.unidade_id} className="px-4 py-3">
+                <div className="flex items-baseline justify-between">
+                  <p className="font-medium text-slate-800">{u.unidade}</p>
+                  <p className="text-sm font-medium text-slate-800">{moeda(u.custo_12m)}/ano</p>
+                </div>
+                <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
+                  <span>{u.qtd_ativos} máquina(s)</span>
+                  {u.ativos_criticos > 0 && <Etiqueta cor={M_CRITICIDADE.A.cor}>{u.ativos_criticos} importância A</Etiqueta>}
+                  <span>{u.os_abertas} em aberto</span>
+                  <span>{numero(u.parada_horas, 1)} h parada</span>
+                </div>
+              </li>
+            ))}
+          </ul>
+
+          <div className="hidden sm:block">
+            <Tabela>
+              <thead>
+                <tr>
+                  <Th>Unidade</Th>
+                  <Th className="text-right">Máquinas</Th>
+                  <Th className="text-right">Importância A</Th>
+                  <Th className="text-right">Em aberto</Th>
+                  <Th className="text-right">Parada (h)</Th>
+                  <Th className="text-right">Gasto no ano</Th>
                 </tr>
-              ))}
-            </tbody>
-          </Tabela>
+              </thead>
+              <tbody>
+                {unidades.data.map((u) => (
+                  <tr key={u.unidade_id} className="hover:bg-slate-50">
+                    <Td className="font-medium text-slate-800">{u.unidade}</Td>
+                    <Td className="text-right">{u.qtd_ativos}</Td>
+                    <Td className="text-right">
+                      {u.ativos_criticos > 0 ? (
+                        <Etiqueta cor={M_CRITICIDADE.A.cor}>{u.ativos_criticos}</Etiqueta>
+                      ) : (
+                        '—'
+                      )}
+                    </Td>
+                    <Td className="text-right">{u.os_abertas}</Td>
+                    <Td className="text-right">{numero(u.parada_horas, 1)}</Td>
+                    <Td className="text-right font-medium">{moeda(u.custo_12m)}</Td>
+                  </tr>
+                ))}
+              </tbody>
+            </Tabela>
+          </div>
         </Cartao>
       )}
     </div>
