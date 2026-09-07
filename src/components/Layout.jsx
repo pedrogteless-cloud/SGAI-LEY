@@ -3,7 +3,7 @@ import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Package, ClipboardList, Inbox, Boxes, Truck,
   Menu, X, LogOut, CalendarClock, LayoutGrid, MonitorPlay, BellRing, FileSpreadsheet, Moon, Sun,
-  KeyRound,
+  KeyRound, Recycle,
 } from 'lucide-react'
 import { useAuth } from '../hooks/useAuth'
 import { useTabela } from '../hooks/useDados'
@@ -39,6 +39,12 @@ const GRUPOS = [
     itens: [
       { para: '/almoxarifado', rotulo: 'Peças', icone: Boxes, contador: 'estoque' },
       { para: '/fornecedores', rotulo: 'Fornecedores', icone: Truck },
+    ],
+  },
+  {
+    titulo: 'Chão de fábrica',
+    itens: [
+      { para: '/desperdicios', rotulo: 'Desperdícios', icone: Recycle },
     ],
   },
   {

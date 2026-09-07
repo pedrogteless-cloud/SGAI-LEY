@@ -2715,6 +2715,1058 @@ create policy fotos_leitura on storage.objects
 --   update perfis set papel = 'gestor' where email = 'fulano@leycolchoes.com.br';
 
 -- =====================================================================
+-- 8.10 RELATÓRIO DO CHÃO DE FÁBRICA: DESPERDÍCIOS E REAPROVEITAMENTO
+-- =====================================================================
+--
+-- Um relatório diário (molde igual ordens_servico: numeração própria,
+-- status com histórico, mídias) que agrupa a inspeção de um dia: quais
+-- setores foram olhados, o que se achou de resíduo/reaproveitamento, e
+-- a nota de limpeza de cada setor.
+--
+-- Desperdício e reaproveitamento NÃO são tabelas separadas: são o MESMO
+-- livro-razão (residuo_lancamentos), diferenciado por tipo_movimentacao.
+-- É isso que evita contar o mesmo material duas vezes conforme ele anda
+-- de "gerado" -> "separado" -> "moído" -> "reutilizado": cada etapa é uma
+-- linha nova no mesmo material, e o saldo (view mais abaixo) faz a conta
+-- geração − consumo definitivo, nunca soma etapa com etapa.
+--
+-- Decisão importante: "quadrante" (ex. "7C") NÃO tem cadastro no banco —
+-- é geometria calculada em vw_planta_ativos a partir da posição x/y na
+-- planta. Por isso aqui ele é texto livre (mesmo formato), com setor_id
+-- como o vínculo de verdade pro cadastro real de setores.
+
+do $$ begin
+  create type status_relatorio_chao as enum ('aberta', 'em_andamento', 'concluida', 'reaberta', 'cancelada');
+exception when duplicate_object then null; end $$;
+
+do $$ begin
+  create type unidade_medida_residuo as enum ('kg', 'unidade', 'conjunto', 'm3', 'big_bag');
+exception when duplicate_object then null; end $$;
+
+do $$ begin
+  create type tipo_movimentacao_residuo as enum (
+    'geracao', 'identificado_reaproveitavel', 'separado', 'enviado_moagem', 'moido',
+    'reutilizacao_interna', 'venda_reciclagem', 'descarte', 'ajuste_positivo', 'ajuste_negativo'
+  );
+exception when duplicate_object then null; end $$;
+
+do $$ begin
+  create type origem_residuo as enum (
+    'producao', 'corte', 'colagem', 'montagem', 'reforma_colchoes', 'devolucao',
+    'manutencao', 'estoque', 'outro'
+  );
+exception when duplicate_object then null; end $$;
+
+do $$ begin
+  create type condicao_residuo as enum (
+    'limpo', 'parcialmente_aproveitavel', 'contaminado', 'sem_aproveitamento', 'aguardando_avaliacao'
+  );
+exception when duplicate_object then null; end $$;
+
+do $$ begin
+  create type destinacao_residuo as enum (
+    'estoque_residuos', 'separacao', 'moagem', 'reutilizacao_interna', 'venda_reciclagem',
+    'descarte', 'aguardando_definicao'
+  );
+exception when duplicate_object then null; end $$;
+
+create sequence if not exists seq_numero_relatorio_chao start 1;
+
+-- (32) relatorios_chao -----------------------------------------------------
+-- O cabeçalho agrupador do dia. "turno" é texto livre (não toda unidade
+-- trabalha em turnos) — quando usado, normalmente será manhã/tarde/noite.
+create table if not exists relatorios_chao (
+  id                       uuid primary key default gen_random_uuid(),
+  numero                   text unique,
+  unidade_id               uuid not null references unidades(id) on delete restrict,
+  data                     date not null default current_date,
+  turno                    text,
+  responsavel_id           uuid references perfis(id) on delete set null,
+  status                   status_relatorio_chao not null default 'aberta',
+  horario_previsto         time,
+  observacao_inicial       text,
+  -- exigidos só na conclusão (a RPC concluir_relatorio_chao valida isso)
+  conclusao_situacao       text,
+  conclusao_atencao        text,
+  conclusao_providencias   text,
+  sem_desperdicio_confirmado boolean not null default false,
+  sem_reaproveitamento_confirmado boolean not null default false,
+  -- se foi aberto driblando a checagem de duplicidade, fica registrado aqui
+  justificativa_duplicidade text,
+  aberta_em                timestamptz not null default now(),
+  concluida_em             timestamptz,
+  concluida_por            uuid references perfis(id) on delete set null,
+  reaberta_em              timestamptz,
+  reaberta_por             uuid references perfis(id) on delete set null,
+  motivo_reabertura        text,
+  cancelada_em             timestamptz,
+  cancelada_por            uuid references perfis(id) on delete set null,
+  motivo_cancelamento      text,
+  criado_por               uuid references perfis(id) on delete set null,
+  criado_em                timestamptz not null default now(),
+  atualizado_em            timestamptz not null default now()
+);
+
+create index if not exists idx_rel_chao_unidade_data on relatorios_chao(unidade_id, data desc);
+create index if not exists idx_rel_chao_status on relatorios_chao(status);
+create index if not exists idx_rel_chao_responsavel on relatorios_chao(responsavel_id);
+
+drop trigger if exists trg_rel_chao_atualizado on relatorios_chao;
+create trigger trg_rel_chao_atualizado before update on relatorios_chao
+  for each row execute function fn_atualizado_em();
+
+-- (33) relatorio_chao_setores -----------------------------------------
+-- Setor previsto na abertura + avaliação de limpeza do dia (a mesma
+-- linha: um setor por relatório). "nota" e a confirmação ficam nulas até
+-- a inspeção acontecer.
+create table if not exists relatorio_chao_setores (
+  id                        uuid primary key default gen_random_uuid(),
+  relatorio_id              uuid not null references relatorios_chao(id) on delete cascade,
+  setor_id                  uuid not null references setores(id) on delete restrict,
+  nota                      smallint check (nota between 1 and 5),
+  nao_inspecionado          boolean not null default false,
+  justificativa_nao_inspecionado text,
+  quadrantes_inspecionados  text[] not null default '{}',
+  principais_problemas      text,
+  observacao                text,
+  acao_recomendada          text,
+  confirmado_em             timestamptz,
+  confirmado_por            uuid references perfis(id) on delete set null,
+  criado_em                 timestamptz not null default now(),
+  unique (relatorio_id, setor_id),
+  check (nota is null or nao_inspecionado = false)
+);
+
+create index if not exists idx_rel_chao_setores_rel on relatorio_chao_setores(relatorio_id);
+
+-- (34) materiais_residuo ------------------------------------------------
+-- "categoria" é texto livre (não enum): a fábrica vai inventar material
+-- novo com categoria nova sem precisar de migração pra isso.
+create table if not exists materiais_residuo (
+  id                     uuid primary key default gen_random_uuid(),
+  nome                   text not null unique,
+  categoria              text not null,
+  descricao              text,
+  unidade_principal      unidade_medida_residuo not null,
+  permite_reaproveitamento boolean not null default true,
+  ativo                  boolean not null default true,
+  criado_em              timestamptz not null default now(),
+  atualizado_em          timestamptz not null default now()
+);
+
+drop trigger if exists trg_materiais_residuo_atualizado on materiais_residuo;
+create trigger trg_materiais_residuo_atualizado before update on materiais_residuo
+  for each row execute function fn_atualizado_em();
+
+-- (35) residuo_lancamentos ----------------------------------------------
+-- O livro-razão único de desperdício + reaproveitamento. Todo lançamento
+-- pertence a um relatório (vínculo obrigatório com a inspeção de origem).
+create table if not exists residuo_lancamentos (
+  id                        uuid primary key default gen_random_uuid(),
+  relatorio_id              uuid not null references relatorios_chao(id) on delete cascade,
+  material_id               uuid not null references materiais_residuo(id) on delete restrict,
+  tipo_movimentacao         tipo_movimentacao_residuo not null,
+  origem                    origem_residuo,
+  condicao                  condicao_residuo,
+  destinacao                destinacao_residuo,
+  motivo                    text,
+  setor_id                  uuid references setores(id) on delete set null,
+  quadrante                 text,
+  localizacao_complementar  text,
+  -- setor/processo que provavelmente GEROU o resíduo — diferente de onde
+  -- foi ENCONTRADO (setor_id). Nunca assumir que são o mesmo.
+  provavel_setor_origem_id  uuid references setores(id) on delete set null,
+  ativo_id                  uuid references ativos(id) on delete set null,
+  observacao                text,
+  registrado_por            uuid references perfis(id) on delete set null,
+  criado_em                 timestamptz not null default now()
+);
+
+create index if not exists idx_residuo_lanc_relatorio on residuo_lancamentos(relatorio_id);
+create index if not exists idx_residuo_lanc_material on residuo_lancamentos(material_id, tipo_movimentacao);
+create index if not exists idx_residuo_lanc_setor on residuo_lancamentos(setor_id);
+create index if not exists idx_residuo_lanc_criado on residuo_lancamentos(criado_em desc);
+
+-- (36) residuo_medicoes --------------------------------------------------
+-- Um lançamento pode ter mais de uma medição (EPS: unidade + kg + m³ ao
+-- mesmo tempo). Nunca somamos entre unidade_medida diferentes.
+create table if not exists residuo_medicoes (
+  id             uuid primary key default gen_random_uuid(),
+  lancamento_id  uuid not null references residuo_lancamentos(id) on delete cascade,
+  unidade_medida unidade_medida_residuo not null,
+  quantidade     numeric(14,3) not null check (quantidade > 0),
+  unique (lancamento_id, unidade_medida)
+);
+
+create index if not exists idx_residuo_med_lanc on residuo_medicoes(lancamento_id);
+
+-- (37) residuo_bigbags ---------------------------------------------------
+-- O big bag físico, que pode acumular pesagens em vários dias antes de
+-- ser esvaziado/trocado.
+create table if not exists residuo_bigbags (
+  id            uuid primary key default gen_random_uuid(),
+  unidade_id    uuid not null references unidades(id) on delete restrict,
+  identificacao text not null,
+  material_id   uuid references materiais_residuo(id) on delete set null,
+  setor_id      uuid references setores(id) on delete set null,
+  ativo         boolean not null default true,
+  criado_em     timestamptz not null default now(),
+  unique (unidade_id, identificacao)
+);
+
+-- (38) residuo_bigbag_pesagens --------------------------------------------
+-- Cada pesagem manual na balança do setor. peso_liquido às vezes é
+-- CALCULADO (bruto − tara) e às vezes é a própria LEITURA do dia no modo
+-- de acúmulo — por isso fica como coluna própria, não só derivada.
+create table if not exists residuo_bigbag_pesagens (
+  id                    uuid primary key default gen_random_uuid(),
+  bigbag_id             uuid not null references residuo_bigbags(id) on delete cascade,
+  relatorio_id          uuid references relatorios_chao(id) on delete set null,
+  lancamento_id         uuid references residuo_lancamentos(id) on delete set null,
+  data                  date not null default current_date,
+  peso_bruto            numeric(10,2),
+  tara                  numeric(10,2),
+  peso_liquido          numeric(10,2),
+  quantidade_bigbags    int,
+  -- modo de acúmulo (o mesmo bigbag junta resíduo por vários dias)
+  peso_liquido_inicial  numeric(10,2),
+  peso_liquido_final    numeric(10,2),
+  quantidade_retirada   numeric(10,2),
+  quantidade_gerada_dia numeric(10,2),
+  registrado_por        uuid references perfis(id) on delete set null,
+  criado_em             timestamptz not null default now()
+);
+
+create index if not exists idx_bigbag_pesagens_bigbag on residuo_bigbag_pesagens(bigbag_id, data desc);
+
+-- (39) relatorio_chao_midias ----------------------------------------------
+-- Uma tabela só pros 3 pontos de anexo do módulo (relatório geral,
+-- lançamento, avaliação de setor) em vez de triplicar a tabela de mídia
+-- — os 3 pertencem ao mesmo relatório, então o vínculo opcional resolve
+-- sem regredir a rastreabilidade.
+create table if not exists relatorio_chao_midias (
+  id                  uuid primary key default gen_random_uuid(),
+  relatorio_id        uuid not null references relatorios_chao(id) on delete cascade,
+  lancamento_id       uuid references residuo_lancamentos(id) on delete cascade,
+  setor_avaliacao_id  uuid references relatorio_chao_setores(id) on delete cascade,
+  url                 text not null,
+  storage_path        text,
+  mime_type           text,
+  legenda             text,
+  enviado_por         uuid references perfis(id) on delete set null,
+  criado_em           timestamptz not null default now(),
+  check (lancamento_id is null or setor_avaliacao_id is null)
+);
+
+create index if not exists idx_rel_chao_midias_rel on relatorio_chao_midias(relatorio_id);
+create index if not exists idx_rel_chao_midias_lanc on relatorio_chao_midias(lancamento_id);
+create index if not exists idx_rel_chao_midias_setor on relatorio_chao_midias(setor_avaliacao_id);
+
+-- (40) relatorio_chao_producao ---------------------------------------------
+-- Registro opcional de produção do dia, pra depois calcular kg de
+-- resíduo por 100 colchões / índice de perda sem inventar proxy nenhum.
+create table if not exists relatorio_chao_producao (
+  id                       uuid primary key default gen_random_uuid(),
+  relatorio_id             uuid not null references relatorios_chao(id) on delete cascade,
+  setor_id                 uuid references setores(id) on delete set null,
+  colchoes_produzidos      int,
+  kg_material_processado   numeric(14,2),
+  quantidade_produzida     numeric(14,2),
+  unidade_produzida        text,
+  criado_em                timestamptz not null default now()
+);
+
+create index if not exists idx_rel_chao_producao_rel on relatorio_chao_producao(relatorio_id);
+
+-- (41) relatorio_chao_historico --------------------------------------------
+-- Trilha de status igual os_historico: toda reabertura/cancelamento fica
+-- registrado aqui, além do que já vai pra tabela genérica `auditoria`.
+create table if not exists relatorio_chao_historico (
+  id            uuid primary key default gen_random_uuid(),
+  relatorio_id  uuid not null references relatorios_chao(id) on delete cascade,
+  status_de     status_relatorio_chao,
+  status_para   status_relatorio_chao not null,
+  comentario    text,
+  autor_id      uuid references perfis(id) on delete set null,
+  criado_em     timestamptz not null default now()
+);
+
+create index if not exists idx_rel_chao_hist on relatorio_chao_historico(relatorio_id, criado_em);
+
+-- (42) metas_chao ------------------------------------------------------
+-- Fica pronta pra quando houver linha de base — não pré-cadastramos
+-- meta nenhuma.
+create table if not exists metas_chao (
+  id                uuid primary key default gen_random_uuid(),
+  nome              text not null,
+  indicador         text not null,
+  material_id       uuid references materiais_residuo(id) on delete cascade,
+  setor_id          uuid references setores(id) on delete cascade,
+  quadrante         text,
+  unidade_medida    text,
+  valor_alvo        numeric(14,3) not null,
+  periodicidade     text not null check (periodicidade in ('diaria','semanal','mensal','anual')),
+  periodo_base_inicio date,
+  periodo_base_fim    date,
+  inicio            date not null default current_date,
+  termino           date,
+  ativo             boolean not null default true,
+  criado_por        uuid references perfis(id) on delete set null,
+  criado_em         timestamptz not null default now(),
+  check (indicador in (
+    'max_residuo_material','max_residuo_setor','max_descarte','max_ocorrencias_quadrante',
+    'min_destinacao_util','min_reaproveitamento_concluido','max_kg_por_100_colchoes',
+    'max_indice_perda','min_nota_limpeza','nenhum_setor_nota_1',
+    'pct_min_setores_inspecionados','pct_min_relatorios_no_prazo','reducao_percentual'
+  ))
+);
+
+-- --- numeração do relatório, igual OS/solicitação ----------------------
+create or replace function fn_numero_relatorio_chao()
+returns trigger language plpgsql set search_path = public as $$
+begin
+  if new.numero is null then
+    new.numero := 'RCF-' || to_char(now(), 'YYYY') || '-' ||
+                  lpad(nextval('seq_numero_relatorio_chao')::text, 5, '0');
+  end if;
+  return new;
+end $$;
+
+drop trigger if exists trg_rel_chao_numero on relatorios_chao;
+create trigger trg_rel_chao_numero before insert on relatorios_chao
+for each row execute function fn_numero_relatorio_chao();
+
+-- --- histórico de status, igual os_historico -----------------------------
+create or replace function fn_rel_chao_status()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if tg_op = 'INSERT' then
+    insert into relatorio_chao_historico (relatorio_id, status_de, status_para, autor_id)
+    values (new.id, null, new.status, auth.uid());
+    return new;
+  end if;
+
+  if new.status is distinct from old.status then
+    insert into relatorio_chao_historico (relatorio_id, status_de, status_para, autor_id)
+    values (new.id, old.status, new.status, auth.uid());
+  end if;
+
+  return new;
+end $$;
+
+drop trigger if exists trg_rel_chao_status_ins on relatorios_chao;
+create trigger trg_rel_chao_status_ins after insert on relatorios_chao
+for each row execute function fn_rel_chao_status();
+
+drop trigger if exists trg_rel_chao_status_upd on relatorios_chao;
+create trigger trg_rel_chao_status_upd after update of status on relatorios_chao
+for each row execute function fn_rel_chao_status();
+
+-- --- pesagem de bigbag: calcula peso líquido quando vem bruto+tara ------
+-- (o modo de acúmulo informa peso_liquido_final na mão, sem bruto/tara)
+create or replace function fn_bigbag_calcula_liquido()
+returns trigger language plpgsql set search_path = public as $$
+begin
+  if new.peso_liquido is null and new.peso_bruto is not null and new.tara is not null then
+    new.peso_liquido := round(new.peso_bruto - new.tara, 2);
+  end if;
+  if new.peso_liquido_inicial is not null and new.peso_liquido_final is not null then
+    new.quantidade_gerada_dia := round(
+      new.peso_liquido_final + coalesce(new.quantidade_retirada, 0) - new.peso_liquido_inicial, 2);
+  end if;
+  return new;
+end $$;
+
+drop trigger if exists trg_bigbag_calcula on residuo_bigbag_pesagens;
+create trigger trg_bigbag_calcula before insert or update on residuo_bigbag_pesagens
+for each row execute function fn_bigbag_calcula_liquido();
+
+-- --- RPCs -----------------------------------------------------------------
+
+-- Abre o relatório do dia. Se já existir um pra mesma data+unidade+turno
+-- (e não cancelado), bloqueia — a menos que quem chame seja gestor E tenha
+-- mandado justificativa, caso em que segue e grava a justificativa.
+create or replace function abrir_relatorio_chao(
+  p_unidade_id       uuid,
+  p_data             date default current_date,
+  p_turno            text default null,
+  p_responsavel_id   uuid default null,
+  p_setores_ids      uuid[] default '{}',
+  p_horario_previsto time default null,
+  p_observacao_inicial text default null,
+  p_justificativa_duplicidade text default null
+)
+returns table(id uuid, numero text, mensagem text)
+language plpgsql security definer set search_path = public as $$
+declare
+  v_existente uuid;
+  v_id uuid;
+  v_numero text;
+  v_setor uuid;
+begin
+  if not eh_tecnico_ou_gestor() then
+    return query select null::uuid, null::text, 'Você não tem permissão pra abrir relatório.'::text;
+    return;
+  end if;
+
+  select rc.id into v_existente
+    from relatorios_chao rc
+   where rc.unidade_id = p_unidade_id
+     and rc.data = p_data
+     and rc.turno is not distinct from p_turno
+     and rc.status <> 'cancelada'
+   limit 1;
+
+  if v_existente is not null then
+    if not eh_gestor() or nullif(btrim(coalesce(p_justificativa_duplicidade, '')), '') is null then
+      return query select null::uuid, null::text,
+        'Já existe um relatório pra essa data, unidade e turno. Só gestor pode abrir outro, com justificativa.'::text;
+      return;
+    end if;
+  end if;
+
+  insert into relatorios_chao (
+    unidade_id, data, turno, responsavel_id, horario_previsto, observacao_inicial,
+    justificativa_duplicidade, criado_por, status
+  ) values (
+    p_unidade_id, p_data, p_turno, p_responsavel_id, p_horario_previsto, p_observacao_inicial,
+    case when v_existente is not null then p_justificativa_duplicidade else null end,
+    auth.uid(), 'aberta'
+  ) returning relatorios_chao.id, relatorios_chao.numero into v_id, v_numero;
+
+  foreach v_setor in array coalesce(p_setores_ids, '{}') loop
+    insert into relatorio_chao_setores (relatorio_id, setor_id)
+    values (v_id, v_setor)
+    on conflict (relatorio_id, setor_id) do nothing;
+  end loop;
+
+  return query select v_id, v_numero, null::text;
+end $$;
+
+revoke execute on function abrir_relatorio_chao(uuid, date, text, uuid, uuid[], time, text, text) from public;
+grant execute on function abrir_relatorio_chao(uuid, date, text, uuid, uuid[], time, text, text) to authenticated;
+
+-- Um lançamento só pode ser criado/editado enquanto o relatório está
+-- aberto/em andamento/reaberto — mesmo pra gestor. Diferente de
+-- pode_editar_os (que deixa gestor sempre editar), aqui a reabertura É
+-- o portão de auditoria que o pedido exige: gestor não edita relatório
+-- concluído sem reabrir primeiro.
+create or replace function pode_editar_relatorio_chao(p_relatorio uuid)
+returns boolean
+language sql stable security definer set search_path = public as $$
+  select eh_tecnico_ou_gestor() and exists (
+    select 1 from relatorios_chao r
+     where r.id = p_relatorio
+       and r.status in ('aberta', 'em_andamento', 'reaberta')
+  )
+$$;
+
+-- Registra um lançamento (desperdício OU etapa de reaproveitamento — o
+-- que diferencia é p_tipo_movimentacao) com uma ou mais medições, tudo
+-- numa transação só. p_medicoes: [{"unidade_medida":"kg","quantidade":18.5}, ...]
+create or replace function registrar_residuo(
+  p_relatorio_id  uuid,
+  p_material_id   uuid,
+  p_tipo_movimentacao tipo_movimentacao_residuo,
+  p_medicoes      jsonb,
+  p_origem        origem_residuo default null,
+  p_condicao      condicao_residuo default null,
+  p_destinacao    destinacao_residuo default null,
+  p_motivo        text default null,
+  p_setor_id      uuid default null,
+  p_quadrante     text default null,
+  p_localizacao_complementar text default null,
+  p_provavel_setor_origem_id uuid default null,
+  p_ativo_id      uuid default null,
+  p_observacao    text default null
+)
+returns table(id uuid, mensagem text)
+language plpgsql security definer set search_path = public as $$
+declare
+  v_id uuid;
+  v_medicao jsonb;
+begin
+  if not pode_editar_relatorio_chao(p_relatorio_id) then
+    return query select null::uuid, 'Esse relatório não está mais aberto pra edição.'::text;
+    return;
+  end if;
+
+  if jsonb_array_length(coalesce(p_medicoes, '[]'::jsonb)) = 0 then
+    return query select null::uuid, 'Informe pelo menos uma medição (kg, unidades, m³...).'::text;
+    return;
+  end if;
+
+  insert into residuo_lancamentos (
+    relatorio_id, material_id, tipo_movimentacao, origem, condicao, destinacao, motivo,
+    setor_id, quadrante, localizacao_complementar, provavel_setor_origem_id, ativo_id,
+    observacao, registrado_por
+  ) values (
+    p_relatorio_id, p_material_id, p_tipo_movimentacao, p_origem, p_condicao, p_destinacao, p_motivo,
+    p_setor_id, nullif(btrim(coalesce(p_quadrante, '')), ''), p_localizacao_complementar,
+    p_provavel_setor_origem_id, p_ativo_id, p_observacao, auth.uid()
+  ) returning residuo_lancamentos.id into v_id;
+
+  for v_medicao in select * from jsonb_array_elements(p_medicoes) loop
+    insert into residuo_medicoes (lancamento_id, unidade_medida, quantidade)
+    values (
+      v_id,
+      (v_medicao->>'unidade_medida')::unidade_medida_residuo,
+      (v_medicao->>'quantidade')::numeric
+    );
+  end loop;
+
+  update relatorios_chao set status = 'em_andamento'
+   where relatorios_chao.id = p_relatorio_id and relatorios_chao.status = 'aberta';
+
+  insert into auditoria (tabela, registro_id, operacao, dados_depois, autor_id)
+  values ('residuo_lancamentos', v_id::text, 'registrar_residuo',
+          jsonb_build_object('relatorio_id', p_relatorio_id, 'tipo', p_tipo_movimentacao), auth.uid());
+
+  return query select v_id, null::text;
+end $$;
+
+revoke execute on function registrar_residuo(uuid, uuid, tipo_movimentacao_residuo, jsonb, origem_residuo, condicao_residuo, destinacao_residuo, text, uuid, text, text, uuid, uuid, text) from public;
+grant execute on function registrar_residuo(uuid, uuid, tipo_movimentacao_residuo, jsonb, origem_residuo, condicao_residuo, destinacao_residuo, text, uuid, text, text, uuid, uuid, text) to authenticated;
+
+-- Avalia (ou marca não-inspecionado) um setor do relatório. Sempre update,
+-- nunca insert — a linha já nasceu na abertura (um setor por relatório).
+create or replace function avaliar_limpeza_setor(
+  p_relatorio_setor_id uuid,
+  p_nota               smallint default null,
+  p_nao_inspecionado   boolean default false,
+  p_justificativa      text default null,
+  p_quadrantes         text[] default '{}',
+  p_principais_problemas text default null,
+  p_observacao         text default null,
+  p_acao_recomendada   text default null
+)
+returns table(id uuid, mensagem text)
+language plpgsql security definer set search_path = public as $$
+declare
+  v_relatorio uuid;
+begin
+  select relatorio_chao_setores.relatorio_id into v_relatorio
+    from relatorio_chao_setores where relatorio_chao_setores.id = p_relatorio_setor_id;
+  if v_relatorio is null then
+    return query select null::uuid, 'Setor do relatório não encontrado.'::text;
+    return;
+  end if;
+  if not pode_editar_relatorio_chao(v_relatorio) then
+    return query select null::uuid, 'Esse relatório não está mais aberto pra edição.'::text;
+    return;
+  end if;
+  if not p_nao_inspecionado and p_nota is null then
+    return query select null::uuid, 'Dê uma nota de 1 a 5, ou marque não inspecionado.'::text;
+    return;
+  end if;
+  if p_nao_inspecionado and nullif(btrim(coalesce(p_justificativa, '')), '') is null then
+    return query select null::uuid, 'Setor não inspecionado precisa de justificativa.'::text;
+    return;
+  end if;
+
+  update relatorio_chao_setores set
+    nota = case when p_nao_inspecionado then null else p_nota end,
+    nao_inspecionado = p_nao_inspecionado,
+    justificativa_nao_inspecionado = case when p_nao_inspecionado then p_justificativa else null end,
+    quadrantes_inspecionados = coalesce(p_quadrantes, '{}'),
+    principais_problemas = p_principais_problemas,
+    observacao = p_observacao,
+    acao_recomendada = p_acao_recomendada,
+    confirmado_em = now(),
+    confirmado_por = auth.uid()
+  where relatorio_chao_setores.id = p_relatorio_setor_id;
+
+  update relatorios_chao set status = 'em_andamento'
+   where relatorios_chao.id = v_relatorio and relatorios_chao.status = 'aberta';
+
+  return query select p_relatorio_setor_id, null::text;
+end $$;
+
+revoke execute on function avaliar_limpeza_setor(uuid, smallint, boolean, text, text[], text, text, text) from public;
+grant execute on function avaliar_limpeza_setor(uuid, smallint, boolean, text, text[], text, text, text) to authenticated;
+
+-- Pesagem manual de bigbag: cria (ou usa) o bigbag pela identificação,
+-- registra a pesagem e, se resultar em peso líquido/gerado, já cria o
+-- lançamento correspondente no livro-razão (tipo 'geracao', unidade kg) —
+-- assim a balança nunca fica desconectada do saldo geral.
+create or replace function registrar_pesagem_bigbag(
+  p_relatorio_id     uuid,
+  p_unidade_id       uuid,
+  p_identificacao    text,
+  p_material_id      uuid default null,
+  p_setor_id         uuid default null,
+  p_peso_bruto       numeric default null,
+  p_tara             numeric default null,
+  p_peso_liquido     numeric default null,
+  p_quantidade_bigbags int default null,
+  p_peso_liquido_inicial numeric default null,
+  p_peso_liquido_final   numeric default null,
+  p_quantidade_retirada  numeric default null,
+  p_origem           origem_residuo default null,
+  p_quadrante        text default null
+)
+returns table(id uuid, peso_liquido numeric, quantidade_gerada_dia numeric, mensagem text)
+language plpgsql security definer set search_path = public as $$
+declare
+  v_bigbag uuid;
+  v_pesagem uuid;
+  v_liquido numeric;
+  v_gerado numeric;
+  v_lancamento uuid;
+  v_kg_para_lancar numeric;
+begin
+  if not pode_editar_relatorio_chao(p_relatorio_id) then
+    return query select null::uuid, null::numeric, null::numeric, 'Esse relatório não está mais aberto pra edição.'::text;
+    return;
+  end if;
+  if nullif(btrim(coalesce(p_identificacao, '')), '') is null then
+    return query select null::uuid, null::numeric, null::numeric, 'Informe a identificação do big bag.'::text;
+    return;
+  end if;
+
+  insert into residuo_bigbags (unidade_id, identificacao, material_id, setor_id)
+  values (p_unidade_id, btrim(p_identificacao), p_material_id, p_setor_id)
+  on conflict (unidade_id, identificacao) do update set
+    material_id = coalesce(excluded.material_id, residuo_bigbags.material_id),
+    setor_id = coalesce(excluded.setor_id, residuo_bigbags.setor_id)
+  returning residuo_bigbags.id into v_bigbag;
+
+  insert into residuo_bigbag_pesagens (
+    bigbag_id, relatorio_id, data, peso_bruto, tara, peso_liquido, quantidade_bigbags,
+    peso_liquido_inicial, peso_liquido_final, quantidade_retirada, registrado_por
+  ) values (
+    v_bigbag, p_relatorio_id, current_date, p_peso_bruto, p_tara, p_peso_liquido, p_quantidade_bigbags,
+    p_peso_liquido_inicial, p_peso_liquido_final, p_quantidade_retirada, auth.uid()
+  ) returning residuo_bigbag_pesagens.id, residuo_bigbag_pesagens.peso_liquido,
+              residuo_bigbag_pesagens.quantidade_gerada_dia
+    into v_pesagem, v_liquido, v_gerado;
+
+  v_kg_para_lancar := coalesce(v_gerado, v_liquido);
+
+  if p_material_id is not null and coalesce(v_kg_para_lancar, 0) > 0 then
+    insert into residuo_lancamentos (
+      relatorio_id, material_id, tipo_movimentacao, origem, setor_id, quadrante, observacao, registrado_por
+    ) values (
+      p_relatorio_id, p_material_id, 'geracao', p_origem, p_setor_id,
+      nullif(btrim(coalesce(p_quadrante, '')), ''),
+      'Pesagem do big bag ' || btrim(p_identificacao), auth.uid()
+    ) returning residuo_lancamentos.id into v_lancamento;
+
+    insert into residuo_medicoes (lancamento_id, unidade_medida, quantidade)
+    values (v_lancamento, 'kg', v_kg_para_lancar);
+
+    update residuo_bigbag_pesagens set lancamento_id = v_lancamento
+     where residuo_bigbag_pesagens.id = v_pesagem;
+  end if;
+
+  update relatorios_chao set status = 'em_andamento'
+   where relatorios_chao.id = p_relatorio_id and relatorios_chao.status = 'aberta';
+
+  return query select v_pesagem, v_liquido, v_gerado, null::text;
+end $$;
+
+revoke execute on function registrar_pesagem_bigbag(uuid, uuid, text, uuid, uuid, numeric, numeric, numeric, int, numeric, numeric, numeric, origem_residuo, text) from public;
+grant execute on function registrar_pesagem_bigbag(uuid, uuid, text, uuid, uuid, numeric, numeric, numeric, int, numeric, numeric, numeric, origem_residuo, text) to authenticated;
+
+-- Conclui: exige que todo setor previsto tenha nota OU justificativa de
+-- não-inspecionado, e que desperdício/reaproveitamento tenham pelo menos
+-- um lançamento OU a confirmação explícita de "nada encontrado".
+create or replace function concluir_relatorio_chao(
+  p_relatorio_id         uuid,
+  p_conclusao_situacao   text,
+  p_conclusao_atencao    text,
+  p_conclusao_providencias text,
+  p_sem_desperdicio      boolean default false,
+  p_sem_reaproveitamento boolean default false
+)
+returns table(id uuid, mensagem text)
+language plpgsql security definer set search_path = public as $$
+declare
+  v_pendentes int;
+  v_tem_desperdicio boolean;
+  v_tem_reaproveitamento boolean;
+begin
+  if not pode_editar_relatorio_chao(p_relatorio_id) then
+    return query select null::uuid, 'Esse relatório não está mais aberto pra edição.'::text;
+    return;
+  end if;
+
+  select count(*) into v_pendentes
+    from relatorio_chao_setores
+   where relatorio_chao_setores.relatorio_id = p_relatorio_id
+     and relatorio_chao_setores.nota is null
+     and relatorio_chao_setores.nao_inspecionado = false;
+
+  if v_pendentes > 0 then
+    return query select null::uuid,
+      format('Faltam %s setor(es) sem avaliação de limpeza nem justificativa.', v_pendentes)::text;
+    return;
+  end if;
+
+  select exists(
+    select 1 from residuo_lancamentos
+     where residuo_lancamentos.relatorio_id = p_relatorio_id and residuo_lancamentos.tipo_movimentacao = 'geracao'
+  ) into v_tem_desperdicio;
+  if not v_tem_desperdicio and not p_sem_desperdicio then
+    return query select null::uuid,
+      'Registre ao menos um desperdício ou confirme "nenhum desperdício identificado".'::text;
+    return;
+  end if;
+
+  select exists(
+    select 1 from residuo_lancamentos
+     where residuo_lancamentos.relatorio_id = p_relatorio_id
+       and residuo_lancamentos.tipo_movimentacao <> 'geracao'
+  ) into v_tem_reaproveitamento;
+  if not v_tem_reaproveitamento and not p_sem_reaproveitamento then
+    return query select null::uuid,
+      'Registre ao menos uma movimentação de reaproveitamento ou confirme que não houve.'::text;
+    return;
+  end if;
+
+  if nullif(btrim(coalesce(p_conclusao_situacao, '')), '') is null
+     or nullif(btrim(coalesce(p_conclusao_atencao, '')), '') is null
+     or nullif(btrim(coalesce(p_conclusao_providencias, '')), '') is null then
+    return query select null::uuid,
+      'Preencha situação geral, pontos de atenção e providências pra concluir.'::text;
+    return;
+  end if;
+
+  update relatorios_chao set
+    status = 'concluida',
+    conclusao_situacao = p_conclusao_situacao,
+    conclusao_atencao = p_conclusao_atencao,
+    conclusao_providencias = p_conclusao_providencias,
+    sem_desperdicio_confirmado = p_sem_desperdicio,
+    sem_reaproveitamento_confirmado = p_sem_reaproveitamento,
+    concluida_em = now(),
+    concluida_por = auth.uid()
+  where relatorios_chao.id = p_relatorio_id;
+
+  return query select p_relatorio_id, null::text;
+end $$;
+
+revoke execute on function concluir_relatorio_chao(uuid, text, text, text, boolean, boolean) from public;
+grant execute on function concluir_relatorio_chao(uuid, text, text, text, boolean, boolean) to authenticated;
+
+-- Reabertura: só gestor, com motivo. Fica registrado no histórico E na
+-- auditoria genérica (guarda o estado anterior completo, pra rastro real).
+create or replace function reabrir_relatorio_chao(p_relatorio_id uuid, p_motivo text)
+returns table(id uuid, mensagem text)
+language plpgsql security definer set search_path = public as $$
+declare
+  v_antes jsonb;
+begin
+  if not eh_gestor() then
+    return query select null::uuid, 'Só gestor pode reabrir um relatório concluído.'::text;
+    return;
+  end if;
+  if nullif(btrim(coalesce(p_motivo, '')), '') is null then
+    return query select null::uuid, 'Informe o motivo da reabertura.'::text;
+    return;
+  end if;
+
+  select to_jsonb(r) into v_antes from relatorios_chao r where r.id = p_relatorio_id;
+  if v_antes is null then
+    return query select null::uuid, 'Relatório não encontrado.'::text;
+    return;
+  end if;
+
+  update relatorios_chao set
+    status = 'reaberta',
+    reaberta_em = now(),
+    reaberta_por = auth.uid(),
+    motivo_reabertura = p_motivo
+  where relatorios_chao.id = p_relatorio_id;
+
+  insert into auditoria (tabela, registro_id, operacao, dados_antes, dados_depois, autor_id)
+  values ('relatorios_chao', p_relatorio_id::text, 'reabrir_relatorio_chao',
+          v_antes, jsonb_build_object('motivo', p_motivo), auth.uid());
+
+  return query select p_relatorio_id, null::text;
+end $$;
+
+revoke execute on function reabrir_relatorio_chao(uuid, text) from public;
+grant execute on function reabrir_relatorio_chao(uuid, text) to authenticated;
+
+-- Cancelamento: só gestor, com motivo.
+create or replace function cancelar_relatorio_chao(p_relatorio_id uuid, p_motivo text)
+returns table(id uuid, mensagem text)
+language plpgsql security definer set search_path = public as $$
+declare
+  v_antes jsonb;
+begin
+  if not eh_gestor() then
+    return query select null::uuid, 'Só gestor pode cancelar um relatório.'::text;
+    return;
+  end if;
+  if nullif(btrim(coalesce(p_motivo, '')), '') is null then
+    return query select null::uuid, 'Informe o motivo do cancelamento.'::text;
+    return;
+  end if;
+
+  select to_jsonb(r) into v_antes from relatorios_chao r where r.id = p_relatorio_id;
+  if v_antes is null then
+    return query select null::uuid, 'Relatório não encontrado.'::text;
+    return;
+  end if;
+
+  update relatorios_chao set
+    status = 'cancelada',
+    cancelada_em = now(),
+    cancelada_por = auth.uid(),
+    motivo_cancelamento = p_motivo
+  where relatorios_chao.id = p_relatorio_id;
+
+  insert into auditoria (tabela, registro_id, operacao, dados_antes, dados_depois, autor_id)
+  values ('relatorios_chao', p_relatorio_id::text, 'cancelar_relatorio_chao',
+          v_antes, jsonb_build_object('motivo', p_motivo), auth.uid());
+
+  return query select p_relatorio_id, null::text;
+end $$;
+
+revoke execute on function cancelar_relatorio_chao(uuid, text) from public;
+grant execute on function cancelar_relatorio_chao(uuid, text) to authenticated;
+
+-- --- views ------------------------------------------------------------
+
+-- Saldo por material + unidade de medida (nunca mistura unidade
+-- diferente). Segue a fórmula conceitual do pedido: geração + ajustes
+-- positivos − reutilização concluída − venda/reciclagem − descarte −
+-- ajustes negativos. Envio pra moagem e "moído" são etapa, não consumo:
+-- não entram na subtração do saldo geral, só nas colunas informativas.
+create or replace view vw_residuo_saldo with (security_invoker = on) as
+select
+  t.material_id,
+  t.unidade_medida,
+  coalesce(sum(t.quantidade) filter (where t.tipo_movimentacao = 'geracao'), 0)                    as gerado,
+  coalesce(sum(t.quantidade) filter (where t.tipo_movimentacao = 'ajuste_positivo'), 0)             as ajustes_positivos,
+  coalesce(sum(t.quantidade) filter (where t.tipo_movimentacao = 'ajuste_negativo'), 0)             as ajustes_negativos,
+  coalesce(sum(t.quantidade) filter (where t.tipo_movimentacao = 'identificado_reaproveitavel'), 0) as identificado_reaproveitavel,
+  coalesce(sum(t.quantidade) filter (where t.tipo_movimentacao = 'separado'), 0)                    as separado,
+  coalesce(sum(t.quantidade) filter (where t.tipo_movimentacao = 'enviado_moagem'), 0)              as enviado_moagem,
+  coalesce(sum(t.quantidade) filter (where t.tipo_movimentacao = 'moido'), 0)                       as moido,
+  coalesce(sum(t.quantidade) filter (where t.tipo_movimentacao = 'reutilizacao_interna'), 0)        as reutilizado_interno,
+  coalesce(sum(t.quantidade) filter (where t.tipo_movimentacao = 'venda_reciclagem'), 0)            as vendido_reciclado,
+  coalesce(sum(t.quantidade) filter (where t.tipo_movimentacao = 'descarte'), 0)                    as descartado,
+  (
+    coalesce(sum(t.quantidade) filter (where t.tipo_movimentacao = 'geracao'), 0)
+    + coalesce(sum(t.quantidade) filter (where t.tipo_movimentacao = 'ajuste_positivo'), 0)
+    - coalesce(sum(t.quantidade) filter (where t.tipo_movimentacao = 'reutilizacao_interna'), 0)
+    - coalesce(sum(t.quantidade) filter (where t.tipo_movimentacao = 'venda_reciclagem'), 0)
+    - coalesce(sum(t.quantidade) filter (where t.tipo_movimentacao = 'descarte'), 0)
+    - coalesce(sum(t.quantidade) filter (where t.tipo_movimentacao = 'ajuste_negativo'), 0)
+  ) as saldo,
+  max(t.criado_em) as ultima_movimentacao
+from (
+  select l.material_id, med.unidade_medida, l.tipo_movimentacao, med.quantidade, l.criado_em
+  from residuo_lancamentos l
+  join residuo_medicoes med on med.lancamento_id = l.id
+) t
+group by t.material_id, t.unidade_medida;
+
+grant select on vw_residuo_saldo to authenticated;
+revoke all on vw_residuo_saldo from anon;
+
+-- Uma linha por material com nome/categoria, pra tela de saldo sem outro join
+create or replace view vw_residuo_saldo_material with (security_invoker = on) as
+select s.*, m.nome as material_nome, m.categoria, m.permite_reaproveitamento
+from vw_residuo_saldo s
+join materiais_residuo m on m.id = s.material_id;
+
+grant select on vw_residuo_saldo_material to authenticated;
+revoke all on vw_residuo_saldo_material from anon;
+
+-- Resumo de cada relatório: pra lista de histórico sem N+1 de contagem.
+create or replace view vw_relatorio_chao_resumo with (security_invoker = on) as
+select
+  r.id,
+  r.numero,
+  r.data,
+  r.turno,
+  r.unidade_id,
+  u.nome as unidade,
+  r.responsavel_id,
+  p.nome as responsavel,
+  r.status,
+  r.horario_previsto,
+  r.aberta_em,
+  r.concluida_em,
+  (select count(*) from relatorio_chao_setores s where s.relatorio_id = r.id) as setores_previstos,
+  (select count(*) from relatorio_chao_setores s where s.relatorio_id = r.id and s.nota is not null) as setores_avaliados,
+  (select count(*) from relatorio_chao_setores s where s.relatorio_id = r.id and s.nao_inspecionado) as setores_nao_inspecionados,
+  (select round(avg(s.nota)::numeric, 2) from relatorio_chao_setores s where s.relatorio_id = r.id and s.nota is not null) as nota_media,
+  (select count(*) from residuo_lancamentos l where l.relatorio_id = r.id and l.tipo_movimentacao = 'geracao') as qtd_desperdicios,
+  (select count(*) from residuo_lancamentos l where l.relatorio_id = r.id and l.tipo_movimentacao <> 'geracao') as qtd_reaproveitamentos,
+  (select count(*) from relatorio_chao_midias fm where fm.relatorio_id = r.id) as qtd_fotos
+from relatorios_chao r
+join unidades u on u.id = r.unidade_id
+left join perfis p on p.id = r.responsavel_id;
+
+grant select on vw_relatorio_chao_resumo to authenticated;
+revoke all on vw_relatorio_chao_resumo from anon;
+
+-- Lançamentos com os nomes já resolvidos, pra tabela de histórico/detalhe
+-- sem repetir join em cada tela.
+create or replace view vw_residuo_lancamentos with (security_invoker = on) as
+select
+  l.*,
+  m.nome as material_nome,
+  m.categoria as material_categoria,
+  m.unidade_principal,
+  s.nome as setor_nome,
+  so.nome as provavel_setor_origem_nome,
+  a.nome as ativo_nome,
+  r.numero as relatorio_numero,
+  r.data as relatorio_data,
+  r.unidade_id,
+  (
+    select jsonb_agg(jsonb_build_object('unidade_medida', med.unidade_medida, 'quantidade', med.quantidade))
+    from residuo_medicoes med where med.lancamento_id = l.id
+  ) as medicoes
+from residuo_lancamentos l
+join materiais_residuo m on m.id = l.material_id
+join relatorios_chao r on r.id = l.relatorio_id
+left join setores s on s.id = l.setor_id
+left join setores so on so.id = l.provavel_setor_origem_id
+left join ativos a on a.id = l.ativo_id;
+
+grant select on vw_residuo_lancamentos to authenticated;
+revoke all on vw_residuo_lancamentos from anon;
+
+-- --- RLS ----------------------------------------------------------------
+
+alter table relatorios_chao          enable row level security;
+alter table relatorio_chao_setores   enable row level security;
+alter table materiais_residuo        enable row level security;
+alter table residuo_lancamentos      enable row level security;
+alter table residuo_medicoes         enable row level security;
+alter table residuo_bigbags          enable row level security;
+alter table residuo_bigbag_pesagens  enable row level security;
+alter table relatorio_chao_midias    enable row level security;
+alter table relatorio_chao_producao  enable row level security;
+alter table relatorio_chao_historico enable row level security;
+alter table metas_chao               enable row level security;
+
+drop policy if exists materiais_residuo_sel on materiais_residuo;
+create policy materiais_residuo_sel on materiais_residuo for select to authenticated
+  using (eh_tecnico_ou_gestor());
+drop policy if exists materiais_residuo_wri on materiais_residuo;
+create policy materiais_residuo_wri on materiais_residuo for all to authenticated
+  using (eh_gestor()) with check (eh_gestor());
+
+drop policy if exists rel_chao_sel on relatorios_chao;
+create policy rel_chao_sel on relatorios_chao for select to authenticated
+  using (eh_tecnico_ou_gestor());
+
+drop policy if exists rel_chao_ins on relatorios_chao;
+create policy rel_chao_ins on relatorios_chao for insert to authenticated
+  with check (eh_tecnico_ou_gestor());
+
+drop policy if exists rel_chao_upd_responsavel on relatorios_chao;
+create policy rel_chao_upd_responsavel on relatorios_chao for update to authenticated
+  using (responsavel_id = auth.uid() and status in ('aberta','em_andamento','reaberta'))
+  with check (responsavel_id = auth.uid());
+
+drop policy if exists rel_chao_upd_gestor on relatorios_chao;
+create policy rel_chao_upd_gestor on relatorios_chao for update to authenticated
+  using (eh_gestor()) with check (eh_gestor());
+
+drop policy if exists rel_chao_setores_sel on relatorio_chao_setores;
+create policy rel_chao_setores_sel on relatorio_chao_setores for select to authenticated
+  using (eh_tecnico_ou_gestor());
+drop policy if exists rel_chao_setores_wri on relatorio_chao_setores;
+create policy rel_chao_setores_wri on relatorio_chao_setores for all to authenticated
+  using (pode_editar_relatorio_chao(relatorio_id)) with check (pode_editar_relatorio_chao(relatorio_id));
+
+drop policy if exists residuo_lanc_sel on residuo_lancamentos;
+create policy residuo_lanc_sel on residuo_lancamentos for select to authenticated
+  using (eh_tecnico_ou_gestor());
+drop policy if exists residuo_lanc_wri on residuo_lancamentos;
+create policy residuo_lanc_wri on residuo_lancamentos for all to authenticated
+  using (pode_editar_relatorio_chao(relatorio_id)) with check (pode_editar_relatorio_chao(relatorio_id));
+
+drop policy if exists residuo_med_sel on residuo_medicoes;
+create policy residuo_med_sel on residuo_medicoes for select to authenticated
+  using (eh_tecnico_ou_gestor());
+drop policy if exists residuo_med_wri on residuo_medicoes;
+create policy residuo_med_wri on residuo_medicoes for all to authenticated
+  using (
+    eh_tecnico_ou_gestor() and pode_editar_relatorio_chao(
+      (select relatorio_id from residuo_lancamentos where id = lancamento_id)
+    )
+  )
+  with check (
+    eh_tecnico_ou_gestor() and pode_editar_relatorio_chao(
+      (select relatorio_id from residuo_lancamentos where id = lancamento_id)
+    )
+  );
+
+drop policy if exists residuo_bigbags_sel on residuo_bigbags;
+create policy residuo_bigbags_sel on residuo_bigbags for select to authenticated
+  using (eh_tecnico_ou_gestor());
+drop policy if exists residuo_bigbags_wri on residuo_bigbags;
+create policy residuo_bigbags_wri on residuo_bigbags for all to authenticated
+  using (eh_tecnico_ou_gestor()) with check (eh_tecnico_ou_gestor());
+
+drop policy if exists residuo_bigbag_pes_sel on residuo_bigbag_pesagens;
+create policy residuo_bigbag_pes_sel on residuo_bigbag_pesagens for select to authenticated
+  using (eh_tecnico_ou_gestor());
+drop policy if exists residuo_bigbag_pes_wri on residuo_bigbag_pesagens;
+create policy residuo_bigbag_pes_wri on residuo_bigbag_pesagens for all to authenticated
+  using (eh_tecnico_ou_gestor()) with check (eh_tecnico_ou_gestor());
+
+drop policy if exists rel_chao_midias_sel on relatorio_chao_midias;
+create policy rel_chao_midias_sel on relatorio_chao_midias for select to authenticated
+  using (eh_tecnico_ou_gestor());
+drop policy if exists rel_chao_midias_wri on relatorio_chao_midias;
+create policy rel_chao_midias_wri on relatorio_chao_midias for all to authenticated
+  using (pode_editar_relatorio_chao(relatorio_id)) with check (pode_editar_relatorio_chao(relatorio_id));
+
+drop policy if exists rel_chao_producao_sel on relatorio_chao_producao;
+create policy rel_chao_producao_sel on relatorio_chao_producao for select to authenticated
+  using (eh_tecnico_ou_gestor());
+drop policy if exists rel_chao_producao_wri on relatorio_chao_producao;
+create policy rel_chao_producao_wri on relatorio_chao_producao for all to authenticated
+  using (pode_editar_relatorio_chao(relatorio_id)) with check (pode_editar_relatorio_chao(relatorio_id));
+
+drop policy if exists rel_chao_hist_sel on relatorio_chao_historico;
+create policy rel_chao_hist_sel on relatorio_chao_historico for select to authenticated
+  using (eh_tecnico_ou_gestor());
+-- histórico só é escrito pelos triggers (security definer) — sem policy de insert direta
+
+drop policy if exists metas_chao_sel on metas_chao;
+create policy metas_chao_sel on metas_chao for select to authenticated
+  using (eh_tecnico_ou_gestor());
+drop policy if exists metas_chao_wri on metas_chao;
+create policy metas_chao_wri on metas_chao for all to authenticated
+  using (eh_gestor()) with check (eh_gestor());
+
+-- ninguém anônimo enxerga nada deste módulo (o operador do QR não participa)
+revoke all on relatorios_chao, relatorio_chao_setores, materiais_residuo,
+  residuo_lancamentos, residuo_medicoes, residuo_bigbags, residuo_bigbag_pesagens,
+  relatorio_chao_midias, relatorio_chao_producao, relatorio_chao_historico, metas_chao
+  from anon;
+
+-- --- materiais iniciais ---------------------------------------------------
+insert into materiais_residuo (nome, categoria, unidade_principal, permite_reaproveitamento)
+select v.nome, v.categoria, v.unidade_principal::unidade_medida_residuo, v.permite_reaproveitamento
+from (values
+  ('Espuma convencional limpa',       'Espuma',   'kg', true),
+  ('Espuma convencional contaminada', 'Espuma',   'kg', false),
+  ('Espuma aglomerada',               'Espuma',   'kg', true),
+  ('EPS/isopor',                      'EPS',      'kg', true),
+  ('Molas e molejos',                 'Molejo',   'conjunto', true),
+  ('Tecido e matelassê',              'Tecido',   'kg', true),
+  ('Feltro',                          'Feltro',   'kg', true),
+  ('Plástico',                        'Plástico', 'kg', true),
+  ('Madeira',                         'Madeira',  'unidade', true),
+  ('Papelão',                         'Papelão',  'kg', true),
+  ('Outros',                          'Outros',   'kg', false)
+) as v(nome, categoria, unidade_principal, permite_reaproveitamento)
+where not exists (select 1 from materiais_residuo m where m.nome = v.nome);
+
+-- =====================================================================
 -- 9. SEED
 -- =====================================================================
 

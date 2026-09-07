@@ -113,3 +113,6 @@ export const useTecnicos = () =>
     ],
     ordem: { coluna: 'nome' },
   })
+
+export const useMateriaisResiduo = () =>
+  useTabela('materiais_residuo', { filtros: [['ativo', 'eq', true]], ordem: { coluna: 'nome' } })

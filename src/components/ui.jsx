@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Loader2, X, Inbox, AlertTriangle, CheckCircle2 } from 'lucide-react'
 
 /* ---------------------------------------------------------------- Botão */
@@ -182,7 +183,13 @@ export function Modal({ aberto, aoFechar, titulo, largura = 'max-w-lg', children
 
   if (!aberto) return null
 
-  return (
+  // Portal pra fora da árvore da página: um ancestral com `.entra`/`.cascata`
+  // (as classes de entrada em cascata) termina a animação com transform
+  // "matrix(1,0,0,1,0,0)" em vez de "none" — e QUALQUER transform, mesmo
+  // identidade, vira containing block e quebra um filho position:fixed.
+  // Sem o portal, o modal ficava preso dentro da caixa da página em vez de
+  // cobrir a tela.
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-end justify-center p-0 sm:items-center sm:p-4">
       {/* O fundo desfocado é o que separa a janela do resto: em vez de
           jogar uma cortina preta por cima, empurra a tela pra trás. */}
@@ -230,7 +237,8 @@ export function Modal({ aberto, aoFechar, titulo, largura = 'max-w-lg', children
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
 
