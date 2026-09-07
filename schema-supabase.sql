@@ -3634,6 +3634,39 @@ left join ativos a on a.id = l.ativo_id;
 grant select on vw_residuo_lancamentos to authenticated;
 revoke all on vw_residuo_lancamentos from anon;
 
+-- Cada avaliação de limpeza já com o nome do setor e os dados do
+-- relatório (data, unidade, turno) resolvidos — usado pelo painel de
+-- indicadores (nota por período/setor) e pela exportação do histórico,
+-- sem repetir join nas duas telas.
+create or replace view vw_relatorio_chao_setor_avaliacoes with (security_invoker = on) as
+select
+  s.id,
+  s.relatorio_id,
+  s.setor_id,
+  s.nota,
+  s.nao_inspecionado,
+  s.justificativa_nao_inspecionado,
+  s.quadrantes_inspecionados,
+  s.principais_problemas,
+  s.observacao,
+  s.acao_recomendada,
+  s.confirmado_em,
+  s.confirmado_por,
+  st.nome as setor_nome,
+  r.numero as relatorio_numero,
+  r.data as relatorio_data,
+  r.unidade_id,
+  r.status as relatorio_status,
+  r.turno,
+  r.horario_previsto,
+  r.concluida_em
+from relatorio_chao_setores s
+join setores st on st.id = s.setor_id
+join relatorios_chao r on r.id = s.relatorio_id;
+
+grant select on vw_relatorio_chao_setor_avaliacoes to authenticated;
+revoke all on vw_relatorio_chao_setor_avaliacoes from anon;
+
 -- --- RLS ----------------------------------------------------------------
 
 alter table relatorios_chao          enable row level security;

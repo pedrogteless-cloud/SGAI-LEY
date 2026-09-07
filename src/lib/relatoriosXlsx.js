@@ -496,6 +496,108 @@ async function gerarResumo() {
   return { workbook: wb, nomeArquivo: 'SGAI_Resumo_Executivo.xlsx' }
 }
 
+/* ------------------------------------------------ Desperdícios e Reaproveitamento */
+
+export async function gerarResiduosChao({ inicio, fim, unidadeId }) {
+  let relatorios = supabase.from('vw_relatorio_chao_resumo').select('*')
+    .gte('data', inicio).lte('data', fim).order('data', { ascending: true })
+  if (unidadeId) relatorios = relatorios.eq('unidade_id', unidadeId)
+  const { data: relData, error: relErro } = await relatorios
+  if (relErro) throw new Error(relErro.message)
+
+  let lancamentos = supabase.from('vw_residuo_lancamentos').select('*')
+    .gte('relatorio_data', inicio).lte('relatorio_data', fim).order('relatorio_data', { ascending: true })
+  if (unidadeId) lancamentos = lancamentos.eq('unidade_id', unidadeId)
+  const { data: lancData, error: lancErro } = await lancamentos
+  if (lancErro) throw new Error(lancErro.message)
+
+  let avaliacoes = supabase.from('vw_relatorio_chao_setor_avaliacoes').select('*')
+    .gte('relatorio_data', inicio).lte('relatorio_data', fim).order('relatorio_data', { ascending: true })
+  if (unidadeId) avaliacoes = avaliacoes.eq('unidade_id', unidadeId)
+  const { data: avalData, error: avalErro } = await avaliacoes
+  if (avalErro) throw new Error(avalErro.message)
+
+  const wb = await novoWorkbook()
+  const periodoTxto = `de ${fmtData(inicio)} até ${fmtData(fim)}`
+
+  // --- relatórios ---
+  const ws1 = wb.addWorksheet('Relatórios')
+  let r = titulo(ws1, 'Relatório do Chão de Fábrica', `Inspeções ${periodoTxto}`, 9)
+  cabecalhoTabela(ws1, r, ['Número', 'Data', 'Turno', 'Unidade', 'Responsável', 'Status', 'Setores avaliados', 'Nota média', 'Fotos'])
+  let r0 = r + 1
+  relData.forEach((row, i) => {
+    const rr = r0 + i, zebra = i % 2 === 1
+    celula(ws1, rr, 1, row.numero, { zebra })
+    celula(ws1, rr, 2, fmtData(row.data), { zebra })
+    celula(ws1, rr, 3, row.turno || '—', { zebra })
+    celula(ws1, rr, 4, row.unidade, { zebra })
+    celula(ws1, rr, 5, row.responsavel || '—', { zebra })
+    celula(ws1, rr, 6, row.status, { zebra })
+    celula(ws1, rr, 7, `${row.setores_avaliados}/${row.setores_previstos}`, { zebra })
+    celula(ws1, rr, 8, row.nota_media ?? '—', { zebra })
+    celula(ws1, rr, 9, row.qtd_fotos, { zebra })
+  })
+  largurasColunas(ws1, [16, 12, 12, 14, 18, 14, 14, 11, 8])
+  if (!relData.length) notaFonte(ws1, r0, 'Nenhum relatório aberto nesse período.')
+
+  // --- movimentações (desperdício + reaproveitamento) ---
+  const ws2 = wb.addWorksheet('Movimentações')
+  r = titulo(ws2, 'Desperdícios e Reaproveitamento', `Lançamentos ${periodoTxto}`, 11)
+  cabecalhoTabela(ws2, r, [
+    'Relatório', 'Data', 'Material', 'Categoria', 'Movimentação', 'Medições', 'Origem',
+    'Setor encontrado', 'Provável origem', 'Quadrante', 'Observação',
+  ])
+  r0 = r + 1
+  lancData.forEach((l, i) => {
+    const rr = r0 + i, zebra = i % 2 === 1
+    celula(ws2, rr, 1, l.relatorio_numero, { zebra })
+    celula(ws2, rr, 2, fmtData(l.relatorio_data), { zebra })
+    celula(ws2, rr, 3, l.material_nome, { zebra })
+    celula(ws2, rr, 4, l.material_categoria, { zebra })
+    celula(ws2, rr, 5, l.tipo_movimentacao, { zebra })
+    const medidas = (l.medicoes || []).map((m) => `${m.quantidade} ${m.unidade_medida}`).join(', ')
+    celula(ws2, rr, 6, medidas, { zebra })
+    celula(ws2, rr, 7, l.origem || '—', { zebra })
+    celula(ws2, rr, 8, l.setor_nome || '—', { zebra })
+    celula(ws2, rr, 9, l.provavel_setor_origem_nome || '—', { zebra })
+    celula(ws2, rr, 10, l.quadrante || '—', { zebra })
+    celula(ws2, rr, 11, l.observacao || '', { zebra })
+  })
+  largurasColunas(ws2, [16, 12, 22, 14, 20, 18, 14, 16, 16, 11, 30])
+  if (!lancData.length) notaFonte(ws2, r0, 'Nenhum lançamento nesse período.')
+
+  // --- limpeza por setor ---
+  const ws3 = wb.addWorksheet('Limpeza por Setor')
+  r = titulo(ws3, 'Limpeza e Organização por Setor', `Avaliações ${periodoTxto}`, 7)
+  cabecalhoTabela(ws3, r, ['Relatório', 'Data', 'Setor', 'Nota', 'Situação', 'Principais problemas', 'Ação recomendada'])
+  r0 = r + 1
+  avalData.forEach((a, i) => {
+    const rr = r0 + i, zebra = i % 2 === 1
+    celula(ws3, rr, 1, a.relatorio_numero, { zebra })
+    celula(ws3, rr, 2, fmtData(a.relatorio_data), { zebra })
+    celula(ws3, rr, 3, a.setor_nome, { zebra })
+    if (a.nao_inspecionado) {
+      celula(ws3, rr, 4, '—', { zebra })
+      badge(ws3, rr, 5, 'Não inspecionado', AMBER_BG, AMBER_TX)
+    } else {
+      celula(ws3, rr, 4, a.nota ?? '—', { zebra })
+      const cor = a.nota <= 2 ? [RED_BG, RED_TX] : a.nota === 3 ? [AMBER_BG, AMBER_TX] : [EMERALD_BG, EMERALD_TX]
+      badge(ws3, rr, 5, a.nota != null ? String(a.nota) : '—', cor[0], cor[1])
+    }
+    celula(ws3, rr, 6, a.principais_problemas || a.justificativa_nao_inspecionado || '—', { zebra })
+    celula(ws3, rr, 7, a.acao_recomendada || '—', { zebra })
+  })
+  largurasColunas(ws3, [16, 12, 18, 8, 16, 32, 28])
+  if (!avalData.length) notaFonte(ws3, r0, 'Nenhuma avaliação de limpeza nesse período.')
+
+  return { workbook: wb, nomeArquivo: `SGAI_Desperdicios_${inicio}_a_${fim}.xlsx` }
+}
+
+export async function gerarEBaixarResiduosChao({ inicio, fim, unidadeId }) {
+  const resultado = await gerarResiduosChao({ inicio, fim, unidadeId })
+  await baixar(resultado.workbook, resultado.nomeArquivo)
+}
+
 /* ------------------------------------------------------------------ ponto único */
 
 export async function gerarEBaixarRelatorio(tipoId, { inicio, fim } = {}) {

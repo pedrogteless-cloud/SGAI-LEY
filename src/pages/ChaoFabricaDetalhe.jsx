@@ -71,6 +71,11 @@ export default function ChaoFabricaDetalhe() {
   const materiais = useMateriaisResiduo()
   const r = relatorio.data
   const setores = useSetores(r?.unidade_id)
+  const ativos = useTabela('ativos', {
+    select: 'id, codigo, nome',
+    filtros: [['ativo', 'eq', true], ...(r?.unidade_id ? [['unidade_id', 'eq', r.unidade_id]] : [])],
+    ordem: { coluna: 'nome' },
+  })
 
   // Espelha pode_editar_relatorio_chao no banco: mesmo gestor precisa
   // reabrir primeiro um relatório concluído — a reabertura é o portão de
@@ -592,6 +597,15 @@ export default function ChaoFabricaDetalhe() {
             </Campo>
           </div>
 
+          <Campo rotulo="Máquina ou ativo relacionado" dica="Opcional">
+            <Selecao value={formResiduo.ativo_id} onChange={(e) => setFormResiduo((f) => ({ ...f, ativo_id: e.target.value }))}>
+              <option value="">—</option>
+              {(ativos.data || []).map((a) => (
+                <option key={a.id} value={a.id}>{a.codigo ? `${a.codigo} · ` : ''}{a.nome}</option>
+              ))}
+            </Selecao>
+          </Campo>
+
           <Campo rotulo="Observação">
             <Area rows={2} value={formResiduo.observacao} onChange={(e) => setFormResiduo((f) => ({ ...f, observacao: e.target.value }))} />
           </Campo>
@@ -768,6 +782,7 @@ function LinhaLancamento({ l }) {
         {l.setor_nome ? ` · achado em ${l.setor_nome}` : ''}
         {l.provavel_setor_origem_nome ? ` · provável origem: ${l.provavel_setor_origem_nome}` : ''}
         {l.quadrante ? ` · ${l.quadrante}` : ''}
+        {l.ativo_nome ? ` · ${l.ativo_nome}` : ''}
       </p>
       {l.observacao && <p className="mt-1 text-xs text-slate-400">{l.observacao}</p>}
     </li>
@@ -775,11 +790,46 @@ function LinhaLancamento({ l }) {
 }
 
 function ModalBigBag({ aberto, aoFechar, relatorioId, unidadeId, materiais, setores, aoSalvar }) {
+  const [modo, setModo] = useState('avulsa')
   const [form, setForm] = useState({
     identificacao: '', material_id: '', setor_id: '', peso_bruto: '', tara: '',
+    peso_liquido_inicial: '', peso_liquido_final: '', quantidade_retirada: '',
   })
   const [erro, setErro] = useState(null)
   const [enviando, setEnviando] = useState(false)
+  const [buscando, setBuscando] = useState(false)
+
+  const buscarUltimaPesagem = async () => {
+    setErro(null)
+    if (!form.identificacao.trim()) { setErro(new Error('Informe a identificação do big bag primeiro.')); return }
+    setBuscando(true)
+    const { data: bigbag, error: erroBigbag } = await supabase
+      .from('residuo_bigbags')
+      .select('id')
+      .eq('unidade_id', unidadeId)
+      .eq('identificacao', form.identificacao.trim())
+      .maybeSingle()
+    if (erroBigbag || !bigbag) {
+      setBuscando(false)
+      setErro(new Error('Nenhuma pesagem anterior encontrada pra essa identificação.'))
+      return
+    }
+    const { data: pesagem, error: erroPesagem } = await supabase
+      .from('residuo_bigbag_pesagens')
+      .select('peso_liquido_final, peso_liquido')
+      .eq('bigbag_id', bigbag.id)
+      .order('data', { ascending: false })
+      .order('criado_em', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    setBuscando(false)
+    const ultimoLiquido = pesagem?.peso_liquido_final ?? pesagem?.peso_liquido
+    if (erroPesagem || ultimoLiquido == null) {
+      setErro(new Error('Nenhuma pesagem anterior encontrada pra essa identificação.'))
+      return
+    }
+    setForm((f) => ({ ...f, peso_liquido_inicial: String(ultimoLiquido) }))
+  }
 
   const salvar = async () => {
     setErro(null)
@@ -791,14 +841,21 @@ function ModalBigBag({ aberto, aoFechar, relatorioId, unidadeId, materiais, seto
       p_identificacao: form.identificacao.trim(),
       p_material_id: form.material_id || null,
       p_setor_id: form.setor_id || null,
-      p_peso_bruto: Number(form.peso_bruto) || null,
-      p_tara: Number(form.tara) || null,
+      p_peso_bruto: modo === 'avulsa' ? (Number(form.peso_bruto) || null) : null,
+      p_tara: modo === 'avulsa' ? (Number(form.tara) || null) : null,
+      p_peso_liquido_inicial: modo === 'acumulo' ? (Number(form.peso_liquido_inicial) || null) : null,
+      p_peso_liquido_final: modo === 'acumulo' ? (Number(form.peso_liquido_final) || null) : null,
+      p_quantidade_retirada: modo === 'acumulo' ? (Number(form.quantidade_retirada) || null) : null,
     })
     setEnviando(false)
     if (error) { setErro(new Error(error.message)); return }
     const linha = linhas?.[0]
     if (linha?.mensagem) { setErro(new Error(linha.mensagem)); return }
-    setForm({ identificacao: '', material_id: '', setor_id: '', peso_bruto: '', tara: '' })
+    setForm({
+      identificacao: '', material_id: '', setor_id: '', peso_bruto: '', tara: '',
+      peso_liquido_inicial: '', peso_liquido_final: '', quantidade_retirada: '',
+    })
+    setModo('avulsa')
     aoSalvar()
   }
 
@@ -830,23 +887,77 @@ function ModalBigBag({ aberto, aoFechar, relatorioId, unidadeId, materiais, seto
             {setores.map((s) => <option key={s.id} value={s.id}>{s.nome}</option>)}
           </Selecao>
         </Campo>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Campo rotulo="Peso bruto (kg)">
-            <Entrada type="number" step="0.01" min="0" value={form.peso_bruto} onChange={(e) => setForm((f) => ({ ...f, peso_bruto: e.target.value }))} />
-          </Campo>
-          <Campo rotulo="Tara (kg)">
-            <Entrada type="number" step="0.01" min="0" value={form.tara} onChange={(e) => setForm((f) => ({ ...f, tara: e.target.value }))} />
-          </Campo>
-        </div>
-        {Number(form.peso_bruto) > 0 && Number(form.tara) >= 0 && (
-          <p className="text-sm text-slate-500">
-            Peso líquido: <strong>{numero(Number(form.peso_bruto) - Number(form.tara), 2)} kg</strong>
-          </p>
+
+        <Campo rotulo="Modo de pesagem">
+          <div className="inline-flex rounded-lg bg-slate-100 p-1">
+            <button
+              type="button"
+              onClick={() => setModo('avulsa')}
+              className={`rounded-md px-3 py-1.5 text-sm font-medium transition ${modo === 'avulsa' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'}`}
+            >
+              Pesagem avulsa
+            </button>
+            <button
+              type="button"
+              onClick={() => setModo('acumulo')}
+              className={`rounded-md px-3 py-1.5 text-sm font-medium transition ${modo === 'acumulo' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'}`}
+            >
+              Acúmulo em vários dias
+            </button>
+          </div>
+        </Campo>
+
+        {modo === 'avulsa' ? (
+          <>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Campo rotulo="Peso bruto (kg)">
+                <Entrada type="number" step="0.01" min="0" value={form.peso_bruto} onChange={(e) => setForm((f) => ({ ...f, peso_bruto: e.target.value }))} />
+              </Campo>
+              <Campo rotulo="Tara (kg)">
+                <Entrada type="number" step="0.01" min="0" value={form.tara} onChange={(e) => setForm((f) => ({ ...f, tara: e.target.value }))} />
+              </Campo>
+            </div>
+            {Number(form.peso_bruto) > 0 && Number(form.tara) >= 0 && (
+              <p className="text-sm text-slate-500">
+                Peso líquido: <strong>{numero(Number(form.peso_bruto) - Number(form.tara), 2)} kg</strong>
+              </p>
+            )}
+          </>
+        ) : (
+          <>
+            <p className="text-xs text-slate-400">
+              Pro mesmo big bag que vai enchendo aos poucos: informe o peso líquido que ele já tinha
+              (do último registro) e o peso líquido de hoje. Se ele foi esvaziado/trocado no meio do
+              caminho, informe também a quantidade retirada.
+            </p>
+            <div className="flex items-end gap-3">
+              <div className="flex-1">
+                <Campo rotulo="Peso líquido inicial (kg)">
+                  <Entrada type="number" step="0.01" min="0" value={form.peso_liquido_inicial} onChange={(e) => setForm((f) => ({ ...f, peso_liquido_inicial: e.target.value }))} />
+                </Campo>
+              </div>
+              <Botao variante="secundario" onClick={buscarUltimaPesagem} carregando={buscando} className="mb-px">
+                Buscar última pesagem
+              </Botao>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Campo rotulo="Peso líquido final (kg) *">
+                <Entrada type="number" step="0.01" min="0" value={form.peso_liquido_final} onChange={(e) => setForm((f) => ({ ...f, peso_liquido_final: e.target.value }))} />
+              </Campo>
+              <Campo rotulo="Quantidade retirada no meio (kg)" dica="Se houve esvaziamento parcial antes dessa leitura">
+                <Entrada type="number" step="0.01" min="0" value={form.quantidade_retirada} onChange={(e) => setForm((f) => ({ ...f, quantidade_retirada: e.target.value }))} />
+              </Campo>
+            </div>
+            {Number(form.peso_liquido_final) > 0 && form.peso_liquido_inicial !== '' && (
+              <p className="text-sm text-slate-500">
+                Gerado no dia: <strong>
+                  {numero(Number(form.peso_liquido_final) + (Number(form.quantidade_retirada) || 0) - Number(form.peso_liquido_inicial), 2)} kg
+                </strong>
+              </p>
+            )}
+          </>
         )}
-        <p className="text-xs text-slate-400">
-          Modo de acúmulo (peso inicial/final em vários dias) fica disponível numa próxima etapa
-          direto no cadastro do big bag — aqui é a pesagem avulsa do dia.
-        </p>
+
         <Erro erro={erro} />
       </div>
     </Modal>

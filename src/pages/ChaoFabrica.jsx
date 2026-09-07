@@ -1,13 +1,21 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Plus, Recycle, ArrowRight, ClipboardList, Target, History, Settings2 } from 'lucide-react'
+import {
+  Plus, Recycle, ArrowRight, ClipboardList, Target, History, Settings2, Download, Sparkles,
+  AlertTriangle, CheckCircle2, MinusCircle,
+} from 'lucide-react'
 import { supabase } from '../lib/supabase'
+import { gerarEBaixarResiduosChao } from '../lib/relatoriosXlsx'
 import { useAuth } from '../hooks/useAuth'
 import {
   useTabela, useUnidades, useSetores, useTecnicos, useMateriaisResiduo, useInserir, useInvalidar,
 } from '../hooks/useDados'
 import { data as fmtData, dataHora, numero } from '../lib/format'
 import { M_STATUS_CHAO, STATUS_RELATORIO_CHAO } from '../lib/constants'
+import {
+  PERIODOS, limitesPeriodo, achatarLancamentos, agregarPeriodo, agregarLimpeza,
+  variacaoPercentual, indiceDestinacaoUtil, gerarInsights, calcularRealizadoMeta, situacaoMeta,
+} from '../lib/chaoIndicadores'
 import {
   Botao, Cartao, CartaoTitulo, Campo, Entrada, Area, Selecao, Etiqueta, Carregando, Vazio,
   Modal, Segmentado, Tabela, Th, Td, Erro, useAviso,
@@ -39,14 +47,33 @@ export default function ChaoFabrica() {
   const tecnicos = useTecnicos()
 
   const [filtroStatus, setFiltroStatus] = useState('')
+  const [filtroPeriodoHist, setFiltroPeriodoHist] = useState({ inicio: '', fim: '' })
+  const [exportando, setExportando] = useState(false)
   const historico = useTabela('vw_relatorio_chao_resumo', {
     filtros: [
       ...(unidadeAtual ? [['unidade_id', 'eq', unidadeAtual]] : []),
       ...(filtroStatus ? [['status', 'eq', filtroStatus]] : []),
+      ...(filtroPeriodoHist.inicio ? [['data', 'gte', filtroPeriodoHist.inicio]] : []),
+      ...(filtroPeriodoHist.fim ? [['data', 'lte', filtroPeriodoHist.fim]] : []),
     ],
     ordem: { coluna: 'data', asc: false },
-    limite: 60,
+    limite: 200,
   })
+
+  const exportarHistorico = async () => {
+    setExportando(true)
+    try {
+      await gerarEBaixarResiduosChao({
+        inicio: filtroPeriodoHist.inicio || '2000-01-01',
+        fim: filtroPeriodoHist.fim || new Date().toISOString().slice(0, 10),
+        unidadeId: unidadeAtual || null,
+      })
+    } catch (e) {
+      avisar(`Não consegui gerar a planilha: ${e.message}`, 'erro')
+    } finally {
+      setExportando(false)
+    }
+  }
 
   const hoje = useTabela('vw_relatorio_chao_resumo', {
     filtros: [
@@ -192,12 +219,31 @@ export default function ChaoFabrica() {
 
       {aba === 'historico' && (
         <div className="space-y-3">
-          <Selecao value={filtroStatus} onChange={(e) => setFiltroStatus(e.target.value)} className="w-auto">
-            <option value="">Todos os status</option>
-            {STATUS_RELATORIO_CHAO.map((s) => (
-              <option key={s.valor} value={s.valor}>{s.label}</option>
-            ))}
-          </Selecao>
+          <div className="flex flex-wrap items-center gap-2">
+            <Selecao value={filtroStatus} onChange={(e) => setFiltroStatus(e.target.value)} className="w-auto">
+              <option value="">Todos os status</option>
+              {STATUS_RELATORIO_CHAO.map((s) => (
+                <option key={s.valor} value={s.valor}>{s.label}</option>
+              ))}
+            </Selecao>
+            <Entrada
+              type="date" className="w-auto" value={filtroPeriodoHist.inicio}
+              onChange={(e) => setFiltroPeriodoHist((f) => ({ ...f, inicio: e.target.value }))}
+              title="De"
+            />
+            <span className="text-sm text-slate-400">até</span>
+            <Entrada
+              type="date" className="w-auto" value={filtroPeriodoHist.fim}
+              onChange={(e) => setFiltroPeriodoHist((f) => ({ ...f, fim: e.target.value }))}
+              title="Até"
+            />
+            <Botao
+              variante="secundario" tamanho="sm" onClick={exportarHistorico} carregando={exportando}
+              className="ml-auto"
+            >
+              <Download size={14} /> Exportar Excel
+            </Botao>
+          </div>
 
           <Cartao>
             {historico.isLoading ? (
@@ -240,10 +286,12 @@ export default function ChaoFabrica() {
       )}
 
       {aba === 'indicadores' && (
-        <PainelIndicadores saldos={saldos} historico={historico} />
+        <PainelIndicadores saldos={saldos} unidadeAtual={unidadeAtual} />
       )}
 
-      {aba === 'metas' && <PainelMetas ehGestor={ehGestor} materiais={materiais} setores={setores} />}
+      {aba === 'metas' && (
+        <PainelMetas ehGestor={ehGestor} materiais={materiais} setores={setores} unidadeAtual={unidadeAtual} />
+      )}
 
       {/* -------------------------------------------------------- abertura */}
       <Modal
@@ -323,43 +371,211 @@ export default function ChaoFabrica() {
 
 /* -------------------------------------------------------------- indicadores */
 
-function PainelIndicadores({ saldos, historico }) {
+function PainelIndicadores({ saldos, unidadeAtual }) {
+  const [periodoChave, setPeriodoChave] = useState('mes')
+  const [personalizado, setPersonalizado] = useState({ inicio: '', fim: '' })
+  const [quadranteFiltro, setQuadranteFiltro] = useState('')
+
+  const { inicio, fim, inicioAnterior, fimAnterior } = useMemo(
+    () => limitesPeriodo(periodoChave, personalizado),
+    [periodoChave, personalizado]
+  )
+
+  const filtroUnidade = unidadeAtual ? [['unidade_id', 'eq', unidadeAtual]] : []
+
+  const lancAtual = useTabela('vw_residuo_lancamentos', {
+    filtros: [...filtroUnidade, ['relatorio_data', 'gte', inicio], ['relatorio_data', 'lte', fim]],
+  })
+  const lancAnterior = useTabela('vw_residuo_lancamentos', {
+    filtros: [...filtroUnidade, ['relatorio_data', 'gte', inicioAnterior], ['relatorio_data', 'lte', fimAnterior]],
+  })
+  const avaliacoesAtual = useTabela('vw_relatorio_chao_setor_avaliacoes', {
+    filtros: [...filtroUnidade, ['relatorio_data', 'gte', inicio], ['relatorio_data', 'lte', fim]],
+  })
+  const avaliacoesAnterior = useTabela('vw_relatorio_chao_setor_avaliacoes', {
+    filtros: [...filtroUnidade, ['relatorio_data', 'gte', inicioAnterior], ['relatorio_data', 'lte', fimAnterior]],
+  })
+  const relatoriosPeriodo = useTabela('vw_relatorio_chao_resumo', {
+    filtros: [...filtroUnidade, ['data', 'gte', inicio], ['data', 'lte', fim]],
+  })
+
+  const carregando =
+    lancAtual.isLoading || lancAnterior.isLoading || avaliacoesAtual.isLoading || relatoriosPeriodo.isLoading
+
+  const linhasAtual = useMemo(() => achatarLancamentos(lancAtual.data), [lancAtual.data])
+  const linhasAnterior = useMemo(() => achatarLancamentos(lancAnterior.data), [lancAnterior.data])
+
+  const linhasAtualFiltradas = useMemo(
+    () => (quadranteFiltro ? linhasAtual.filter((l) => l.quadrante === quadranteFiltro) : linhasAtual),
+    [linhasAtual, quadranteFiltro]
+  )
+
+  const atual = useMemo(() => agregarPeriodo(linhasAtualFiltradas), [linhasAtualFiltradas])
+  const anterior = useMemo(() => agregarPeriodo(linhasAnterior), [linhasAnterior])
+  const limpezaAtual = useMemo(() => agregarLimpeza(avaliacoesAtual.data), [avaliacoesAtual.data])
+  const limpezaAnterior = useMemo(() => agregarLimpeza(avaliacoesAnterior.data), [avaliacoesAnterior.data])
+
+  const variacaoGeral = variacaoPercentual(atual.geradoTotalKg, anterior.geradoTotalKg)
+  const destinacaoUtilPct = indiceDestinacaoUtil(atual)
+
+  const insights = useMemo(
+    () =>
+      gerarInsights({
+        atual, anterior, limpezaAtual, limpezaAnterior, relatorios: relatoriosPeriodo.data,
+      }),
+    [atual, anterior, limpezaAtual, limpezaAnterior, relatoriosPeriodo.data]
+  )
+
   const lista = saldos.data || []
-  const relatorios = historico.data || []
-
-  const concluidos = relatorios.filter((r) => r.status === 'concluida')
-  const notaMedia = concluidos.length
-    ? concluidos.reduce((acc, r) => acc + (Number(r.nota_media) || 0), 0) / concluidos.filter((r) => r.nota_media != null).length
-    : null
-
-  const topMaterial = [...lista].sort((a, b) => Number(b.gerado) - Number(a.gerado))[0]
+  const topMaterialSaldo = [...lista].sort((a, b) => Number(b.saldo) - Number(a.saldo))[0]
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Cartao className="p-4">
-          <p className="text-xs text-slate-500">Relatórios concluídos</p>
-          <p className="mt-1 text-2xl font-bold text-slate-900">{concluidos.length}</p>
-          <p className="mt-0.5 text-xs text-slate-400">de {relatorios.length} no total</p>
-        </Cartao>
-        <Cartao className="p-4">
-          <p className="text-xs text-slate-500">Nota média de limpeza</p>
-          <p className="mt-1 text-2xl font-bold text-slate-900">{notaMedia ? numero(notaMedia, 1) : '—'}</p>
-          <p className="mt-0.5 text-xs text-slate-400">só setores avaliados</p>
-        </Cartao>
-        <Cartao className="p-4 sm:col-span-2">
-          <p className="text-xs text-slate-500">Material com maior geração (saldo)</p>
-          <p className="mt-1 truncate text-lg font-bold text-slate-900">{topMaterial?.material_nome || '—'}</p>
-          {topMaterial && (
-            <p className="mt-0.5 text-xs text-slate-400">
-              {numero(topMaterial.gerado, 1)} {topMaterial.unidade_medida} gerados
-            </p>
-          )}
-        </Cartao>
+      <div className="flex flex-wrap items-center gap-2">
+        <Selecao value={periodoChave} onChange={(e) => setPeriodoChave(e.target.value)} className="w-auto">
+          {PERIODOS.map((p) => <option key={p.valor} value={p.valor}>{p.rotulo}</option>)}
+        </Selecao>
+        {periodoChave === 'personalizado' && (
+          <>
+            <Entrada type="date" className="w-auto" value={personalizado.inicio}
+              onChange={(e) => setPersonalizado((f) => ({ ...f, inicio: e.target.value }))} />
+            <span className="text-sm text-slate-400">até</span>
+            <Entrada type="date" className="w-auto" value={personalizado.fim}
+              onChange={(e) => setPersonalizado((f) => ({ ...f, fim: e.target.value }))} />
+          </>
+        )}
+        {atual.quadrantesDistintos.length > 0 && (
+          <Selecao value={quadranteFiltro} onChange={(e) => setQuadranteFiltro(e.target.value)} className="w-auto">
+            <option value="">Todos os quadrantes</option>
+            {atual.quadrantesDistintos.map((q) => <option key={q} value={q}>{q}</option>)}
+          </Selecao>
+        )}
+        <span className="text-xs text-slate-400">
+          {fmtData(inicio)} até {fmtData(fim)}
+        </span>
       </div>
 
+      {carregando ? (
+        <Carregando />
+      ) : (
+        <>
+          {/* -------------------------------------------------- resumo do topo */}
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <Cartao className="p-4">
+              <p className="text-xs text-slate-500">Resíduos gerados (kg)</p>
+              <p className="mt-1 text-2xl font-bold text-slate-900">{numero(atual.geradoTotalKg, 1)}</p>
+              {variacaoGeral != null && (
+                <p className={`mt-0.5 text-xs font-medium ${variacaoGeral >= 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                  {variacaoGeral >= 0 ? '+' : ''}{numero(variacaoGeral, 0)}% vs. período anterior
+                </p>
+              )}
+            </Cartao>
+            <Cartao className="p-4">
+              <p className="text-xs text-slate-500">Descartado (kg)</p>
+              <p className="mt-1 text-2xl font-bold text-slate-900">{numero(atual.descartado, 1)}</p>
+              <p className="mt-0.5 text-xs text-slate-400">enviado p/ moagem: {numero(atual.enviadoMoagem, 1)} kg</p>
+            </Cartao>
+            <Cartao className="p-4">
+              <p className="text-xs text-slate-500">Destinação útil</p>
+              <p className="mt-1 text-2xl font-bold text-slate-900">
+                {destinacaoUtilPct != null ? `${numero(destinacaoUtilPct, 0)}%` : '—'}
+              </p>
+              <p className="mt-0.5 text-xs text-slate-400">reutilizado + reciclado ÷ (isso + descarte)</p>
+            </Cartao>
+            <Cartao className="p-4">
+              <p className="text-xs text-slate-500">Nota média de limpeza</p>
+              <p className="mt-1 text-2xl font-bold text-slate-900">
+                {limpezaAtual.notaMedia != null ? numero(limpezaAtual.notaMedia, 1) : '—'}
+              </p>
+              <p className="mt-0.5 text-xs text-slate-400">
+                {limpezaAtual.pctInspecionados != null ? `${numero(limpezaAtual.pctInspecionados, 0)}% dos setores inspecionados` : 'sem avaliação no período'}
+              </p>
+            </Cartao>
+          </div>
+
+          {/* --------------------------------------------------------- insights */}
+          {insights.length > 0 && (
+            <Cartao className="p-4">
+              <p className="mb-2 flex items-center gap-1.5 text-sm font-semibold text-slate-800">
+                <Sparkles size={14} className="text-amber-500" /> O que os números mostram
+              </p>
+              <ul className="space-y-1.5">
+                {insights.map((frase, i) => (
+                  <li key={i} className="flex items-start gap-2 text-sm text-slate-600">
+                    <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-slate-300" />
+                    {frase}
+                  </li>
+                ))}
+              </ul>
+            </Cartao>
+          )}
+
+          {/* --------------------------------------------------------- geração */}
+          <div className="grid gap-4 lg:grid-cols-2">
+            <Cartao>
+              <CartaoTitulo>Geração por material</CartaoTitulo>
+              <ListaBarras itens={atual.geradoPorMaterial} vazio="Nenhum desperdício no período." />
+            </Cartao>
+            <Cartao>
+              <CartaoTitulo>Geração por setor</CartaoTitulo>
+              <ListaBarras itens={atual.geradoPorSetor} vazio="Nenhum desperdício no período." />
+            </Cartao>
+            <Cartao>
+              <CartaoTitulo>Geração por origem</CartaoTitulo>
+              <ListaBarras itens={atual.geradoPorOrigem} vazio="Nenhum desperdício no período." />
+            </Cartao>
+            <Cartao>
+              <CartaoTitulo>Ocorrências por quadrante</CartaoTitulo>
+              <ListaBarras itens={atual.geradoPorQuadrante} vazio="Nenhum quadrante informado no período." />
+            </Cartao>
+          </div>
+
+          {/* --------------------------------------------------- reaproveitamento */}
+          <Cartao>
+            <CartaoTitulo>Reaproveitamento no período</CartaoTitulo>
+            <div className="grid grid-cols-2 gap-px bg-slate-100 sm:grid-cols-3 lg:grid-cols-6">
+              {[
+                ['Identificado', atual.identificadoReaproveitavel],
+                ['Separado', atual.separado],
+                ['Enviado p/ moagem', atual.enviadoMoagem],
+                ['Moído', atual.moido],
+                ['Reutilizado', atual.reutilizadoInterno],
+                ['Vendido/reciclado', atual.vendidoReciclado],
+              ].map(([rotulo, valor]) => (
+                <div key={rotulo} className="bg-white p-3">
+                  <p className="text-xs text-slate-500">{rotulo}</p>
+                  <p className="mt-1 text-lg font-bold text-slate-900">{numero(valor, 1)} kg</p>
+                </div>
+              ))}
+            </div>
+          </Cartao>
+
+          {/* ------------------------------------------------------------ limpeza */}
+          <Cartao>
+            <CartaoTitulo>Limpeza por setor no período</CartaoTitulo>
+            {limpezaAtual.mediaPorSetor.length === 0 ? (
+              <Vazio titulo="Nenhuma avaliação de limpeza no período" />
+            ) : (
+              <ul className="divide-y divide-slate-100">
+                {limpezaAtual.mediaPorSetor.map((s) => (
+                  <li key={s.setor} className="flex items-center justify-between gap-3 px-4 py-2.5">
+                    <span className="text-sm text-slate-700">{s.setor}</span>
+                    <span className="flex items-center gap-2">
+                      <span className="text-xs text-slate-400">{s.n} avaliação(ões)</span>
+                      <Etiqueta cor={s.media <= 2 ? 'bg-red-100 text-red-700 ring-red-200' : s.media < 4 ? 'bg-amber-100 text-amber-700 ring-amber-200' : 'bg-emerald-100 text-emerald-700 ring-emerald-200'}>
+                        {numero(s.media, 1)}
+                      </Etiqueta>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Cartao>
+        </>
+      )}
+
       <Cartao>
-        <CartaoTitulo>Saldo por material</CartaoTitulo>
+        <CartaoTitulo>Saldo acumulado por material (desde sempre)</CartaoTitulo>
         {lista.length === 0 ? (
           <Vazio icone={Recycle} titulo="Ainda não há lançamento" descricao="Os saldos aparecem assim que o primeiro relatório for preenchido." />
         ) : (
@@ -393,23 +609,94 @@ function PainelIndicadores({ saldos, historico }) {
           </Tabela>
         )}
       </Cartao>
-
-      <p className="text-xs text-slate-400">
-        Indicadores por período, quadrante e comparação com período anterior ficam pra próxima
-        etapa — esta primeira versão mostra o saldo acumulado geral.
-      </p>
+      {topMaterialSaldo && (
+        <p className="text-xs text-slate-400">
+          {topMaterialSaldo.material_nome} é o material com maior saldo aguardando processamento agora ({numero(topMaterialSaldo.saldo, 1)} {topMaterialSaldo.unidade_medida}).
+        </p>
+      )}
     </div>
+  )
+}
+
+/** Barrinha proporcional ao maior valor da lista — leve, sem biblioteca de gráfico. */
+function ListaBarras({ itens, vazio }) {
+  if (!itens.length) return <Vazio titulo={vazio} />
+  const maior = Math.max(...itens.map((i) => i.valor)) || 1
+  return (
+    <ul className="space-y-2.5 px-4 py-3">
+      {itens.map((i) => (
+        <li key={i.chave}>
+          <div className="mb-1 flex items-center justify-between gap-2 text-xs">
+            <span className="truncate text-slate-600">{i.chave}</span>
+            <span className="shrink-0 font-medium text-slate-500">{numero(i.valor, 1)}</span>
+          </div>
+          <div className="h-1.5 rounded-full bg-slate-100">
+            <div
+              className="h-1.5 rounded-full bg-sky-500"
+              style={{ width: `${Math.max(4, (i.valor / maior) * 100)}%` }}
+            />
+          </div>
+        </li>
+      ))}
+    </ul>
   )
 }
 
 /* -------------------------------------------------------------------- metas */
 
-function PainelMetas({ ehGestor, materiais, setores }) {
+const CHAVE_JANELA_POR_PERIODICIDADE = { diaria: 'hoje', semanal: 'semana', mensal: 'mes', anual: 'ano' }
+
+/** Dados de um período (achatado + avaliações + relatórios), só busca quando `ativo`. */
+function useDadosPeriodo(chaveJanela, ativo, unidadeAtual) {
+  const { inicio, fim } = limitesPeriodo(chaveJanela)
+  const filtroUnidade = unidadeAtual ? [['unidade_id', 'eq', unidadeAtual]] : []
+  const lanc = useTabela('vw_residuo_lancamentos', {
+    filtros: [...filtroUnidade, ['relatorio_data', 'gte', inicio], ['relatorio_data', 'lte', fim]],
+    ativo,
+  })
+  const aval = useTabela('vw_relatorio_chao_setor_avaliacoes', {
+    filtros: [...filtroUnidade, ['relatorio_data', 'gte', inicio], ['relatorio_data', 'lte', fim]],
+    ativo,
+  })
+  const rel = useTabela('vw_relatorio_chao_resumo', {
+    filtros: [...filtroUnidade, ['data', 'gte', inicio], ['data', 'lte', fim]],
+    ativo,
+  })
+  return useMemo(
+    () => ({ linhasAchatadas: achatarLancamentos(lanc.data), avaliacoes: aval.data || [], relatorios: rel.data || [] }),
+    [lanc.data, aval.data, rel.data]
+  )
+}
+
+const INDICADORES_META = [
+  { valor: 'max_residuo_material', label: 'Máximo de resíduo por material' },
+  { valor: 'max_residuo_setor', label: 'Máximo de resíduo por setor' },
+  { valor: 'max_descarte', label: 'Máximo de descarte' },
+  { valor: 'max_ocorrencias_quadrante', label: 'Máximo de ocorrências por quadrante' },
+  { valor: 'min_destinacao_util', label: 'Mínimo de destinação útil' },
+  { valor: 'min_reaproveitamento_concluido', label: 'Mínimo de reaproveitamento concluído' },
+  { valor: 'min_nota_limpeza', label: 'Mínimo de nota média de limpeza' },
+  { valor: 'nenhum_setor_nota_1', label: 'Nenhum setor com nota 1' },
+  { valor: 'pct_min_setores_inspecionados', label: '% mínimo de setores inspecionados' },
+  { valor: 'pct_min_relatorios_no_prazo', label: '% mínimo de relatórios concluídos no prazo' },
+  { valor: 'max_kg_por_100_colchoes', label: 'Máximo de kg de resíduo por 100 colchões' },
+  { valor: 'max_indice_perda', label: 'Máximo de índice de perda' },
+  { valor: 'reducao_percentual', label: 'Redução percentual vs. período-base' },
+]
+
+const SITUACAO_META = {
+  dentro: { label: 'Dentro da meta', cor: 'bg-emerald-100 text-emerald-700 ring-emerald-200', icone: CheckCircle2 },
+  atencao: { label: 'Atenção', cor: 'bg-amber-100 text-amber-700 ring-amber-200', icone: AlertTriangle },
+  fora: { label: 'Fora da meta', cor: 'bg-red-100 text-red-700 ring-red-200', icone: AlertTriangle },
+  sem_dado: { label: 'Sem dado no período', cor: 'bg-slate-100 text-slate-500 ring-slate-200', icone: MinusCircle },
+}
+
+function PainelMetas({ ehGestor, materiais, setores, unidadeAtual }) {
   const avisar = useAviso()
   const [criando, setCriando] = useState(false)
   const [erro, setErro] = useState(null)
   const [form, setForm] = useState({
-    nome: '', indicador: 'max_residuo_material', material_id: '', setor_id: '',
+    nome: '', indicador: 'max_residuo_material', material_id: '', setor_id: '', quadrante: '',
     valor_alvo: '', periodicidade: 'mensal',
   })
 
@@ -417,16 +704,17 @@ function PainelMetas({ ehGestor, materiais, setores }) {
   const criar = useInserir('metas_chao')
   const invalidar = useInvalidar()
 
-  const indicadores = [
-    { valor: 'max_residuo_material', label: 'Máximo de resíduo por material' },
-    { valor: 'max_residuo_setor', label: 'Máximo de resíduo por setor' },
-    { valor: 'max_descarte', label: 'Máximo de descarte' },
-    { valor: 'min_destinacao_util', label: 'Mínimo de destinação útil' },
-    { valor: 'min_reaproveitamento_concluido', label: 'Mínimo de reaproveitamento concluído' },
-    { valor: 'min_nota_limpeza', label: 'Mínimo de nota média de limpeza' },
-    { valor: 'pct_min_setores_inspecionados', label: '% mínimo de setores inspecionados' },
-    { valor: 'pct_min_relatorios_no_prazo', label: '% mínimo de relatórios concluídos no prazo' },
-  ]
+  const periodicidadesUsadas = useMemo(
+    () => new Set((metas.data || []).map((m) => m.periodicidade)),
+    [metas.data]
+  )
+  const dadosDiaria = useDadosPeriodo('hoje', periodicidadesUsadas.has('diaria'), unidadeAtual)
+  const dadosSemanal = useDadosPeriodo('semana', periodicidadesUsadas.has('semanal'), unidadeAtual)
+  const dadosMensal = useDadosPeriodo('mes', periodicidadesUsadas.has('mensal'), unidadeAtual)
+  const dadosAnual = useDadosPeriodo('ano', periodicidadesUsadas.has('anual'), unidadeAtual)
+  const dadosPorPeriodicidade = {
+    diaria: dadosDiaria, semanal: dadosSemanal, mensal: dadosMensal, anual: dadosAnual,
+  }
 
   const salvar = async () => {
     setErro(null)
@@ -440,11 +728,12 @@ function PainelMetas({ ehGestor, materiais, setores }) {
         indicador: form.indicador,
         material_id: form.material_id || null,
         setor_id: form.setor_id || null,
+        quadrante: form.quadrante.trim() || null,
         valor_alvo: Number(form.valor_alvo),
         periodicidade: form.periodicidade,
       })
       setCriando(false)
-      setForm({ nome: '', indicador: 'max_residuo_material', material_id: '', setor_id: '', valor_alvo: '', periodicidade: 'mensal' })
+      setForm({ nome: '', indicador: 'max_residuo_material', material_id: '', setor_id: '', quadrante: '', valor_alvo: '', periodicidade: 'mensal' })
       avisar('Meta criada.')
       invalidar('metas_chao')
     } catch (e) {
@@ -472,28 +761,53 @@ function PainelMetas({ ehGestor, materiais, setores }) {
           />
         ) : (
           <ul className="divide-y divide-slate-100">
-            {metas.data.map((m) => (
-              <li key={m.id} className="flex items-center justify-between gap-3 px-4 py-3">
-                <div className="min-w-0">
-                  <p className="text-sm font-medium text-slate-800">{m.nome}</p>
-                  <p className="text-xs text-slate-400">
-                    {indicadores.find((i) => i.valor === m.indicador)?.label || m.indicador} · alvo {numero(m.valor_alvo, 2)} · {m.periodicidade}
-                  </p>
-                </div>
-                <Etiqueta cor={m.ativo ? 'bg-emerald-100 text-emerald-700 ring-emerald-200' : 'bg-slate-100 text-slate-500 ring-slate-200'}>
-                  {m.ativo ? 'Ativa' : 'Inativa'}
-                </Etiqueta>
-              </li>
-            ))}
+            {metas.data.map((m) => {
+              const dados = dadosPorPeriodicidade[m.periodicidade] || { linhasAchatadas: [], avaliacoes: [], relatorios: [] }
+              const realizado = calcularRealizadoMeta(m, dados)
+              const situacao = situacaoMeta(realizado, m)
+              const Icone = SITUACAO_META[situacao].icone
+              return (
+                <li key={m.id} className="px-4 py-3">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-slate-800">{m.nome}</p>
+                      <p className="text-xs text-slate-400">
+                        {INDICADORES_META.find((i) => i.valor === m.indicador)?.label || m.indicador} · alvo {numero(m.valor_alvo, 2)} {realizado.unidade} · {m.periodicidade}
+                      </p>
+                    </div>
+                    <Etiqueta cor={SITUACAO_META[situacao].cor}>
+                      <span className="inline-flex items-center gap-1"><Icone size={11} /> {SITUACAO_META[situacao].label}</span>
+                    </Etiqueta>
+                  </div>
+                  {!m.ativo && <p className="mt-1 text-xs text-slate-400">Meta inativa.</p>}
+                  {realizado.semDados ? (
+                    <p className="mt-1.5 text-xs text-slate-400">
+                      Ainda sem dado suficiente pra calcular esse indicador (falta registro de produção do período).
+                    </p>
+                  ) : realizado.valor != null ? (
+                    <div className="mt-1.5">
+                      <div className="flex items-center justify-between text-xs text-slate-500">
+                        <span>Realizado: {numero(realizado.valor, 1)} {realizado.unidade}</span>
+                        <span>Alvo: {realizado.sentido === 'max' ? '≤' : '≥'} {numero(realizado.alvoForcado ?? m.valor_alvo, 1)} {realizado.unidade}</span>
+                      </div>
+                      <div className="mt-1 h-1.5 rounded-full bg-slate-100">
+                        <div
+                          className={`h-1.5 rounded-full ${situacao === 'dentro' ? 'bg-emerald-500' : situacao === 'atencao' ? 'bg-amber-500' : 'bg-red-500'}`}
+                          style={{
+                            width: `${Math.min(100, Math.max(4, (realizado.valor / Math.max(realizado.alvoForcado ?? Number(m.valor_alvo), 0.0001)) * 100))}%`,
+                          }}
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="mt-1.5 text-xs text-slate-400">Nenhum lançamento no período pra calcular.</p>
+                  )}
+                </li>
+              )
+            })}
           </ul>
         )}
       </Cartao>
-
-      <p className="text-xs text-slate-400">
-        O cálculo automático de "realizado x meta" ainda cobre só os indicadores mais simples e
-        vai evoluir conforme o histórico crescer — por enquanto a meta fica cadastrada como
-        referência.
-      </p>
 
       <Modal
         aberto={criando}
@@ -512,7 +826,7 @@ function PainelMetas({ ehGestor, materiais, setores }) {
           </Campo>
           <Campo rotulo="Indicador">
             <Selecao value={form.indicador} onChange={(e) => setForm((f) => ({ ...f, indicador: e.target.value }))}>
-              {indicadores.map((i) => (
+              {INDICADORES_META.map((i) => (
                 <option key={i.valor} value={i.valor}>{i.label}</option>
               ))}
             </Selecao>
@@ -535,6 +849,9 @@ function PainelMetas({ ehGestor, materiais, setores }) {
               </Selecao>
             </Campo>
           </div>
+          <Campo rotulo="Quadrante" dica='Opcional — ex.: "7C", vazio vale pra todos'>
+            <Entrada value={form.quadrante} onChange={(e) => setForm((f) => ({ ...f, quadrante: e.target.value }))} />
+          </Campo>
           <div className="grid gap-4 sm:grid-cols-2">
             <Campo rotulo="Valor-alvo">
               <Entrada type="number" step="0.01" value={form.valor_alvo} onChange={(e) => setForm((f) => ({ ...f, valor_alvo: e.target.value }))} />
