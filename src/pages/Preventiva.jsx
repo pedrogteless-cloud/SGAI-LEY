@@ -120,79 +120,129 @@ export default function Preventiva() {
             }
           />
         ) : (
-          <Tabela>
-            <thead>
-              <tr>
-                <Th>Revisão</Th>
-                <Th>Máquina</Th>
-                <Th>Controla por</Th>
-                <Th>Quando</Th>
-                <Th>Como está</Th>
-                <Th />
-              </tr>
-            </thead>
-            <tbody>
+          <>
+            <ul className="cascata divide-y sm:hidden" style={{ borderColor: 'var(--traco)' }}>
               {lista.map((p) => (
-                <tr key={p.plano_id} className="hover:bg-slate-50">
-                  <Td className="font-medium text-slate-800">{p.plano}</Td>
-                  <Td>
-                    <Link
-                      to={`/ativos/${p.ativo_id}`}
-                      className="text-slate-700 hover:text-sky-700"
-                    >
-                      {p.ativo}
-                    </Link>
-                    <p className="text-xs text-slate-400">
-                      {p.unidade}
-                      {p.criticidade && (
-                        <>
-                          {' · '}
-                          <Etiqueta cor={M_CRITICIDADE[p.criticidade]?.cor}>
-                            {p.criticidade}
-                          </Etiqueta>
-                        </>
-                      )}
-                    </p>
-                  </Td>
-                  <Td className="text-slate-600 capitalize">{p.base}</Td>
-                  <Td className="text-slate-600">
-                    {p.base === 'horimetro' ? (
-                      <span>
-                        {numero(p.proximo_horimetro, 0)} h
-                        <span className="block text-xs text-slate-400">
-                          atual {numero(p.horimetro_atual, 0)} h
-                        </span>
-                      </span>
-                    ) : (
-                      <span>
-                        {data(p.proxima_data)}
-                        {p.dias_restantes != null && (
-                          <span className="block text-xs text-slate-400">
-                            {p.dias_restantes < 0
-                              ? `atrasada ${Math.abs(p.dias_restantes)} dias`
-                              : `daqui a ${p.dias_restantes} dias`}
+                <li key={p.plano_id} className="px-4 py-3.5">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="font-medium text-slate-800">{p.plano}</p>
+                      <Link to={`/ativos/${p.ativo_id}`} className="text-sm text-slate-600 active:text-sky-700">
+                        {p.ativo}
+                      </Link>
+                      <p className="text-xs text-slate-400">
+                        {p.unidade}
+                        {p.criticidade && (
+                          <>
+                            {' · '}
+                            <Etiqueta cor={M_CRITICIDADE[p.criticidade]?.cor}>{p.criticidade}</Etiqueta>
+                          </>
+                        )}
+                      </p>
+                    </div>
+                    <Etiqueta cor={SITUACAO[p.situacao]?.cor}>{SITUACAO[p.situacao]?.label}</Etiqueta>
+                  </div>
+                  <p className="mt-1.5 text-xs text-slate-500 capitalize">
+                    {p.base}:{' '}
+                    {p.base === 'horimetro'
+                      ? `${numero(p.proximo_horimetro, 0)} h (atual ${numero(p.horimetro_atual, 0)} h)`
+                      : `${data(p.proxima_data)}${
+                          p.dias_restantes != null
+                            ? p.dias_restantes < 0
+                              ? ` · atrasada ${Math.abs(p.dias_restantes)} dias`
+                              : ` · daqui a ${p.dias_restantes} dias`
+                            : ''
+                        }`}
+                  </p>
+                  <Botao
+                    tamanho="sm"
+                    variante="secundario"
+                    onClick={() => gerar(p.plano_id)}
+                    carregando={gerarOS.isPending}
+                    className="mt-2.5 w-full"
+                  >
+                    <Play size={13} /> Abrir serviço
+                  </Botao>
+                </li>
+              ))}
+            </ul>
+
+            <div className="hidden sm:block">
+              <Tabela>
+                <thead>
+                  <tr>
+                    <Th>Revisão</Th>
+                    <Th>Máquina</Th>
+                    <Th>Controla por</Th>
+                    <Th>Quando</Th>
+                    <Th>Como está</Th>
+                    <Th />
+                  </tr>
+                </thead>
+                <tbody>
+                  {lista.map((p) => (
+                    <tr key={p.plano_id} className="hover:bg-slate-50">
+                      <Td className="font-medium text-slate-800">{p.plano}</Td>
+                      <Td>
+                        <Link
+                          to={`/ativos/${p.ativo_id}`}
+                          className="text-slate-700 hover:text-sky-700"
+                        >
+                          {p.ativo}
+                        </Link>
+                        <p className="text-xs text-slate-400">
+                          {p.unidade}
+                          {p.criticidade && (
+                            <>
+                              {' · '}
+                              <Etiqueta cor={M_CRITICIDADE[p.criticidade]?.cor}>
+                                {p.criticidade}
+                              </Etiqueta>
+                            </>
+                          )}
+                        </p>
+                      </Td>
+                      <Td className="text-slate-600 capitalize">{p.base}</Td>
+                      <Td className="text-slate-600">
+                        {p.base === 'horimetro' ? (
+                          <span>
+                            {numero(p.proximo_horimetro, 0)} h
+                            <span className="block text-xs text-slate-400">
+                              atual {numero(p.horimetro_atual, 0)} h
+                            </span>
+                          </span>
+                        ) : (
+                          <span>
+                            {data(p.proxima_data)}
+                            {p.dias_restantes != null && (
+                              <span className="block text-xs text-slate-400">
+                                {p.dias_restantes < 0
+                                  ? `atrasada ${Math.abs(p.dias_restantes)} dias`
+                                  : `daqui a ${p.dias_restantes} dias`}
+                              </span>
+                            )}
                           </span>
                         )}
-                      </span>
-                    )}
-                  </Td>
-                  <Td>
-                    <Etiqueta cor={SITUACAO[p.situacao]?.cor}>{SITUACAO[p.situacao]?.label}</Etiqueta>
-                  </Td>
-                  <Td className="text-right">
-                    <Botao
-                      tamanho="sm"
-                      variante="secundario"
-                      onClick={() => gerar(p.plano_id)}
-                      carregando={gerarOS.isPending}
-                    >
-                      <Play size={13} /> Abrir serviço
-                    </Botao>
-                  </Td>
-                </tr>
-              ))}
-            </tbody>
-          </Tabela>
+                      </Td>
+                      <Td>
+                        <Etiqueta cor={SITUACAO[p.situacao]?.cor}>{SITUACAO[p.situacao]?.label}</Etiqueta>
+                      </Td>
+                      <Td className="text-right">
+                        <Botao
+                          tamanho="sm"
+                          variante="secundario"
+                          onClick={() => gerar(p.plano_id)}
+                          carregando={gerarOS.isPending}
+                        >
+                          <Play size={13} /> Abrir serviço
+                        </Botao>
+                      </Td>
+                    </tr>
+                  ))}
+                </tbody>
+              </Tabela>
+            </div>
+          </>
         )}
       </Cartao>
 

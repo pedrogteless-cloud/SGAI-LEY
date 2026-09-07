@@ -244,46 +244,23 @@ export default function Almoxarifado() {
                 descricao="Cadastre a peça e lance a primeira compra — o preço médio o sistema calcula sozinho."
               />
             ) : (
-              <Tabela>
-                <thead>
-                  <tr>
-                    <Th>Peça</Th>
-                    <Th>Fábrica</Th>
-                    <Th className="text-right">Tem quantos</Th>
-                    <Th className="text-right">Mínimo</Th>
-                    <Th className="text-right">Preço médio</Th>
-                    <Th className="text-right">Total</Th>
-                    <Th />
-                  </tr>
-                </thead>
-                <tbody>
+              <>
+                <ul className="cascata divide-y sm:hidden" style={{ borderColor: 'var(--traco)' }}>
                   {linhasEstoque.map((e) => {
                     const abaixo = Number(e.quantidade) < Number(e.estoque_minimo)
                     return (
-                      <tr key={e.id} className="hover:bg-slate-50">
-                        <Td>
+                      <li key={e.id} className="flex items-start justify-between gap-3 px-4 py-3.5">
+                        <div className="min-w-0">
                           <div className="flex items-center gap-2">
-                            <div>
-                              <p className="font-medium text-slate-800">{e.peca?.nome}</p>
-                              <p className="font-mono text-xs text-slate-400">{e.peca?.codigo}</p>
-                            </div>
+                            <p className="truncate font-medium text-slate-800">{e.peca?.nome}</p>
                             {e.peca?.critica && (
                               <Etiqueta cor="bg-red-100 text-red-700 ring-red-200">crítica</Etiqueta>
                             )}
                           </div>
-                        </Td>
-                        <Td className="text-slate-600">{e.unidade?.nome}</Td>
-                        <Td className="text-right">
-                          <span className={abaixo ? 'font-semibold text-red-600' : 'text-slate-800'}>
-                            {numero(e.quantidade, 2)} {e.peca?.unidade_medida}
-                          </span>
-                        </Td>
-                        <Td className="text-right text-slate-500">{numero(e.estoque_minimo, 2)}</Td>
-                        <Td className="text-right text-slate-600">{moeda(e.custo_medio)}</Td>
-                        <Td className="text-right font-medium">
-                          {moeda(Number(e.quantidade) * Number(e.custo_medio))}
-                        </Td>
-                        <Td className="text-right">
+                          <p className="font-mono text-xs text-slate-400">{e.peca?.codigo}</p>
+                          <p className="mt-1 text-xs text-slate-400">
+                            {e.unidade?.nome} · preço médio {moeda(e.custo_medio)}
+                          </p>
                           {ehGestor && (
                             <button
                               onClick={() => {
@@ -295,17 +272,91 @@ export default function Almoxarifado() {
                                   localizacao: e.localizacao || '',
                                 })
                               }}
-                              className="text-xs font-medium text-sky-600 hover:text-sky-700"
+                              className="mt-1.5 text-xs font-medium text-sky-600 active:text-sky-700"
                             >
-                              ajustar
+                              ajustar mínimo
                             </button>
                           )}
-                        </Td>
-                      </tr>
+                        </div>
+                        <div className="shrink-0 text-right">
+                          <p className={`font-semibold ${abaixo ? 'text-red-600' : 'text-slate-800'}`}>
+                            {numero(e.quantidade, 2)} {e.peca?.unidade_medida}
+                          </p>
+                          <p className="text-xs text-slate-400">mín. {numero(e.estoque_minimo, 2)}</p>
+                          <p className="mt-1 text-sm font-medium text-slate-700">
+                            {moeda(Number(e.quantidade) * Number(e.custo_medio))}
+                          </p>
+                        </div>
+                      </li>
                     )
                   })}
-                </tbody>
-              </Tabela>
+                </ul>
+
+                <div className="hidden sm:block">
+                  <Tabela>
+                    <thead>
+                      <tr>
+                        <Th>Peça</Th>
+                        <Th>Fábrica</Th>
+                        <Th className="text-right">Tem quantos</Th>
+                        <Th className="text-right">Mínimo</Th>
+                        <Th className="text-right">Preço médio</Th>
+                        <Th className="text-right">Total</Th>
+                        <Th />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {linhasEstoque.map((e) => {
+                        const abaixo = Number(e.quantidade) < Number(e.estoque_minimo)
+                        return (
+                          <tr key={e.id} className="hover:bg-slate-50">
+                            <Td>
+                              <div className="flex items-center gap-2">
+                                <div>
+                                  <p className="font-medium text-slate-800">{e.peca?.nome}</p>
+                                  <p className="font-mono text-xs text-slate-400">{e.peca?.codigo}</p>
+                                </div>
+                                {e.peca?.critica && (
+                                  <Etiqueta cor="bg-red-100 text-red-700 ring-red-200">crítica</Etiqueta>
+                                )}
+                              </div>
+                            </Td>
+                            <Td className="text-slate-600">{e.unidade?.nome}</Td>
+                            <Td className="text-right">
+                              <span className={abaixo ? 'font-semibold text-red-600' : 'text-slate-800'}>
+                                {numero(e.quantidade, 2)} {e.peca?.unidade_medida}
+                              </span>
+                            </Td>
+                            <Td className="text-right text-slate-500">{numero(e.estoque_minimo, 2)}</Td>
+                            <Td className="text-right text-slate-600">{moeda(e.custo_medio)}</Td>
+                            <Td className="text-right font-medium">
+                              {moeda(Number(e.quantidade) * Number(e.custo_medio))}
+                            </Td>
+                            <Td className="text-right">
+                              {ehGestor && (
+                                <button
+                                  onClick={() => {
+                                    setErro(null)
+                                    setFormMinimo({
+                                      id: e.id,
+                                      nome: e.peca?.nome,
+                                      estoque_minimo: e.estoque_minimo,
+                                      localizacao: e.localizacao || '',
+                                    })
+                                  }}
+                                  className="text-xs font-medium text-sky-600 hover:text-sky-700"
+                                >
+                                  ajustar
+                                </button>
+                              )}
+                            </Td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </Tabela>
+                </div>
+              </>
             )}
           </Cartao>
         </>
@@ -317,54 +368,90 @@ export default function Almoxarifado() {
           ) : (movimentos.data || []).length === 0 ? (
             <Vazio titulo="Nada movimentado ainda" descricao="Compras, saídas e acertos de contagem aparecem aqui." />
           ) : (
-            <Tabela>
-              <thead>
-                <tr>
-                  <Th>Quando</Th>
-                  <Th>Peça</Th>
-                  <Th>Tipo</Th>
-                  <Th className="text-right">Qtd</Th>
-                  <Th className="text-right">Preço da un.</Th>
-                  <Th className="text-right">Ficou com</Th>
-                  <Th>Nota</Th>
-                </tr>
-              </thead>
-              <tbody>
-                {movimentos.data.map((m) => (
-                  <tr key={m.id} className="hover:bg-slate-50">
-                    <Td className="text-xs whitespace-nowrap text-slate-500">
-                      {dataHora(m.criado_em)}
-                    </Td>
-                    <Td>
-                      <p className="text-slate-700">{m.peca?.nome}</p>
-                      <p className="text-xs text-slate-400">{m.unidade?.nome}</p>
-                    </Td>
-                    <Td>
-                      <Etiqueta
-                        cor={
-                          ['entrada', 'devolucao'].includes(m.tipo)
-                            ? 'bg-emerald-100 text-emerald-700 ring-emerald-200'
-                            : m.tipo === 'ajuste'
-                              ? 'bg-sky-100 text-sky-700 ring-sky-200'
-                              : 'bg-amber-100 text-amber-700 ring-amber-200'
-                        }
-                      >
-                        {m.tipo}
-                      </Etiqueta>
-                    </Td>
-                    <Td className="text-right">{numero(m.quantidade, 2)}</Td>
-                    <Td className="text-right text-slate-600">{moeda(m.custo_unitario)}</Td>
-                    <Td className="text-right text-slate-600">{numero(m.saldo_apos, 2)}</Td>
-                    <Td className="text-xs text-slate-500">
-                      {m.documento || (m.os_id ? 'OS' : '—')}
-                      {m.fornecedor?.nome && (
-                        <p className="text-slate-400">{m.fornecedor.nome}</p>
-                      )}
-                    </Td>
-                  </tr>
-                ))}
-              </tbody>
-            </Tabela>
+            <>
+              <ul className="cascata divide-y sm:hidden" style={{ borderColor: 'var(--traco)' }}>
+                {movimentos.data.map((m) => {
+                  const corTipo = ['entrada', 'devolucao'].includes(m.tipo)
+                    ? 'bg-emerald-100 text-emerald-700 ring-emerald-200'
+                    : m.tipo === 'ajuste'
+                      ? 'bg-sky-100 text-sky-700 ring-sky-200'
+                      : 'bg-amber-100 text-amber-700 ring-amber-200'
+                  return (
+                    <li key={m.id} className="flex items-start justify-between gap-3 px-4 py-3.5">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <Etiqueta cor={corTipo}>{m.tipo}</Etiqueta>
+                          <span className="text-xs text-slate-400">{dataHora(m.criado_em)}</span>
+                        </div>
+                        <p className="mt-1 truncate text-sm text-slate-700">{m.peca?.nome}</p>
+                        <p className="text-xs text-slate-400">
+                          {m.unidade?.nome}
+                          {(m.documento || m.fornecedor?.nome) &&
+                            ` · ${m.documento || m.fornecedor?.nome}`}
+                          {!m.documento && !m.fornecedor?.nome && m.os_id && ' · OS'}
+                        </p>
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <p className="font-medium text-slate-800">{numero(m.quantidade, 2)}</p>
+                        <p className="text-xs text-slate-400">{moeda(m.custo_unitario)}/un.</p>
+                        <p className="text-xs text-slate-400">ficou {numero(m.saldo_apos, 2)}</p>
+                      </div>
+                    </li>
+                  )
+                })}
+              </ul>
+
+              <div className="hidden sm:block">
+                <Tabela>
+                  <thead>
+                    <tr>
+                      <Th>Quando</Th>
+                      <Th>Peça</Th>
+                      <Th>Tipo</Th>
+                      <Th className="text-right">Qtd</Th>
+                      <Th className="text-right">Preço da un.</Th>
+                      <Th className="text-right">Ficou com</Th>
+                      <Th>Nota</Th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {movimentos.data.map((m) => (
+                      <tr key={m.id} className="hover:bg-slate-50">
+                        <Td className="text-xs whitespace-nowrap text-slate-500">
+                          {dataHora(m.criado_em)}
+                        </Td>
+                        <Td>
+                          <p className="text-slate-700">{m.peca?.nome}</p>
+                          <p className="text-xs text-slate-400">{m.unidade?.nome}</p>
+                        </Td>
+                        <Td>
+                          <Etiqueta
+                            cor={
+                              ['entrada', 'devolucao'].includes(m.tipo)
+                                ? 'bg-emerald-100 text-emerald-700 ring-emerald-200'
+                                : m.tipo === 'ajuste'
+                                  ? 'bg-sky-100 text-sky-700 ring-sky-200'
+                                  : 'bg-amber-100 text-amber-700 ring-amber-200'
+                            }
+                          >
+                            {m.tipo}
+                          </Etiqueta>
+                        </Td>
+                        <Td className="text-right">{numero(m.quantidade, 2)}</Td>
+                        <Td className="text-right text-slate-600">{moeda(m.custo_unitario)}</Td>
+                        <Td className="text-right text-slate-600">{numero(m.saldo_apos, 2)}</Td>
+                        <Td className="text-xs text-slate-500">
+                          {m.documento || (m.os_id ? 'OS' : '—')}
+                          {m.fornecedor?.nome && (
+                            <p className="text-slate-400">{m.fornecedor.nome}</p>
+                          )}
+                        </Td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </Tabela>
+              </div>
+            </>
           )}
         </Cartao>
       )}

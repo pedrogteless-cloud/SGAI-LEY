@@ -129,61 +129,97 @@ export default function Fornecedores() {
             }
           />
         ) : (
-          <Tabela>
-            <thead>
-              <tr>
-                <Th>Fornecedor</Th>
-                <Th>O que faz</Th>
-                <Th>Contato</Th>
-                <Th className="text-right">Serviços feitos</Th>
-                <Th className="text-right">Já pagamos</Th>
-                <Th className="text-right">Última vez</Th>
-                <Th />
-              </tr>
-            </thead>
-            <tbody>
+          <>
+            <ul className="cascata divide-y sm:hidden" style={{ borderColor: 'var(--traco)' }}>
               {lista.map((f) => {
                 const g = porFornecedor[f.id]
                 return (
-                  <tr key={f.id} className="hover:bg-slate-50">
-                    <Td>
-                      <p className="font-medium text-slate-800">{f.nome}</p>
-                      <p className="text-xs text-slate-400">
-                        {[f.cidade, f.uf].filter(Boolean).join('/') || f.cnpj || '—'}
-                      </p>
-                    </Td>
-                    <Td>
+                  <li key={f.id}>
+                    <button onClick={() => abrir(f)} className="flex w-full flex-col gap-1.5 px-4 py-3.5 text-left active:bg-slate-50">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="font-medium text-slate-800">{f.nome}</p>
+                          <p className="text-xs text-slate-400">
+                            {[f.cidade, f.uf].filter(Boolean).join('/') || f.cnpj || '—'}
+                          </p>
+                        </div>
+                        <p className="shrink-0 font-medium text-slate-800">{moeda(g?.gasto_total)}</p>
+                      </div>
                       <div className="flex flex-wrap gap-1">
                         {(f.servicos || []).slice(0, 3).map((s) => (
                           <Etiqueta key={s.tipo_servico}>{s.tipo_servico}</Etiqueta>
                         ))}
-                        {(f.servicos || []).length > 3 && (
-                          <Etiqueta>+{f.servicos.length - 3}</Etiqueta>
-                        )}
+                        {(f.servicos || []).length > 3 && <Etiqueta>+{f.servicos.length - 3}</Etiqueta>}
                       </div>
-                    </Td>
-                    <Td className="text-slate-600">
-                      <p>{f.contato || '—'}</p>
-                      <p className="text-xs text-slate-400">{f.telefone}</p>
-                    </Td>
-                    <Td className="text-right text-slate-600">{g?.qtd_servicos || 0}</Td>
-                    <Td className="text-right font-medium">{moeda(g?.gasto_total)}</Td>
-                    <Td className="text-right text-xs text-slate-500">
-                      {g?.ultima_transacao ? data(g.ultima_transacao) : '—'}
-                    </Td>
-                    <Td className="text-right">
-                      <button
-                        onClick={() => abrir(f)}
-                        className="text-xs font-medium text-sky-600 hover:text-sky-700"
-                      >
-                        editar
-                      </button>
-                    </Td>
-                  </tr>
+                      <p className="text-xs text-slate-400">
+                        {f.contato || '—'}{f.telefone ? ` · ${f.telefone}` : ''}
+                        {' · '}{g?.qtd_servicos || 0} serviço(s)
+                        {g?.ultima_transacao ? ` · última em ${data(g.ultima_transacao)}` : ''}
+                      </p>
+                    </button>
+                  </li>
                 )
               })}
-            </tbody>
-          </Tabela>
+            </ul>
+
+            <div className="hidden sm:block">
+              <Tabela>
+                <thead>
+                  <tr>
+                    <Th>Fornecedor</Th>
+                    <Th>O que faz</Th>
+                    <Th>Contato</Th>
+                    <Th className="text-right">Serviços feitos</Th>
+                    <Th className="text-right">Já pagamos</Th>
+                    <Th className="text-right">Última vez</Th>
+                    <Th />
+                  </tr>
+                </thead>
+                <tbody>
+                  {lista.map((f) => {
+                    const g = porFornecedor[f.id]
+                    return (
+                      <tr key={f.id} className="hover:bg-slate-50">
+                        <Td>
+                          <p className="font-medium text-slate-800">{f.nome}</p>
+                          <p className="text-xs text-slate-400">
+                            {[f.cidade, f.uf].filter(Boolean).join('/') || f.cnpj || '—'}
+                          </p>
+                        </Td>
+                        <Td>
+                          <div className="flex flex-wrap gap-1">
+                            {(f.servicos || []).slice(0, 3).map((s) => (
+                              <Etiqueta key={s.tipo_servico}>{s.tipo_servico}</Etiqueta>
+                            ))}
+                            {(f.servicos || []).length > 3 && (
+                              <Etiqueta>+{f.servicos.length - 3}</Etiqueta>
+                            )}
+                          </div>
+                        </Td>
+                        <Td className="text-slate-600">
+                          <p>{f.contato || '—'}</p>
+                          <p className="text-xs text-slate-400">{f.telefone}</p>
+                        </Td>
+                        <Td className="text-right text-slate-600">{g?.qtd_servicos || 0}</Td>
+                        <Td className="text-right font-medium">{moeda(g?.gasto_total)}</Td>
+                        <Td className="text-right text-xs text-slate-500">
+                          {g?.ultima_transacao ? data(g.ultima_transacao) : '—'}
+                        </Td>
+                        <Td className="text-right">
+                          <button
+                            onClick={() => abrir(f)}
+                            className="text-xs font-medium text-sky-600 hover:text-sky-700"
+                          >
+                            editar
+                          </button>
+                        </Td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </Tabela>
+            </div>
+          </>
         )}
       </Cartao>
 

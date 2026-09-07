@@ -351,43 +351,73 @@ export default function OSDetalhe() {
             {(pecasOS.data || []).length === 0 ? (
               <Vazio titulo="Nenhuma peça usada" descricao="Digite a peça e quanto custou — não precisa estar no almoxarifado." />
             ) : (
-              <Tabela>
-                <thead>
-                  <tr>
-                    <Th>Peça</Th>
-                    <Th className="text-right">Qtd</Th>
-                    <Th className="text-right">Preço da un.</Th>
-                    <Th className="text-right">Total</Th>
-                    <Th />
-                  </tr>
-                </thead>
-                <tbody>
+              <>
+                <ul className="cascata divide-y sm:hidden" style={{ borderColor: 'var(--traco)' }}>
                   {pecasOS.data.map((p) => (
-                    <tr key={p.id}>
-                      <Td>
-                        <p className="text-slate-700">{p.peca?.nome || p.descricao}</p>
+                    <li key={p.id} className="flex items-start justify-between gap-3 px-4 py-3">
+                      <div className="min-w-0">
+                        <p className="text-sm text-slate-700">{p.peca?.nome || p.descricao}</p>
                         {p.peca?.codigo && (
                           <p className="font-mono text-xs text-slate-400">{p.peca.codigo}</p>
                         )}
-                      </Td>
-                      <Td className="text-right">
-                        {numero(p.quantidade, 2)} {p.peca?.unidade_medida || 'UN'}
-                      </Td>
-                      <Td className="text-right text-slate-600">{moeda(p.custo_unitario)}</Td>
-                      <Td className="text-right font-medium">{moeda(p.custo_total)}</Td>
-                      <Td className="text-right">
+                        <p className="text-xs text-slate-400">
+                          {numero(p.quantidade, 2)} {p.peca?.unidade_medida || 'UN'} × {moeda(p.custo_unitario)}
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-2">
+                        <span className="font-medium text-slate-800">{moeda(p.custo_total)}</span>
                         <button
                           onClick={() => removerPeca.mutate(p.id)}
-                          className="text-slate-300 hover:text-red-600"
+                          className="p-1 text-slate-300 active:text-red-600"
                           aria-label="Remover"
                         >
                           <Trash2 size={15} />
                         </button>
-                      </Td>
-                    </tr>
+                      </div>
+                    </li>
                   ))}
-                </tbody>
-              </Tabela>
+                </ul>
+
+                <div className="hidden sm:block">
+                  <Tabela>
+                    <thead>
+                      <tr>
+                        <Th>Peça</Th>
+                        <Th className="text-right">Qtd</Th>
+                        <Th className="text-right">Preço da un.</Th>
+                        <Th className="text-right">Total</Th>
+                        <Th />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {pecasOS.data.map((p) => (
+                        <tr key={p.id}>
+                          <Td>
+                            <p className="text-slate-700">{p.peca?.nome || p.descricao}</p>
+                            {p.peca?.codigo && (
+                              <p className="font-mono text-xs text-slate-400">{p.peca.codigo}</p>
+                            )}
+                          </Td>
+                          <Td className="text-right">
+                            {numero(p.quantidade, 2)} {p.peca?.unidade_medida || 'UN'}
+                          </Td>
+                          <Td className="text-right text-slate-600">{moeda(p.custo_unitario)}</Td>
+                          <Td className="text-right font-medium">{moeda(p.custo_total)}</Td>
+                          <Td className="text-right">
+                            <button
+                              onClick={() => removerPeca.mutate(p.id)}
+                              className="text-slate-300 hover:text-red-600"
+                              aria-label="Remover"
+                            >
+                              <Trash2 size={15} />
+                            </button>
+                          </Td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </Tabela>
+                </div>
+              </>
             )}
           </Cartao>
 
@@ -406,41 +436,69 @@ export default function OSDetalhe() {
             {(servicos.data || []).length === 0 ? (
               <Vazio titulo="Nada mandado pra fora" descricao="Torno, retífica, solda, rebobinamento, laudo…" />
             ) : (
-              <Tabela>
-                <thead>
-                  <tr>
-                    <Th>Serviço</Th>
-                    <Th>Fornecedor</Th>
-                    <Th>NF</Th>
-                    <Th className="text-right">Valor</Th>
-                    <Th />
-                  </tr>
-                </thead>
-                <tbody>
+              <>
+                <ul className="cascata divide-y sm:hidden" style={{ borderColor: 'var(--traco)' }}>
                   {servicos.data.map((s) => (
-                    <tr key={s.id}>
-                      <Td>
-                        <p className="text-slate-700 capitalize">{s.tipo_servico}</p>
-                        {s.descricao && (
-                          <p className="max-w-56 truncate text-xs text-slate-400">{s.descricao}</p>
-                        )}
-                      </Td>
-                      <Td className="text-slate-600">{s.fornecedor?.nome || '—'}</Td>
-                      <Td className="font-mono text-xs text-slate-500">{s.nota_fiscal || '—'}</Td>
-                      <Td className="text-right font-medium">{moeda(s.valor)}</Td>
-                      <Td className="text-right">
+                    <li key={s.id} className="flex items-start justify-between gap-3 px-4 py-3">
+                      <div className="min-w-0">
+                        <p className="text-sm text-slate-700 capitalize">{s.tipo_servico}</p>
+                        {s.descricao && <p className="truncate text-xs text-slate-400">{s.descricao}</p>}
+                        <p className="text-xs text-slate-400">
+                          {s.fornecedor?.nome || '—'}{s.nota_fiscal ? ` · NF ${s.nota_fiscal}` : ''}
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-2">
+                        <span className="font-medium text-slate-800">{moeda(s.valor)}</span>
                         <button
                           onClick={() => removerServico.mutate(s.id)}
-                          className="text-slate-300 hover:text-red-600"
+                          className="p-1 text-slate-300 active:text-red-600"
                           aria-label="Remover"
                         >
                           <Trash2 size={15} />
                         </button>
-                      </Td>
-                    </tr>
+                      </div>
+                    </li>
                   ))}
-                </tbody>
-              </Tabela>
+                </ul>
+
+                <div className="hidden sm:block">
+                  <Tabela>
+                    <thead>
+                      <tr>
+                        <Th>Serviço</Th>
+                        <Th>Fornecedor</Th>
+                        <Th>NF</Th>
+                        <Th className="text-right">Valor</Th>
+                        <Th />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {servicos.data.map((s) => (
+                        <tr key={s.id}>
+                          <Td>
+                            <p className="text-slate-700 capitalize">{s.tipo_servico}</p>
+                            {s.descricao && (
+                              <p className="max-w-56 truncate text-xs text-slate-400">{s.descricao}</p>
+                            )}
+                          </Td>
+                          <Td className="text-slate-600">{s.fornecedor?.nome || '—'}</Td>
+                          <Td className="font-mono text-xs text-slate-500">{s.nota_fiscal || '—'}</Td>
+                          <Td className="text-right font-medium">{moeda(s.valor)}</Td>
+                          <Td className="text-right">
+                            <button
+                              onClick={() => removerServico.mutate(s.id)}
+                              className="text-slate-300 hover:text-red-600"
+                              aria-label="Remover"
+                            >
+                              <Trash2 size={15} />
+                            </button>
+                          </Td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </Tabela>
+                </div>
+              </>
             )}
           </Cartao>
 
@@ -459,36 +517,63 @@ export default function OSDetalhe() {
             {(maoObra.data || []).length === 0 ? (
               <Vazio titulo="Nenhuma hora lançada" descricao="Anote quem mexeu e quanto tempo levou." />
             ) : (
-              <Tabela>
-                <thead>
-                  <tr>
-                    <Th>Quem fez</Th>
-                    <Th className="text-right">Horas</Th>
-                    <Th className="text-right">R$/h</Th>
-                    <Th className="text-right">Total</Th>
-                    <Th />
-                  </tr>
-                </thead>
-                <tbody>
+              <>
+                <ul className="cascata divide-y sm:hidden" style={{ borderColor: 'var(--traco)' }}>
                   {maoObra.data.map((m) => (
-                    <tr key={m.id}>
-                      <Td className="text-slate-700">{m.tecnico?.nome || m.tecnico_nome || '—'}</Td>
-                      <Td className="text-right">{numero(m.horas, 2)}</Td>
-                      <Td className="text-right text-slate-600">{moeda(m.custo_hora)}</Td>
-                      <Td className="text-right font-medium">{moeda(m.custo_total)}</Td>
-                      <Td className="text-right">
+                    <li key={m.id} className="flex items-start justify-between gap-3 px-4 py-3">
+                      <div className="min-w-0">
+                        <p className="text-sm text-slate-700">{m.tecnico?.nome || m.tecnico_nome || '—'}</p>
+                        <p className="text-xs text-slate-400">
+                          {numero(m.horas, 2)} h × {moeda(m.custo_hora)}
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-2">
+                        <span className="font-medium text-slate-800">{moeda(m.custo_total)}</span>
                         <button
                           onClick={() => removerMO.mutate(m.id)}
-                          className="text-slate-300 hover:text-red-600"
+                          className="p-1 text-slate-300 active:text-red-600"
                           aria-label="Remover"
                         >
                           <Trash2 size={15} />
                         </button>
-                      </Td>
-                    </tr>
+                      </div>
+                    </li>
                   ))}
-                </tbody>
-              </Tabela>
+                </ul>
+
+                <div className="hidden sm:block">
+                  <Tabela>
+                    <thead>
+                      <tr>
+                        <Th>Quem fez</Th>
+                        <Th className="text-right">Horas</Th>
+                        <Th className="text-right">R$/h</Th>
+                        <Th className="text-right">Total</Th>
+                        <Th />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {maoObra.data.map((m) => (
+                        <tr key={m.id}>
+                          <Td className="text-slate-700">{m.tecnico?.nome || m.tecnico_nome || '—'}</Td>
+                          <Td className="text-right">{numero(m.horas, 2)}</Td>
+                          <Td className="text-right text-slate-600">{moeda(m.custo_hora)}</Td>
+                          <Td className="text-right font-medium">{moeda(m.custo_total)}</Td>
+                          <Td className="text-right">
+                            <button
+                              onClick={() => removerMO.mutate(m.id)}
+                              className="text-slate-300 hover:text-red-600"
+                              aria-label="Remover"
+                            >
+                              <Trash2 size={15} />
+                            </button>
+                          </Td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </Tabela>
+                </div>
+              </>
             )}
           </Cartao>
         </div>
