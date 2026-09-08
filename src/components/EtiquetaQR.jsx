@@ -1,0 +1,300 @@
+import { useEffect, useMemo, useState } from 'react'
+import { createPortal } from 'react-dom'
+import QRCode from 'qrcode'
+import { Printer } from 'lucide-react'
+import { Botao, Campo, Entrada, Selecao, Modal } from './ui'
+
+/**
+ * Etiqueta de QR para colar na máquina.
+ *
+ * O adesivo é físico e cada fábrica usa o seu, então a medida é escolhida aqui e
+ * fica guardada no navegador — na segunda vez já abre no formato certo e é só
+ * mandar imprimir. A prévia aparece no tamanho real (mm de CSS), e a folha sai
+ * com `@page` do tamanho exato do adesivo, sem margem, para o conteúdo não
+ * escorregar de posição.
+ */
+
+const CHAVE = 'sgai:etiqueta'
+
+// Medidas de adesivo comuns no Brasil (Pimaco e equivalentes)
+const FORMATOS = [
+  { id: '6180', nome: 'Pimaco 6180 · 101,6 × 25,4 mm', l: 101.6, a: 25.4 },
+  { id: '6082', nome: 'Pimaco 6082 · 101,6 × 33,9 mm', l: 101.6, a: 33.9 },
+  { id: '6087', nome: 'Pimaco 6087 · 101,6 × 50,8 mm', l: 101.6, a: 50.8 },
+  { id: '8163', nome: 'Etiqueta grande · 101,6 × 63,5 mm', l: 101.6, a: 63.5 },
+  { id: 'q60', nome: 'Quadrada · 60 × 60 mm', l: 60, a: 60 },
+  { id: 'livre', nome: 'Outro tamanho (digitar)', l: 90, a: 40 },
+]
+
+const BotaoSeta = ({ rotulo, onClick, children }) => (
+  <button
+    type="button"
+    onClick={onClick}
+    aria-label={rotulo}
+    className="flex size-8 items-center justify-center rounded-md bg-white text-slate-600
+      ring-1 ring-slate-300 transition hover:bg-slate-100 active:scale-95"
+  >
+    {children}
+  </button>
+)
+
+const lerSalvo = () => {
+  try {
+    return JSON.parse(localStorage.getItem(CHAVE)) || null
+  } catch {
+    return null
+  }
+}
+
+export default function EtiquetaQR({ aberto, aoFechar, ativo, link }) {
+  const salvo = useMemo(lerSalvo, [aberto])
+  const [formato, setFormato] = useState(salvo?.formato || '6082')
+  const [larg, setLarg] = useState(salvo?.larg || 101.6)
+  const [alt, setAlt] = useState(salvo?.alt || 33.9)
+  // cada impressora registra a folha de um jeito: esse ajuste calibra a posição
+  // e fica salvo, então uma vez encontrado o ponto certo, é sempre esse
+  const [deslocX, setDeslocX] = useState(salvo?.deslocX ?? 0)
+  const [deslocY, setDeslocY] = useState(salvo?.deslocY ?? 0)
+  const [qrSvg, setQrSvg] = useState(null)
+
+  useEffect(() => {
+    if (!aberto || !link) return
+    // SVG, não PNG: o QR sai vetorial, sem borrão de escala nem de impressora.
+    // margin 0 porque quem dá a folga é o layout da etiqueta, não o código.
+    // A lib devolve só viewBox, sem width/height — sem forçar 100%, o navegador
+    // usa o padrão de 300×150px do SVG inline e quebra o layout inteiro.
+    QRCode.toString(link, { type: 'svg', margin: 0, errorCorrectionLevel: 'M' })
+      .then(setQrSvg)
+      .catch(() => setQrSvg(null))
+  }, [aberto, link])
+
+  // guarda medida e ajuste assim que mudam: na próxima vez é só mandar imprimir
+  useEffect(() => {
+    if (!aberto) return
+    localStorage.setItem(CHAVE, JSON.stringify({ formato, larg, alt, deslocX, deslocY }))
+  }, [aberto, formato, larg, alt, deslocX, deslocY])
+
+  const trocarFormato = (id) => {
+    setFormato(id)
+    const f = FORMATOS.find((x) => x.id === id)
+    if (f && id !== 'livre') {
+      setLarg(f.l)
+      setAlt(f.a)
+    }
+  }
+
+  const imprimir = () => window.print()
+
+  if (!ativo) return null
+
+  // Adesivo em faixa comporta o QR ao lado do texto. Quadrado ou em pé não:
+  // sobraria uma tira de poucos milímetros para escrever. Nesses, QR em cima.
+  const deitada = larg / alt >= 1.8
+  // Abaixo de ~30 mm de altura o setor não cabe e as fontes encolhem.
+  const apertada = alt < 30
+
+  const ladoQR = deitada
+    ? Math.min(alt - 6, 46)
+    : Math.min(larg - 6, (alt - 6) * 0.62)
+  const sobra = deitada ? larg - ladoQR - 9 : larg - 6
+
+  const conteudo = (
+    <div
+      className={`flex bg-white p-[3mm] ${
+        deitada ? 'items-center gap-[3mm]' : 'flex-col items-center gap-[1.5mm]'
+      }`}
+      style={{
+        width: `${larg}mm`,
+        height: `${alt}mm`,
+        transform: `translate(${deslocX}mm, ${deslocY}mm)`,
+      }}
+    >
+      {qrSvg && (
+        <div
+          className="shrink-0 [&>svg]:block [&>svg]:h-full [&>svg]:w-full"
+          style={{ width: `${ladoQR}mm`, height: `${ladoQR}mm` }}
+          dangerouslySetInnerHTML={{ __html: qrSvg }}
+        />
+      )}
+      <div
+        className={`flex min-w-0 flex-col ${
+          deitada ? 'h-full justify-between py-[0.5mm]' : 'flex-1 justify-between text-center'
+        }`}
+        style={{ width: `${sobra}mm` }}
+      >
+        <div className="min-w-0">
+          <p
+            className="font-bold text-black uppercase"
+            style={{
+              fontSize: apertada ? '2.7mm' : '3.4mm',
+              lineHeight: 1.1,
+              display: '-webkit-box',
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: 'vertical',
+              overflow: 'hidden',
+            }}
+          >
+            {ativo.nome}
+          </p>
+          <p
+            className="font-mono font-semibold text-black"
+            style={{ fontSize: apertada ? '2.3mm' : '2.9mm', lineHeight: 1.35 }}
+          >
+            {ativo.codigo}
+          </p>
+          {!apertada && (ativo.setor?.nome || ativo.unidade?.nome) && (
+            <p className="truncate text-black" style={{ fontSize: '2.2mm', lineHeight: 1.35 }}>
+              {[ativo.setor?.nome, ativo.unidade?.nome].filter(Boolean).join(' · ')}
+            </p>
+          )}
+        </div>
+
+        <p
+          className="font-bold text-black uppercase"
+          style={{ fontSize: apertada ? '1.9mm' : '2.3mm', lineHeight: 1.15 }}
+        >
+          Problema? Aponte a câmera
+        </p>
+      </div>
+    </div>
+  )
+
+  // A moldura é o papel de verdade — tamanho fixo, corta o que passar da borda
+  // quando o ajuste desloca o conteúdo. Ela é o mesmo tanto na prévia quanto no
+  // que sai impresso, então o que se vê na tela é exatamente o que vai no papel.
+  const etiqueta = (
+    <div
+      className="etiqueta-folha overflow-hidden bg-white"
+      style={{ width: `${larg}mm`, height: `${alt}mm` }}
+    >
+      {conteudo}
+    </div>
+  )
+
+  return (
+    <>
+      <Modal
+        aberto={aberto}
+        aoFechar={aoFechar}
+        titulo="Etiqueta para colar na máquina"
+        largura="max-w-lg"
+        rodape={
+          <>
+            <Botao variante="secundario" onClick={aoFechar}>
+              Fechar
+            </Botao>
+            <Botao onClick={imprimir} disabled={!qrSvg}>
+              <Printer size={15} /> Imprimir
+            </Botao>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <Campo rotulo="Tamanho do seu adesivo">
+            <Selecao value={formato} onChange={(e) => trocarFormato(e.target.value)}>
+              {FORMATOS.map((f) => (
+                <option key={f.id} value={f.id}>
+                  {f.nome}
+                </option>
+              ))}
+            </Selecao>
+          </Campo>
+
+          {formato === 'livre' && (
+            <div className="grid grid-cols-2 gap-3">
+              <Campo rotulo="Largura (mm)">
+                <Entrada
+                  type="number"
+                  step="0.1"
+                  min="30"
+                  value={larg}
+                  onChange={(e) => setLarg(Number(e.target.value) || 0)}
+                />
+              </Campo>
+              <Campo rotulo="Altura (mm)">
+                <Entrada
+                  type="number"
+                  step="0.1"
+                  min="20"
+                  value={alt}
+                  onChange={(e) => setAlt(Number(e.target.value) || 0)}
+                />
+              </Campo>
+            </div>
+          )}
+
+          <div>
+            <p className="mb-2 text-xs font-medium text-slate-500">
+              Prévia no tamanho real — {larg.toFixed(1)} × {alt.toFixed(1)} mm
+            </p>
+            <div className="flex justify-center rounded-lg bg-slate-100 p-4">
+              <div className="ring-1 ring-slate-300 ring-inset">{etiqueta}</div>
+            </div>
+          </div>
+
+          <div className="rounded-lg bg-slate-50 p-3 ring-1 ring-slate-200 ring-inset">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-medium text-slate-600">
+                Saiu deslocado no seu adesivo? Ajuste aqui
+              </p>
+              {(deslocX !== 0 || deslocY !== 0) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDeslocX(0)
+                    setDeslocY(0)
+                  }}
+                  className="text-xs font-medium text-sky-600 hover:text-sky-700"
+                >
+                  Zerar
+                </button>
+              )}
+            </div>
+            <div className="mt-2 flex items-center justify-center gap-4">
+              <div className="grid grid-cols-3 grid-rows-3 gap-1">
+                <span />
+                <BotaoSeta rotulo="Para cima" onClick={() => setDeslocY((v) => v - 0.5)}>
+                  ↑
+                </BotaoSeta>
+                <span />
+                <BotaoSeta rotulo="Para a esquerda" onClick={() => setDeslocX((v) => v - 0.5)}>
+                  ←
+                </BotaoSeta>
+                <span />
+                <BotaoSeta rotulo="Para a direita" onClick={() => setDeslocX((v) => v + 0.5)}>
+                  →
+                </BotaoSeta>
+                <span />
+                <BotaoSeta rotulo="Para baixo" onClick={() => setDeslocY((v) => v + 0.5)}>
+                  ↓
+                </BotaoSeta>
+                <span />
+              </div>
+              <span className="font-mono text-xs text-slate-500">
+                x {deslocX.toFixed(1)}mm
+                <br />y {deslocY.toFixed(1)}mm
+              </span>
+            </div>
+          </div>
+
+          <p className="text-xs text-slate-500">
+            Na hora de imprimir, deixe a escala em <strong>100%</strong> e desmarque
+            &ldquo;ajustar à página&rdquo; — senão a impressora encolhe e sai fora da medida.
+            Tamanho e ajuste ficam guardados para a próxima.
+          </p>
+        </div>
+      </Modal>
+
+      {/* Vai para fora do #root de propósito: o CSS de impressão esconde os
+          filhos diretos do body, e a etiqueta precisa ser um deles para sobrar. */}
+      {aberto &&
+        createPortal(
+          <div className="so-impressao">
+            <style>{`@page { size: ${larg}mm ${alt}mm; margin: 0; }`}</style>
+            {etiqueta}
+          </div>,
+          document.body
+        )}
+    </>
+  )
+}
