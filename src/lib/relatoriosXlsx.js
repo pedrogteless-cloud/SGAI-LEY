@@ -1,5 +1,6 @@
 import { supabase } from './supabase'
 import { hojeISO } from './tempo'
+import { ITENS_5S } from './constants'
 
 // exceljs é pesado (zip + XML) — só entra no bundle quando alguém realmente
 // gera um relatório, não no carregamento inicial do app.
@@ -518,6 +519,12 @@ export async function gerarResiduosChao({ inicio, fim, unidadeId }) {
   const { data: avalData, error: avalErro } = await avaliacoes
   if (avalErro) throw new Error(avalErro.message)
 
+  let checklist5s = supabase.from('vw_relatorio_chao_setor_5s').select('*')
+    .gte('relatorio_data', inicio).lte('relatorio_data', fim)
+  if (unidadeId) checklist5s = checklist5s.eq('unidade_id', unidadeId)
+  const { data: checklist5sData, error: checklist5sErro } = await checklist5s
+  if (checklist5sErro) throw new Error(checklist5sErro.message)
+
   const wb = await novoWorkbook()
   const periodoTxto = `de ${fmtData(inicio)} até ${fmtData(fim)}`
 
@@ -567,10 +574,10 @@ export async function gerarResiduosChao({ inicio, fim, unidadeId }) {
   largurasColunas(ws2, [16, 12, 22, 14, 20, 18, 14, 16, 16, 11, 30])
   if (!lancData.length) notaFonte(ws2, r0, 'Nenhum lançamento nesse período.')
 
-  // --- limpeza por setor ---
+  // --- limpeza por setor (checklist 5S) ---
   const ws3 = wb.addWorksheet('Limpeza por Setor')
-  r = titulo(ws3, 'Limpeza e Organização por Setor', `Avaliações ${periodoTxto}`, 7)
-  cabecalhoTabela(ws3, r, ['Relatório', 'Data', 'Setor', 'Nota', 'Situação', 'Principais problemas', 'Ação recomendada'])
+  r = titulo(ws3, 'Limpeza e Organização por Setor — Checklist 5S', `Avaliações ${periodoTxto}`, 7)
+  cabecalhoTabela(ws3, r, ['Relatório', 'Data', 'Setor', 'Nota', 'Situação', 'Itens com ressalva'])
   r0 = r + 1
   avalData.forEach((a, i) => {
     const rr = r0 + i, zebra = i % 2 === 1
@@ -579,16 +586,25 @@ export async function gerarResiduosChao({ inicio, fim, unidadeId }) {
     celula(ws3, rr, 3, a.setor_nome, { zebra })
     if (a.nao_inspecionado) {
       celula(ws3, rr, 4, '—', { zebra })
-      badge(ws3, rr, 5, 'Não inspecionado', AMBER_BG, AMBER_TX)
+      badge(ws3, rr, 5, 'Não visitado', AMBER_BG, AMBER_TX)
+      celula(ws3, rr, 6, a.justificativa_nao_inspecionado || '—', { zebra })
     } else {
       celula(ws3, rr, 4, a.nota ?? '—', { zebra })
-      const cor = a.nota <= 2 ? [RED_BG, RED_TX] : a.nota === 3 ? [AMBER_BG, AMBER_TX] : [EMERALD_BG, EMERALD_TX]
+      const cor = a.nota == null ? [SLATE_BADGE_BG, SLATE_BADGE_TX] : a.nota < 2.5 ? [RED_BG, RED_TX] : a.nota < 4 ? [AMBER_BG, AMBER_TX] : [EMERALD_BG, EMERALD_TX]
       badge(ws3, rr, 5, a.nota != null ? String(a.nota) : '—', cor[0], cor[1])
+      const comProblema = checklist5sData.filter(
+        (c) => c.setor_avaliacao_id === a.id && (c.resposta === 'parcial' || c.resposta === 'nao_conforme')
+      )
+      celula(
+        ws3, rr, 6,
+        comProblema.length === 0
+          ? (a.nota != null ? 'Tudo conforme' : '—')
+          : comProblema.map((c) => `${ITENS_5S.find((x) => x.item === c.item)?.titulo || c.item}: ${c.descricao_problema || ''}`).join(' · '),
+        { zebra }
+      )
     }
-    celula(ws3, rr, 6, a.principais_problemas || a.justificativa_nao_inspecionado || '—', { zebra })
-    celula(ws3, rr, 7, a.acao_recomendada || '—', { zebra })
   })
-  largurasColunas(ws3, [16, 12, 18, 8, 16, 32, 28])
+  largurasColunas(ws3, [16, 12, 18, 8, 14, 44])
   if (!avalData.length) notaFonte(ws3, r0, 'Nenhuma avaliação de limpeza nesse período.')
 
   return { workbook: wb, nomeArquivo: `SGAI_Desperdicios_${inicio}_a_${fim}.xlsx` }

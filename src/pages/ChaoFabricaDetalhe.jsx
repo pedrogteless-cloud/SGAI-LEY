@@ -11,7 +11,8 @@ import {
 import { useAuth } from '../hooks/useAuth'
 import { dataHora, data as fmtDataBr, numero } from '../lib/format'
 import {
-  M_STATUS_CHAO, M_NOTA_LIMPEZA, NOTAS_LIMPEZA, TIPOS_MOVIMENTACAO_RESIDUO,
+  M_STATUS_CHAO, ITENS_5S, RESPOSTAS_5S, corDaNota5s, labelDaNota5s,
+  TIPOS_MOVIMENTACAO_RESIDUO,
   ETAPAS_REAPROVEITAMENTO, ORIGENS_RESIDUO, CONDICOES_RESIDUO, DESTINACOES_RESIDUO,
   UNIDADES_MEDIDA_RESIDUO, MOTIVOS_RESIDUO_SUGERIDOS,
 } from '../lib/constants'
@@ -49,6 +50,9 @@ export default function ChaoFabricaDetalhe() {
   )
   const setoresRel = useTabela('relatorio_chao_setores', {
     select: '*, setor:setores(nome)',
+    filtros: [['relatorio_id', 'eq', id]],
+  })
+  const setor5s = useTabela('vw_relatorio_chao_setor_5s', {
     filtros: [['relatorio_id', 'eq', id]],
   })
   const lancamentos = useTabela('vw_residuo_lancamentos', {
@@ -118,10 +122,14 @@ export default function ChaoFabricaDetalhe() {
       medicoes: [{ ...MEDIDA_VAZIA }],
     }
   }
+  function respostaVazia5s() {
+    return { resposta: '', descricao_problema: '', quadrante: '', sugestao: '', fotos: [] }
+  }
   function campoLimpezaVazio() {
     return {
-      nota: null, nao_inspecionado: false, justificativa: '', quadrantes: '',
-      principais_problemas: '', observacao: '', acao_recomendada: '',
+      modo: 'checklist', // 'checklist' | 'nao_visitado'
+      respostas: Object.fromEntries(ITENS_5S.map((i) => [i.item, respostaVazia5s()])),
+      justificativaSetor: '',
     }
   }
 
@@ -191,38 +199,121 @@ export default function ChaoFabricaDetalhe() {
   }
 
   const abrirLimpeza = (s) => {
+    const existentes = (setor5s.data || []).filter((x) => x.setor_avaliacao_id === s.id)
+    const respostas = Object.fromEntries(
+      ITENS_5S.map((i) => {
+        const ex = existentes.find((x) => x.item === i.item)
+        return [
+          i.item,
+          ex
+            ? {
+                resposta: ex.resposta,
+                descricao_problema: ex.descricao_problema || '',
+                quadrante: ex.quadrante || '',
+                sugestao: ex.sugestao || '',
+                fotos: [],
+              }
+            : respostaVazia5s(),
+        ]
+      })
+    )
     setFormLimpeza({
-      nota: s.nota, nao_inspecionado: s.nao_inspecionado,
-      justificativa: s.justificativa_nao_inspecionado || '',
-      quadrantes: (s.quadrantes_inspecionados || []).join(', '),
-      principais_problemas: s.principais_problemas || '', observacao: s.observacao || '',
-      acao_recomendada: s.acao_recomendada || '',
+      modo: s.nao_inspecionado ? 'nao_visitado' : 'checklist',
+      respostas,
+      justificativaSetor: s.justificativa_nao_inspecionado || '',
     })
     setSetorEditando(s)
     setErro(null)
     setModal('limpeza')
   }
 
+  const mudarResposta5s = (item, campo, valor) =>
+    setFormLimpeza((f) => ({
+      ...f,
+      respostas: { ...f.respostas, [item]: { ...f.respostas[item], [campo]: valor } },
+    }))
+
   const salvarLimpeza = async () => {
     setErro(null)
-    setEnviando(true)
-    const { data: linhas, error } = await supabase.rpc('avaliar_limpeza_setor', {
-      p_relatorio_setor_id: setorEditando.id,
-      p_nota: formLimpeza.nao_inspecionado ? null : formLimpeza.nota,
-      p_nao_inspecionado: formLimpeza.nao_inspecionado,
-      p_justificativa: formLimpeza.justificativa.trim() || null,
-      p_quadrantes: formLimpeza.quadrantes.split(',').map((q) => q.trim()).filter(Boolean),
-      p_principais_problemas: formLimpeza.principais_problemas.trim() || null,
-      p_observacao: formLimpeza.observacao.trim() || null,
-      p_acao_recomendada: formLimpeza.acao_recomendada.trim() || null,
+
+    if (formLimpeza.modo === 'nao_visitado') {
+      if (!formLimpeza.justificativaSetor.trim()) {
+        setErro(new Error('Informe o motivo de não ter dado pra visitar esse setor.'))
+        return
+      }
+      setEnviando(true)
+      const { data: linhas, error } = await supabase.rpc('marcar_setor_nao_inspecionado', {
+        p_relatorio_setor_id: setorEditando.id,
+        p_justificativa: formLimpeza.justificativaSetor.trim(),
+      })
+      setEnviando(false)
+      if (error) { setErro(new Error(error.message)); return }
+      const linha = linhas?.[0]
+      if (linha?.mensagem) { setErro(new Error(linha.mensagem)); return }
+      setModal(null)
+      avisar('Setor marcado como não visitado hoje.')
+      invalidar(...INVALIDAR, 'vw_relatorio_chao_setor_5s')
+      return
+    }
+
+    if (ITENS_5S.some((i) => !formLimpeza.respostas[i.item].resposta)) {
+      setErro(new Error('Responda as 5 perguntas do checklist.'))
+      return
+    }
+    const semDescricao = ITENS_5S.find((i) => {
+      const r = formLimpeza.respostas[i.item]
+      return ['parcial', 'nao_conforme'].includes(r.resposta) && !r.descricao_problema.trim()
     })
-    setEnviando(false)
-    if (error) { setErro(new Error(error.message)); return }
+    if (semDescricao) {
+      setErro(new Error(`Descreva o problema encontrado em "${semDescricao.titulo}".`))
+      return
+    }
+
+    setEnviando(true)
+    const payload = ITENS_5S.map((i) => {
+      const r = formLimpeza.respostas[i.item]
+      return {
+        item: i.item,
+        resposta: r.resposta,
+        descricao_problema: r.descricao_problema.trim() || null,
+        quadrante: r.quadrante.trim() || null,
+        sugestao: r.sugestao.trim() || null,
+      }
+    })
+    const { data: linhas, error } = await supabase.rpc('responder_checklist_5s', {
+      p_relatorio_setor_id: setorEditando.id,
+      p_respostas: payload,
+    })
+    if (error) { setEnviando(false); setErro(new Error(error.message)); return }
     const linha = linhas?.[0]
-    if (linha?.mensagem) { setErro(new Error(linha.mensagem)); return }
+    if (linha?.mensagem) { setEnviando(false); setErro(new Error(linha.mensagem)); return }
+
+    // Fotos só dá pra vincular ao item certo depois que ele existe no
+    // banco — mesmo motivo do desperdício/reaproveitamento: sobe a foto,
+    // manda o formulário, só then linka.
+    const temFoto = ITENS_5S.some((i) => formLimpeza.respostas[i.item].fotos.length > 0)
+    if (temFoto) {
+      const { data: itensSalvos } = await supabase
+        .from('relatorio_chao_setor_5s')
+        .select('id, item')
+        .eq('setor_avaliacao_id', setorEditando.id)
+      const idPorItem = Object.fromEntries((itensSalvos || []).map((x) => [x.item, x.id]))
+      const midias = ITENS_5S.flatMap((i) =>
+        formLimpeza.respostas[i.item].fotos.map((f) => ({
+          relatorio_id: id,
+          setor_avaliacao_id: setorEditando.id,
+          setor_5s_id: idPorItem[i.item],
+          url: f.url,
+          enviado_por: perfil?.id ?? null,
+        }))
+      )
+      if (midias.length) await supabase.from('relatorio_chao_midias').insert(midias)
+    }
+
+    setEnviando(false)
     setModal(null)
     avisar('Avaliação salva.')
-    invalidar(...INVALIDAR)
+    invalidar(...INVALIDAR, 'vw_relatorio_chao_setor_5s', 'relatorio_chao_midias')
   }
 
   const concluir = async () => {
@@ -276,15 +367,20 @@ export default function ChaoFabricaDetalhe() {
     subtitulo: `${r.unidade?.nome || ''}${r.turno ? ` · ${r.turno}` : ''} · ${fmtDataBr(r.data)} · responsável: ${r.responsavel?.nome || '—'}`,
     tabelas: [
       {
-        titulo: 'Limpeza por setor',
-        colunas: ['Setor', 'Nota', 'Situação', 'Principais problemas', 'Ação recomendada'],
-        linhas: (setoresRel.data || []).map((s) => [
-          s.setor?.nome || '—',
-          s.nao_inspecionado ? '—' : (s.nota ?? '—'),
-          s.nao_inspecionado ? `Não inspecionado: ${s.justificativa_nao_inspecionado || '—'}` : (M_NOTA_LIMPEZA[s.nota]?.label || '—'),
-          s.principais_problemas || '—',
-          s.acao_recomendada || '—',
-        ]),
+        titulo: 'Limpeza por setor — checklist 5S',
+        colunas: ['Setor', 'Nota', 'Situação', 'Itens com ressalva'],
+        linhas: (setoresRel.data || []).map((s) => {
+          const respostas = (setor5s.data || []).filter((x) => x.setor_avaliacao_id === s.id)
+          const comProblema = respostas.filter((x) => x.resposta === 'parcial' || x.resposta === 'nao_conforme')
+          return [
+            s.setor?.nome || '—',
+            s.nota != null ? numero(s.nota, 1) : '—',
+            s.nao_inspecionado ? `Não visitado: ${s.justificativa_nao_inspecionado || '—'}` : labelDaNota5s(s.nota),
+            comProblema.length === 0
+              ? (s.nota != null ? 'Tudo conforme' : '—')
+              : comProblema.map((x) => `${ITENS_5S.find((i) => i.item === x.item)?.titulo || x.item}: ${x.descricao_problema || ''}`).join(' · '),
+          ]
+        }),
       },
       {
         titulo: 'Desperdícios registrados',
@@ -394,34 +490,40 @@ export default function ChaoFabricaDetalhe() {
               <Vazio titulo="Nenhum setor definido na abertura" />
             ) : (
               <ul className="divide-y divide-slate-100">
-                {setoresRel.data.map((s) => (
+                {setoresRel.data.map((s) => {
+                  const respostas5s = (setor5s.data || []).filter((x) => x.setor_avaliacao_id === s.id)
+                  const comProblema = respostas5s.filter((x) => x.resposta === 'parcial' || x.resposta === 'nao_conforme')
+                  return (
                   <li key={s.id} className="flex items-center justify-between gap-3 px-4 py-3">
                     <div className="min-w-0">
                       <p className="text-sm font-medium text-slate-800">{s.setor?.nome}</p>
                       {s.nao_inspecionado ? (
-                        <p className="text-xs text-amber-600">Não inspecionado — {s.justificativa_nao_inspecionado}</p>
-                      ) : s.nota ? (
+                        <p className="text-xs text-amber-600">Não visitado — {s.justificativa_nao_inspecionado}</p>
+                      ) : s.nota != null ? (
                         <p className="text-xs text-slate-500">
-                          {s.principais_problemas || 'Sem problemas anotados'}
+                          {comProblema.length === 0
+                            ? 'Tudo conforme no checklist'
+                            : `${comProblema.length} item(ns) com ressalva no 5S`}
                         </p>
                       ) : (
                         <p className="text-xs text-slate-400">Ainda não avaliado</p>
                       )}
                     </div>
                     <div className="flex shrink-0 items-center gap-2">
-                      {s.nota && (
-                        <Etiqueta cor={M_NOTA_LIMPEZA[s.nota]?.cor}>
-                          {s.nota} · {M_NOTA_LIMPEZA[s.nota]?.label}
+                      {s.nota != null && (
+                        <Etiqueta cor={corDaNota5s(s.nota)}>
+                          {numero(s.nota, 1)} · {labelDaNota5s(s.nota)}
                         </Etiqueta>
                       )}
                       {podeEditar && (
                         <Botao tamanho="sm" variante="secundario" onClick={() => abrirLimpeza(s)}>
-                          {s.nota || s.nao_inspecionado ? 'Editar' : 'Avaliar'}
+                          {s.nota != null || s.nao_inspecionado ? 'Editar' : 'Avaliar'}
                         </Botao>
                       )}
                     </div>
                   </li>
-                ))}
+                  )
+                })}
               </ul>
             )}
           </Cartao>
@@ -686,7 +788,8 @@ export default function ChaoFabricaDetalhe() {
       <Modal
         aberto={modal === 'limpeza'}
         aoFechar={() => setModal(null)}
-        titulo={`Avaliar limpeza — ${setorEditando?.setor?.nome || ''}`}
+        titulo={`Checklist 5S — ${setorEditando?.setor?.nome || ''}`}
+        largura="max-w-2xl"
         rodape={
           <>
             <Botao variante="secundario" onClick={() => setModal(null)}>Cancelar</Botao>
@@ -695,53 +798,99 @@ export default function ChaoFabricaDetalhe() {
         }
       >
         <div className="space-y-4">
-          <div className="grid grid-cols-5 gap-1.5">
-            {NOTAS_LIMPEZA.map((n) => (
-              <button
-                key={n.valor}
-                type="button"
-                onClick={() => setFormLimpeza((f) => ({ ...f, nota: n.valor, nao_inspecionado: false }))}
-                className={`rounded-lg border-2 p-2 text-center transition ${
-                  formLimpeza.nota === n.valor && !formLimpeza.nao_inspecionado
-                    ? 'border-sky-500 bg-sky-50'
-                    : 'border-slate-200 hover:border-slate-300'
-                }`}
-              >
-                <p className="text-lg font-bold text-slate-800">{n.valor}</p>
-                <p className="text-[11px] font-medium text-slate-600">{n.label}</p>
-              </button>
-            ))}
+          <div className="inline-flex rounded-lg bg-slate-100 p-1">
+            <button
+              type="button"
+              onClick={() => setFormLimpeza((f) => ({ ...f, modo: 'checklist' }))}
+              className={`rounded-md px-3 py-1.5 text-sm font-medium transition ${formLimpeza.modo === 'checklist' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'}`}
+            >
+              Responder checklist
+            </button>
+            <button
+              type="button"
+              onClick={() => setFormLimpeza((f) => ({ ...f, modo: 'nao_visitado' }))}
+              className={`rounded-md px-3 py-1.5 text-sm font-medium transition ${formLimpeza.modo === 'nao_visitado' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'}`}
+            >
+              Não deu pra visitar hoje
+            </button>
           </div>
-          {formLimpeza.nota && !formLimpeza.nao_inspecionado && (
-            <p className="text-xs text-slate-500">{NOTAS_LIMPEZA.find((n) => n.valor === formLimpeza.nota)?.criterio}</p>
-          )}
 
-          <label className="flex items-center gap-2 text-sm text-slate-600">
-            <input
-              type="checkbox"
-              checked={formLimpeza.nao_inspecionado}
-              onChange={(e) => setFormLimpeza((f) => ({ ...f, nao_inspecionado: e.target.checked, nota: null }))}
-            />
-            Não inspecionado hoje
-          </label>
-          {formLimpeza.nao_inspecionado && (
-            <Campo rotulo="Justificativa *">
-              <Entrada value={formLimpeza.justificativa} onChange={(e) => setFormLimpeza((f) => ({ ...f, justificativa: e.target.value }))} />
+          {formLimpeza.modo === 'nao_visitado' ? (
+            <Campo rotulo="Por que não deu pra visitar esse setor hoje? *">
+              <Area
+                rows={3}
+                value={formLimpeza.justificativaSetor}
+                onChange={(e) => setFormLimpeza((f) => ({ ...f, justificativaSetor: e.target.value }))}
+                placeholder="Ex.: setor fechado por conta da manutenção da linha"
+                autoFocus
+              />
             </Campo>
-          )}
+          ) : (
+            <>
+              <p className="text-xs text-slate-500">
+                Responda com calma — é pra aprender a observar o setor, não pra tirar nota alta.
+                Só peço detalhe quando a resposta for Parcial ou Não conforme.
+              </p>
+              {ITENS_5S.map((i) => {
+                const r = formLimpeza.respostas[i.item]
+                const precisaDetalhe = r.resposta === 'parcial' || r.resposta === 'nao_conforme'
+                return (
+                  <div key={i.item} className="rounded-lg p-3 ring-1 ring-slate-200 ring-inset">
+                    <p className="text-sm font-semibold text-slate-800">{i.titulo}</p>
+                    <p className="mt-0.5 text-sm text-slate-600">{i.pergunta}</p>
+                    <div className="mt-2 grid grid-cols-2 gap-1.5 sm:grid-cols-4">
+                      {RESPOSTAS_5S.map((opt) => (
+                        <button
+                          key={opt.valor}
+                          type="button"
+                          onClick={() => mudarResposta5s(i.item, 'resposta', opt.valor)}
+                          className={`rounded-lg border-2 px-2 py-1.5 text-center text-xs font-medium transition ${
+                            r.resposta === opt.valor
+                              ? 'border-sky-500 bg-sky-50 text-slate-800'
+                              : 'border-slate-200 text-slate-600 hover:border-slate-300'
+                          }`}
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
 
-          <Campo rotulo="Quadrantes inspecionados" dica="Separados por vírgula, ex.: 7C, 8C">
-            <Entrada value={formLimpeza.quadrantes} onChange={(e) => setFormLimpeza((f) => ({ ...f, quadrantes: e.target.value }))} />
-          </Campo>
-          <Campo rotulo="Principais problemas">
-            <Area rows={2} value={formLimpeza.principais_problemas} onChange={(e) => setFormLimpeza((f) => ({ ...f, principais_problemas: e.target.value }))} />
-          </Campo>
-          <Campo rotulo="Ação recomendada">
-            <Entrada value={formLimpeza.acao_recomendada} onChange={(e) => setFormLimpeza((f) => ({ ...f, acao_recomendada: e.target.value }))} />
-          </Campo>
-          <Campo rotulo="Observação">
-            <Area rows={2} value={formLimpeza.observacao} onChange={(e) => setFormLimpeza((f) => ({ ...f, observacao: e.target.value }))} />
-          </Campo>
+                    {precisaDetalhe && (
+                      <div className="mt-3 space-y-2.5 border-t border-slate-100 pt-3">
+                        <Campo rotulo="Descrição do problema *">
+                          <Area
+                            rows={2}
+                            value={r.descricao_problema}
+                            onChange={(e) => mudarResposta5s(i.item, 'descricao_problema', e.target.value)}
+                          />
+                        </Campo>
+                        <div className="grid gap-2.5 sm:grid-cols-2">
+                          <Campo rotulo="Quadrante" dica='Ex.: "7C"'>
+                            <Entrada
+                              value={r.quadrante}
+                              onChange={(e) => mudarResposta5s(i.item, 'quadrante', e.target.value)}
+                            />
+                          </Campo>
+                          <Campo rotulo="Sugestão do que fazer" dica="Opcional">
+                            <Entrada
+                              value={r.sugestao}
+                              onChange={(e) => mudarResposta5s(i.item, 'sugestao', e.target.value)}
+                            />
+                          </Campo>
+                        </div>
+                        <Campo rotulo="Foto" dica="Opcional">
+                          <GaleriaFotos
+                            valor={r.fotos}
+                            aoMudar={(novo) => mudarResposta5s(i.item, 'fotos', novo)}
+                          />
+                        </Campo>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </>
+          )}
 
           <Erro erro={erro} />
         </div>

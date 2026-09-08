@@ -143,14 +143,39 @@ export const UNIDADES_MEDIDA_RESIDUO = [
   { valor: 'big_bag', label: 'big bag' },
 ]
 
-// Nunca só cor/estrela: número + classificação + critério, sempre juntos.
-export const NOTAS_LIMPEZA = [
-  { valor: 1, label: 'Crítico', criterio: 'Acúmulo relevante de resíduos, sujeira, obstrução ou condição que exige correção imediata', cor: 'bg-red-100 text-red-700 ring-red-200' },
-  { valor: 2, label: 'Ruim', criterio: 'Diversos problemas de limpeza ou organização, com necessidade clara de intervenção', cor: 'bg-orange-100 text-orange-700 ring-orange-200' },
-  { valor: 3, label: 'Regular', criterio: 'Condição aceitável, mas com desvios visíveis que precisam ser corrigidos', cor: 'bg-amber-100 text-amber-700 ring-amber-200' },
-  { valor: 4, label: 'Bom', criterio: 'Setor limpo e organizado, com apenas pequenos desvios', cor: 'bg-lime-100 text-lime-700 ring-lime-200' },
-  { valor: 5, label: 'Excelente', criterio: 'Setor limpo, organizado e sem desvios relevantes', cor: 'bg-emerald-100 text-emerald-700 ring-emerald-200' },
+// Checklist 5S — uma pergunta simples por S. Fase de aprendizado: sem
+// cobrança, sem ranking, só o encarregado aprendendo a observar e o
+// setor criando uma linha de base. A nota não é escolhida à mão: sai
+// automática da soma das respostas (ver src/lib/chaoIndicadores.js).
+export const ITENS_5S = [
+  { item: 'seiri', titulo: 'Seiri — Utilização', pergunta: 'Existem materiais, objetos ou resíduos desnecessários no setor?' },
+  { item: 'seiton', titulo: 'Seiton — Organização', pergunta: 'Ferramentas e materiais estão nos locais corretos e identificados?' },
+  { item: 'seiso', titulo: 'Seiso — Limpeza', pergunta: 'Piso, máquinas e bancadas estão limpos?' },
+  { item: 'seiketsu', titulo: 'Seiketsu — Padronização', pergunta: 'Demarcações, placas e padrões estão sendo respeitados?' },
+  { item: 'shitsuke', titulo: 'Shitsuke — Disciplina', pergunta: 'O setor está mantendo a organização sem precisar de cobrança constante?' },
 ]
+
+export const RESPOSTAS_5S = [
+  { valor: 'conforme', label: 'Conforme', pontos: 2, cor: 'bg-emerald-100 text-emerald-700 ring-emerald-200' },
+  { valor: 'parcial', label: 'Parcial', pontos: 1, cor: 'bg-amber-100 text-amber-700 ring-amber-200' },
+  { valor: 'nao_conforme', label: 'Não conforme', pontos: 0, cor: 'bg-red-100 text-red-700 ring-red-200' },
+  { valor: 'nao_inspecionado', label: 'Não inspecionado', pontos: null, cor: 'bg-slate-100 text-slate-500 ring-slate-200' },
+]
+
+// Cor e rótulo da nota geral do setor (1 a 5, calculada) — por faixa, já
+// que agora é um número com casa decimal, não mais uma das 5 opções fixas.
+export function corDaNota5s(nota) {
+  if (nota == null) return 'bg-slate-100 text-slate-500 ring-slate-200'
+  if (nota < 2.5) return 'bg-red-100 text-red-700 ring-red-200'
+  if (nota < 4) return 'bg-amber-100 text-amber-700 ring-amber-200'
+  return 'bg-emerald-100 text-emerald-700 ring-emerald-200'
+}
+export function labelDaNota5s(nota) {
+  if (nota == null) return '—'
+  if (nota < 2.5) return 'Crítico'
+  if (nota < 4) return 'Regular'
+  return 'Bom'
+}
 
 const mapa = (lista) => Object.fromEntries(lista.map((i) => [i.valor, i]))
 
@@ -166,4 +191,4 @@ export const M_ORIGEM_RESIDUO = mapa(ORIGENS_RESIDUO)
 export const M_CONDICAO_RESIDUO = mapa(CONDICOES_RESIDUO)
 export const M_DESTINACAO_RESIDUO = mapa(DESTINACOES_RESIDUO)
 export const M_UNIDADE_RESIDUO = mapa(UNIDADES_MEDIDA_RESIDUO)
-export const M_NOTA_LIMPEZA = mapa(NOTAS_LIMPEZA)
+export const M_RESPOSTA_5S = mapa(RESPOSTAS_5S)
