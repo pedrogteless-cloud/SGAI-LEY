@@ -2,14 +2,14 @@ import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import {
   ArrowLeft, Plus, CircleCheck, RotateCcw, Ban, Trash2, Recycle,
-  ClipboardCheck, Scale, Image as ImageIcon,
+  ClipboardCheck, Scale, Image as ImageIcon, Printer,
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import {
   useRegistro, useTabela, useInvalidar, useSetores, useMateriaisResiduo,
 } from '../hooks/useDados'
 import { useAuth } from '../hooks/useAuth'
-import { dataHora, numero } from '../lib/format'
+import { dataHora, data as fmtDataBr, numero } from '../lib/format'
 import {
   M_STATUS_CHAO, M_NOTA_LIMPEZA, NOTAS_LIMPEZA, TIPOS_MOVIMENTACAO_RESIDUO,
   ETAPAS_REAPROVEITAMENTO, ORIGENS_RESIDUO, CONDICOES_RESIDUO, DESTINACOES_RESIDUO,
@@ -20,6 +20,7 @@ import {
   Vazio, Modal, Erro, useAviso,
 } from '../components/ui'
 import GaleriaFotos from '../components/GaleriaFotos'
+import ImpressaoRelatorio from '../components/ImpressaoRelatorio'
 
 const INVALIDAR = [
   'relatorios_chao', 'relatorio_chao_setores', 'relatorio_chao_historico',
@@ -40,6 +41,7 @@ export default function ChaoFabricaDetalhe() {
   const [erro, setErro] = useState(null)
   const [enviando, setEnviando] = useState(false)
   const [setorEditando, setSetorEditando] = useState(null)
+  const [imprimindo, setImprimindo] = useState(false)
 
   const relatorio = useRegistro(
     'relatorios_chao', id,
@@ -266,6 +268,66 @@ export default function ChaoFabricaDetalhe() {
     invalidar('relatorio_chao_midias')
   }
 
+  // Diferente do PDF de Relatorios.jsx, aqui os dados já estão todos
+  // carregados na tela — não precisa buscar de novo, só remontar no
+  // formato que ImpressaoRelatorio entende.
+  const dadosImpressao = imprimindo && r ? {
+    titulo: `Relatório do Chão de Fábrica · ${r.numero}`,
+    subtitulo: `${r.unidade?.nome || ''}${r.turno ? ` · ${r.turno}` : ''} · ${fmtDataBr(r.data)} · responsável: ${r.responsavel?.nome || '—'}`,
+    tabelas: [
+      {
+        titulo: 'Limpeza por setor',
+        colunas: ['Setor', 'Nota', 'Situação', 'Principais problemas', 'Ação recomendada'],
+        linhas: (setoresRel.data || []).map((s) => [
+          s.setor?.nome || '—',
+          s.nao_inspecionado ? '—' : (s.nota ?? '—'),
+          s.nao_inspecionado ? `Não inspecionado: ${s.justificativa_nao_inspecionado || '—'}` : (M_NOTA_LIMPEZA[s.nota]?.label || '—'),
+          s.principais_problemas || '—',
+          s.acao_recomendada || '—',
+        ]),
+      },
+      {
+        titulo: 'Desperdícios registrados',
+        colunas: ['Material', 'Medição', 'Origem', 'Setor', 'Quadrante', 'Observação'],
+        linhas: desperdicios.map((l) => [
+          l.material_nome,
+          (l.medicoes || []).map((m) => `${numero(m.quantidade, 2)} ${UNIDADES_MEDIDA_RESIDUO.find((u) => u.valor === m.unidade_medida)?.label || m.unidade_medida}`).join(' · ') || '—',
+          ORIGENS_RESIDUO.find((o) => o.valor === l.origem)?.label || '—',
+          l.setor_nome || '—',
+          l.quadrante || '—',
+          l.observacao || '—',
+        ]),
+      },
+      {
+        titulo: 'Reaproveitamento registrado',
+        colunas: ['Material', 'Movimentação', 'Medição', 'Setor', 'Observação'],
+        linhas: reaproveitamentos.map((l) => [
+          l.material_nome,
+          TIPOS_MOVIMENTACAO_RESIDUO.find((t) => t.valor === l.tipo_movimentacao)?.label || l.tipo_movimentacao,
+          (l.medicoes || []).map((m) => `${numero(m.quantidade, 2)} ${UNIDADES_MEDIDA_RESIDUO.find((u) => u.valor === m.unidade_medida)?.label || m.unidade_medida}`).join(' · ') || '—',
+          l.setor_nome || '—',
+          l.observacao || '—',
+        ]),
+      },
+      ...(r.conclusao_situacao ? [{
+        titulo: 'Conclusão do relatório',
+        colunas: ['Situação geral', 'Pontos de atenção', 'Providências'],
+        linhas: [[r.conclusao_situacao, r.conclusao_atencao || '—', r.conclusao_providencias || '—']],
+      }] : []),
+    ],
+  } : null
+
+  useEffect(() => {
+    if (!imprimindo) return
+    const aoTerminar = () => setImprimindo(false)
+    window.addEventListener('afterprint', aoTerminar, { once: true })
+    const idTimeout = setTimeout(() => window.print(), 50)
+    return () => {
+      clearTimeout(idTimeout)
+      window.removeEventListener('afterprint', aoTerminar)
+    }
+  }, [imprimindo])
+
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -287,6 +349,9 @@ export default function ChaoFabricaDetalhe() {
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
+          <Botao variante="secundario" onClick={() => setImprimindo(true)} carregando={imprimindo}>
+            <Printer size={15} /> Baixar PDF
+          </Botao>
           {podeEditar && !['concluida', 'cancelada'].includes(r.status) && (
             <Botao variante="sucesso" onClick={() => setModal('concluir')}>
               <CircleCheck size={15} /> Concluir
@@ -762,6 +827,8 @@ export default function ChaoFabricaDetalhe() {
           <Erro erro={erro} />
         </div>
       </Modal>
+
+      <ImpressaoRelatorio dados={dadosImpressao} />
     </div>
   )
 }

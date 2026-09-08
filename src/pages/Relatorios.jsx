@@ -1,7 +1,9 @@
-import { useState } from 'react'
-import { FileSpreadsheet, Download } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { FileSpreadsheet, Download, Printer } from 'lucide-react'
 import { TIPOS_RELATORIO, gerarEBaixarRelatorio } from '../lib/relatoriosXlsx'
+import { buscarDadosImpressao } from '../lib/relatoriosImpressao'
 import { Botao, Cartao, CartaoTitulo, Campo, Selecao, Entrada, useAviso } from '../components/ui'
+import ImpressaoRelatorio from '../components/ImpressaoRelatorio'
 
 function inicioDoMes() {
   const d = new Date()
@@ -14,6 +16,8 @@ export default function Relatorios() {
   const [inicio, setInicio] = useState(inicioDoMes())
   const [fim, setFim] = useState(hojeISO())
   const [gerando, setGerando] = useState(false)
+  const [gerandoPdf, setGerandoPdf] = useState(false)
+  const [dadosImpressao, setDadosImpressao] = useState(null)
   const avisar = useAviso()
 
   const tipo = TIPOS_RELATORIO.find((t) => t.id === tipoId)
@@ -33,6 +37,37 @@ export default function Relatorios() {
       setGerando(false)
     }
   }
+
+  const gerarPdf = async () => {
+    if (tipo.temPeriodo && inicio > fim) {
+      avisar('A data inicial não pode ser depois da data final.', 'erro')
+      return
+    }
+    setGerandoPdf(true)
+    try {
+      setDadosImpressao(await buscarDadosImpressao(tipoId, { inicio, fim }))
+    } catch (e) {
+      avisar(`Não consegui montar o PDF: ${e.message}`, 'erro')
+      setGerandoPdf(false)
+    }
+  }
+
+  // Só manda pra impressão depois que a folha (o portal) já está no DOM
+  // com os dados certos — chamar window.print() antes disso imprimiria
+  // a tela em branco de trás.
+  useEffect(() => {
+    if (!dadosImpressao) return
+    const aoTerminar = () => {
+      setDadosImpressao(null)
+      setGerandoPdf(false)
+    }
+    window.addEventListener('afterprint', aoTerminar, { once: true })
+    const id = setTimeout(() => window.print(), 50)
+    return () => {
+      clearTimeout(id)
+      window.removeEventListener('afterprint', aoTerminar)
+    }
+  }, [dadosImpressao])
 
   return (
     <div className="entra space-y-5">
@@ -70,17 +105,25 @@ export default function Relatorios() {
             </div>
           )}
 
-          <Botao onClick={gerar} carregando={gerando} className="w-full">
-            <Download size={16} /> Baixar planilha (.xlsx)
-          </Botao>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <Botao onClick={gerar} carregando={gerando} className="flex-1">
+              <Download size={16} /> Baixar planilha (.xlsx)
+            </Botao>
+            <Botao variante="secundario" onClick={gerarPdf} carregando={gerandoPdf} className="flex-1">
+              <Printer size={16} /> Baixar PDF
+            </Botao>
+          </div>
         </div>
       </Cartao>
 
       <div className="flex items-start gap-2 rounded-lg bg-sky-50 px-3 py-2.5 text-xs text-sky-800 ring-1 ring-sky-200 ring-inset max-w-xl">
         <FileSpreadsheet size={15} className="mt-0.5 shrink-0" />
-        Cada relatório sai com as mesmas cores da tela — importância A em vermelho, B em âmbar — e as abas certas pra
-        cada necessidade: custos, ordens de serviço, confiabilidade, estoque, preventivas e resumo executivo.
+        A planilha sai com as mesmas cores da tela e as abas certas pra cada necessidade. O PDF é a versão
+        resumida pra imprimir ou anexar num e-mail — abre a caixa de impressão do navegador; escolha
+        &ldquo;Salvar como PDF&rdquo; em vez de uma impressora.
       </div>
+
+      <ImpressaoRelatorio dados={dadosImpressao} />
     </div>
   )
 }
