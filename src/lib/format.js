@@ -11,7 +11,21 @@ export const numero = (v, casas = 0) =>
     maximumFractionDigits: casas,
   })
 
-export const data = (v) => (v ? new Date(v).toLocaleDateString('pt-BR') : '—')
+// Data pura do banco ("YYYY-MM-DD", sem hora) não pode virar Date: o
+// construtor entende esse formato como meia-noite EM UTC, e mostrar isso
+// no fuso local (Fortaleza é UTC-3) exibe o dia anterior. Formata a
+// string direto, sem passar por Date — só timestamp de verdade (com hora)
+// usa Date, porque aí é um instante real, sem ambiguidade de fuso.
+const RE_DATA_PURA = /^\d{4}-\d{2}-\d{2}$/
+
+export const data = (v) => {
+  if (!v) return '—'
+  if (RE_DATA_PURA.test(v)) {
+    const [ano, mes, dia] = v.split('-')
+    return `${dia}/${mes}/${ano}`
+  }
+  return new Date(v).toLocaleDateString('pt-BR')
+}
 
 export const dataHora = (v) =>
   v

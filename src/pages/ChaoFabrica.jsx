@@ -11,6 +11,7 @@ import {
   useTabela, useUnidades, useSetores, useTecnicos, useMateriaisResiduo, useInserir, useInvalidar,
 } from '../hooks/useDados'
 import { data as fmtData, dataHora, numero } from '../lib/format'
+import { hojeISO } from '../lib/tempo'
 import { M_STATUS_CHAO, STATUS_RELATORIO_CHAO } from '../lib/constants'
 import {
   PERIODOS, limitesPeriodo, achatarLancamentos, agregarPeriodo, agregarLimpeza,
@@ -65,7 +66,7 @@ export default function ChaoFabrica() {
     try {
       await gerarEBaixarResiduosChao({
         inicio: filtroPeriodoHist.inicio || '2000-01-01',
-        fim: filtroPeriodoHist.fim || new Date().toISOString().slice(0, 10),
+        fim: filtroPeriodoHist.fim || hojeISO(),
         unidadeId: unidadeAtual || null,
       })
     } catch (e) {
@@ -78,13 +79,16 @@ export default function ChaoFabrica() {
   const hoje = useTabela('vw_relatorio_chao_resumo', {
     filtros: [
       ...(unidadeAtual ? [['unidade_id', 'eq', unidadeAtual]] : []),
-      ['data', 'eq', new Date().toISOString().slice(0, 10)],
+      ['data', 'eq', hojeISO()],
       ['status', 'in', ['aberta', 'em_andamento', 'reaberta']],
     ],
     ordem: { coluna: 'aberta_em', asc: false },
   })
 
-  const saldos = useTabela('vw_residuo_saldo_material', { ordem: { coluna: 'saldo', asc: false } })
+  const saldos = useTabela('vw_residuo_saldo_material', {
+    filtros: unidadeAtual ? [['unidade_id', 'eq', unidadeAtual]] : [],
+    ordem: { coluna: 'saldo', asc: false },
+  })
   const materiais = useMateriaisResiduo()
 
   const abrirModalNovo = () => {
@@ -333,7 +337,7 @@ export default function ChaoFabrica() {
       >
         <div className="space-y-4">
           <p className="text-sm text-slate-500">
-            Data de hoje ({fmtData(new Date().toISOString())}), preenchida sozinha.
+            Data de hoje ({fmtData(hojeISO())}), preenchida sozinha.
           </p>
           <div className="grid gap-4 sm:grid-cols-2">
             <Campo rotulo="Turno" dica="Opcional">
@@ -429,13 +433,20 @@ function PainelIndicadores({ saldos, unidadeAtual }) {
   const linhasAtual = useMemo(() => achatarLancamentos(lancAtual.data), [lancAtual.data])
   const linhasAnterior = useMemo(() => achatarLancamentos(lancAnterior.data), [lancAnterior.data])
 
+  // O filtro de quadrante precisa valer pros dois períodos — comparar
+  // "geração do quadrante 7C" com "geração da fábrica inteira antes" não
+  // é comparação nenhuma.
   const linhasAtualFiltradas = useMemo(
     () => (quadranteFiltro ? linhasAtual.filter((l) => l.quadrante === quadranteFiltro) : linhasAtual),
     [linhasAtual, quadranteFiltro]
   )
+  const linhasAnteriorFiltradas = useMemo(
+    () => (quadranteFiltro ? linhasAnterior.filter((l) => l.quadrante === quadranteFiltro) : linhasAnterior),
+    [linhasAnterior, quadranteFiltro]
+  )
 
   const atual = useMemo(() => agregarPeriodo(linhasAtualFiltradas), [linhasAtualFiltradas])
-  const anterior = useMemo(() => agregarPeriodo(linhasAnterior), [linhasAnterior])
+  const anterior = useMemo(() => agregarPeriodo(linhasAnteriorFiltradas), [linhasAnteriorFiltradas])
   const limpezaAtual = useMemo(() => agregarLimpeza(avaliacoesAtual.data), [avaliacoesAtual.data])
   const limpezaAnterior = useMemo(() => agregarLimpeza(avaliacoesAnterior.data), [avaliacoesAnterior.data])
 

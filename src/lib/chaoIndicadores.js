@@ -6,10 +6,20 @@
  * período com período de tamanho diferente.
  */
 
+import { hojeISO } from './tempo'
+
+// Toda a aritmética de período roda em UTC puro (Date.UTC), nunca no fuso
+// do aparelho: "hoje" entra já como a data certa em Fortaleza (via
+// hojeISO()) e daí em diante é só soma/subtração de dias de calendário,
+// sem nenhuma conversão de fuso no meio pra dar errado.
+const paraDataUTC = (iso) => {
+  const [ano, mes, dia] = iso.split('-').map(Number)
+  return new Date(Date.UTC(ano, mes - 1, dia))
+}
 const isoData = (d) => d.toISOString().slice(0, 10)
 const somarDias = (d, n) => {
   const r = new Date(d)
-  r.setDate(r.getDate() + n)
+  r.setUTCDate(r.getUTCDate() + n)
   return r
 }
 
@@ -27,8 +37,7 @@ export const PERIODOS = [
  * imediatamente anterior — pra comparação nunca comparar 7 dias com 31.
  */
 export function limitesPeriodo(chave, personalizado = {}) {
-  const hoje = new Date()
-  hoje.setHours(0, 0, 0, 0)
+  const hoje = paraDataUTC(hojeISO())
   let inicio = hoje
   let fim = hoje
 
@@ -39,17 +48,17 @@ export function limitesPeriodo(chave, personalizado = {}) {
     inicio = somarDias(hoje, -6)
     fim = hoje
   } else if (chave === 'semana') {
-    inicio = somarDias(hoje, -hoje.getDay())
+    inicio = somarDias(hoje, -hoje.getUTCDay())
     fim = hoje
   } else if (chave === 'mes') {
-    inicio = new Date(hoje.getFullYear(), hoje.getMonth(), 1)
+    inicio = new Date(Date.UTC(hoje.getUTCFullYear(), hoje.getUTCMonth(), 1))
     fim = hoje
   } else if (chave === 'ano') {
-    inicio = new Date(hoje.getFullYear(), 0, 1)
+    inicio = new Date(Date.UTC(hoje.getUTCFullYear(), 0, 1))
     fim = hoje
   } else if (chave === 'personalizado') {
-    inicio = personalizado.inicio ? new Date(`${personalizado.inicio}T00:00:00`) : hoje
-    fim = personalizado.fim ? new Date(`${personalizado.fim}T00:00:00`) : hoje
+    inicio = personalizado.inicio ? paraDataUTC(personalizado.inicio) : hoje
+    fim = personalizado.fim ? paraDataUTC(personalizado.fim) : hoje
   }
 
   const dias = Math.max(1, Math.round((fim - inicio) / 86400000) + 1)
@@ -75,6 +84,7 @@ export function achatarLancamentos(lancamentos) {
     for (const m of l.medicoes || []) {
       if (!(Number(m.quantidade) > 0)) continue
       linhas.push({
+        lancamento_id: l.id,
         material_id: l.material_id,
         material_nome: l.material_nome,
         unidade_medida: m.unidade_medida,
@@ -91,13 +101,36 @@ export function achatarLancamentos(lancamentos) {
   return linhas
 }
 
-const somaPor = (linhas, chave, filtro = () => true) => {
+// Chave sempre leva a unidade junto — "Espuma (kg)" e "Espuma (m³)" são
+// linhas diferentes, nunca somadas na mesma barra. É o mesmo motivo de
+// `somaUnidade` só somar uma unidade por vez: 5 kg + 3 m³ não é "8" de
+// nada.
+const somaPorComUnidade = (linhas, chave, filtro = () => true) => {
   const acc = {}
   for (const l of linhas) {
     if (!filtro(l)) continue
-    const k = chave(l)
-    if (k == null) continue
+    const nome = chave(l)
+    if (nome == null) continue
+    const k = `${nome} (${l.unidade_medida})`
     acc[k] = (acc[k] || 0) + l.quantidade
+  }
+  return acc
+}
+
+// Contagem de ocorrências (quantas vezes aquilo foi registrado), não soma
+// de quantidade — "3 ocorrências no quadrante 7C" não deveria virar
+// "3,2" só porque uma pesagem deu 3,2 kg. Conta por lançamento (não por
+// medição achatada), pra um lançamento com 2 medições não contar 2 vezes.
+const contarOcorrenciasPor = (linhas, chave) => {
+  const vistos = new Set()
+  const acc = {}
+  for (const l of linhas) {
+    const nome = chave(l)
+    if (nome == null) continue
+    const dedupe = `${l.lancamento_id ?? Math.random()}::${nome}`
+    if (vistos.has(dedupe)) continue
+    vistos.add(dedupe)
+    acc[nome] = (acc[nome] || 0) + 1
   }
   return acc
 }
@@ -113,20 +146,17 @@ export function agregarPeriodo(linhas) {
   const geracao = linhas.filter((l) => l.tipo_movimentacao === 'geracao')
   const naoGeracao = linhas.filter((l) => l.tipo_movimentacao !== 'geracao')
 
-  const geradoPorMaterialUnidade = {}
-  for (const l of geracao) {
-    const k = `${l.material_nome} (${l.unidade_medida})`
-    geradoPorMaterialUnidade[k] = (geradoPorMaterialUnidade[k] || 0) + l.quantidade
-  }
+  const porMaterial = somaPorComUnidade(geracao, (l) => l.material_nome)
+  const porSetor = somaPorComUnidade(geracao, (l) => l.setor_nome || 'sem setor')
 
   return {
     totalLinhas: linhas.length,
-    geradoPorMaterial: topDe(somaPor(geracao, (l) => l.material_nome), 8),
-    geradoPorOrigem: topDe(somaPor(geracao, (l) => l.origem || 'não informado'), 8),
-    geradoPorSetor: topDe(somaPor(geracao, (l) => l.setor_nome || 'sem setor'), 8),
-    geradoPorQuadrante: topDe(somaPor(geracao, (l) => l.quadrante || 'sem quadrante'), 8),
-    materialMaiorGeracao: topDe(somaPor(geracao, (l) => l.material_nome), 1)[0] || null,
-    setorMaiorGeracao: topDe(somaPor(geracao, (l) => l.setor_nome || 'sem setor'), 1)[0] || null,
+    geradoPorMaterial: topDe(porMaterial, 8),
+    geradoPorOrigem: topDe(somaPorComUnidade(geracao, (l) => l.origem || 'não informado'), 8),
+    geradoPorSetor: topDe(porSetor, 8),
+    geradoPorQuadrante: topDe(contarOcorrenciasPor(geracao, (l) => l.quadrante || 'sem quadrante'), 8),
+    materialMaiorGeracao: topDe(porMaterial, 1)[0] || null,
+    setorMaiorGeracao: topDe(porSetor, 1)[0] || null,
     descartado: sumTipo(naoGeracao, 'descarte'),
     enviadoMoagem: sumTipo(naoGeracao, 'enviado_moagem'),
     identificadoReaproveitavel: sumTipo(naoGeracao, 'identificado_reaproveitavel'),
@@ -145,8 +175,14 @@ function somaUnidade(linhas, unidade) {
   return linhas.filter((l) => l.unidade_medida === unidade).reduce((acc, l) => acc + l.quantidade, 0)
 }
 
+// Igual a somaUnidade: os cartões de descarte/moagem/reaproveitamento na
+// tela são rotulados "kg" (é a unidade predominante), então só entra
+// quantidade em kg — um lançamento em m³ ou "unidade" com o mesmo
+// tipo_movimentacao não pode engordar um número que a tela chama de kg.
 function sumTipo(linhas, tipo) {
-  return linhas.filter((l) => l.tipo_movimentacao === tipo).reduce((acc, l) => acc + l.quantidade, 0)
+  return linhas
+    .filter((l) => l.tipo_movimentacao === tipo && l.unidade_medida === 'kg')
+    .reduce((acc, l) => acc + l.quantidade, 0)
 }
 
 /** Índice de destinação útil = útil / (útil + descarte) × 100. */
@@ -184,7 +220,14 @@ export function agregarLimpeza(avaliacoes) {
     notaMedia: notaMediaDe(lista),
     mediaPorSetor,
     setoresNota12: validas.filter((a) => a.nota <= 2),
-    pctInspecionados: lista.length ? ((validas.length + lista.filter((a) => a.nao_inspecionado).length) / lista.length) * 100 : null,
+    // "Inspecionado" quer dizer que alguém olhou e deu nota — um setor
+    // marcado "não inspecionado" (mesmo com justificativa) é o contrário
+    // disso, não pode contar a favor da porcentagem que mede o quanto
+    // realmente foi visto.
+    pctInspecionados: lista.length ? (validas.length / lista.length) * 100 : null,
+    pctComJustificativaOuNota: lista.length
+      ? ((validas.length + lista.filter((a) => a.nao_inspecionado).length) / lista.length) * 100
+      : null,
     totalAvaliacoes: lista.length,
   }
 }
@@ -235,7 +278,7 @@ export function gerarInsights({ atual, anterior, limpezaAtual, limpezaAnterior, 
   }
 
   const atrasados = (relatorios || []).filter(
-    (r) => r.status !== 'concluida' && r.status !== 'cancelada' && r.data < isoData(new Date())
+    (r) => r.status !== 'concluida' && r.status !== 'cancelada' && r.data < hojeISO()
   )
   if (atrasados.length > 0) {
     frases.push(`${atrasados.length} relatório(s) ficaram em aberto além do dia em que foram criados.`)
@@ -274,7 +317,7 @@ export function calcularRealizadoMeta(meta, { linhasAchatadas, avaliacoes, relat
       return { valor: somaKg(descarte), unidade: 'kg', sentido: 'max' }
 
     case 'max_ocorrencias_quadrante': {
-      const porQ = somaPor(geracao, (l) => l.quadrante || 'sem quadrante')
+      const porQ = contarOcorrenciasPor(geracao, (l) => l.quadrante || 'sem quadrante')
       const maior = Math.max(0, ...Object.values(porQ))
       return { valor: maior, unidade: 'ocorrências', sentido: 'max' }
     }
@@ -299,8 +342,11 @@ export function calcularRealizadoMeta(meta, { linhasAchatadas, avaliacoes, relat
     }
 
     case 'pct_min_setores_inspecionados': {
+      // Mesma correção de agregarLimpeza: "não inspecionado" não é
+      // inspeção, mesmo com justificativa — não pode contar a favor
+      // dessa meta.
       const lista = avaliacoes || []
-      const inspecionados = lista.filter((a) => a.nota != null || a.nao_inspecionado).length
+      const inspecionados = lista.filter((a) => a.nota != null).length
       return { valor: lista.length ? (inspecionados / lista.length) * 100 : null, unidade: '%', sentido: 'min' }
     }
 

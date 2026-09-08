@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import { hojeISO } from './tempo'
 
 // exceljs é pesado (zip + XML) — só entra no bundle quando alguém realmente
 // gera um relatório, não no carregamento inicial do app.
@@ -48,7 +49,7 @@ const BORDA = {
 const fill = (argb) => ({ type: 'pattern', pattern: 'solid', fgColor: { argb } })
 
 function titulo(ws, texto, subtitulo, largura = 8) {
-  const hoje = new Date().toLocaleDateString('pt-BR')
+  const hoje = fmtData(hojeISO())
   const range = (r) => `A${r}:${String.fromCharCode(64 + largura)}${r}`
   ws.mergeCells(range(1))
   ws.getCell('A1').value = 'SGAI · Ley Colchões'

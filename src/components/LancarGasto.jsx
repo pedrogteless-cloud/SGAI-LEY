@@ -4,11 +4,12 @@ import { ChevronDown, ChevronUp } from 'lucide-react'
 import { useRpc, useTabela, useFornecedores, useInvalidar } from '../hooks/useDados'
 import { useAuth } from '../hooks/useAuth'
 import { moeda } from '../lib/format'
+import { hojeISO } from '../lib/tempo'
 import { TIPOS_OS, TIPOS_SERVICO } from '../lib/constants'
 import { Botao, Campo, Entrada, Selecao, Modal, Erro, useAviso } from './ui'
 
 const VAZIO = {
-  ativo_id: '', descricao: '', data: new Date().toISOString().slice(0, 10), tipo: 'corretiva',
+  ativo_id: '', descricao: '', data: hojeISO(), tipo: 'corretiva',
   peca_descricao: '', peca_valor: '', servico_tipo: 'torno', servico_valor: '',
   fornecedor_id: '', nota_fiscal: '', horas: '', custo_hora: '', horas_parada: '',
 }

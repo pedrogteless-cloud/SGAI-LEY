@@ -9,6 +9,14 @@
 
 create extension if not exists pgcrypto;
 
+-- O banco do Supabase nasce em UTC. A fábrica é em Fortaleza (UTC-3) e o
+-- sistema usa current_date/now() como padrão em várias colunas e funções
+-- (data do relatório do dia, pesagem de big bag, preventiva vencendo…) —
+-- em UTC, "current_date" já vira o dia seguinte a partir das 21h em
+-- Fortaleza, então relatório/lançamento "de hoje" saía com a data errada
+-- depois desse horário. Isso resolve na raiz, pra toda sessão nova.
+alter database postgres set timezone to 'America/Fortaleza';
+
 -- =====================================================================
 -- 1. ENUMS
 -- =====================================================================
@@ -3526,6 +3534,13 @@ grant execute on function cancelar_relatorio_chao(uuid, text) to authenticated;
 -- positivos − reutilização concluída − venda/reciclagem − descarte −
 -- ajustes negativos. Envio pra moagem e "moído" são etapa, não consumo:
 -- não entram na subtração do saldo geral, só nas colunas informativas.
+-- unidade_id vai por último na lista de colunas (não junto de material_id,
+-- onde seria mais natural) porque um `create or replace view` não deixa
+-- reordenar/inserir coluna no meio — só acrescentar no fim. Groupby já
+-- isola por unidade desde a primeira versão dessa view; antes dessa
+-- correção faltava incluir unidade_id na saída e no group by, e o saldo
+-- de Eusébio e Timon saía somado (selecionar uma unidade não filtrava
+-- nada, porque a view nem sabia de qual unidade era cada linha).
 create or replace view vw_residuo_saldo with (security_invoker = on) as
 select
   t.material_id,
@@ -3548,13 +3563,15 @@ select
     - coalesce(sum(t.quantidade) filter (where t.tipo_movimentacao = 'descarte'), 0)
     - coalesce(sum(t.quantidade) filter (where t.tipo_movimentacao = 'ajuste_negativo'), 0)
   ) as saldo,
-  max(t.criado_em) as ultima_movimentacao
+  max(t.criado_em) as ultima_movimentacao,
+  t.unidade_id
 from (
-  select l.material_id, med.unidade_medida, l.tipo_movimentacao, med.quantidade, l.criado_em
+  select r.unidade_id, l.material_id, med.unidade_medida, l.tipo_movimentacao, med.quantidade, l.criado_em
   from residuo_lancamentos l
   join residuo_medicoes med on med.lancamento_id = l.id
+  join relatorios_chao r on r.id = l.relatorio_id
 ) t
-group by t.material_id, t.unidade_medida;
+group by t.unidade_id, t.material_id, t.unidade_medida;
 
 grant select on vw_residuo_saldo to authenticated;
 revoke all on vw_residuo_saldo from anon;

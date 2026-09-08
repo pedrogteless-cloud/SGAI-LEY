@@ -1,5 +1,6 @@
 import { supabase } from './supabase'
-import { moeda, numero, data as fmtDataBr } from './format'
+import { moeda, numero } from './format'
+import { hojeISO } from './tempo'
 
 /**
  * Versão "documento" dos mesmos relatórios que já saem em Excel — pensada
@@ -157,7 +158,7 @@ async function dadosResumo() {
   const semana = await tabelaDeView('vw_kpi_resumo_semanal')
   return {
     titulo: 'Resumo Executivo',
-    subtitulo: `Gerado em ${new Date().toLocaleDateString('pt-BR')}`,
+    subtitulo: `Gerado em ${fmtData(hojeISO())}`,
     tabelas: [
       {
         titulo: 'Comparativo entre unidades',

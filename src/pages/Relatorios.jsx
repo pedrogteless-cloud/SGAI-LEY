@@ -2,14 +2,15 @@ import { useEffect, useState } from 'react'
 import { FileSpreadsheet, Download, Printer } from 'lucide-react'
 import { TIPOS_RELATORIO, gerarEBaixarRelatorio } from '../lib/relatoriosXlsx'
 import { buscarDadosImpressao } from '../lib/relatoriosImpressao'
+import { hojeISO } from '../lib/tempo'
 import { Botao, Cartao, CartaoTitulo, Campo, Selecao, Entrada, useAviso } from '../components/ui'
 import ImpressaoRelatorio from '../components/ImpressaoRelatorio'
 
+// Dia 1 do mês corrente, sempre a partir de hoje em Fortaleza — não do
+// relógio do aparelho nem de UTC.
 function inicioDoMes() {
-  const d = new Date()
-  return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10)
+  return `${hojeISO().slice(0, 7)}-01`
 }
-const hojeISO = () => new Date().toISOString().slice(0, 10)
 
 export default function Relatorios() {
   const [tipoId, setTipoId] = useState(TIPOS_RELATORIO[0].id)
