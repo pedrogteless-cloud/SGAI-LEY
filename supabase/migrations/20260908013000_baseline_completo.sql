@@ -1,5 +1,7 @@
 -- =====================================================================
--- BASELINE CONSOLIDADA — não é uma das 54 migrações originais
+-- BASELINE CONSOLIDADA — não é uma das migrações originais aplicadas
+-- direto no Supabase; é um retrato do schema-supabase.sql atualizado
+-- sempre que ele muda (última atualização: checklist 5S de limpeza).
 -- =====================================================================
 -- Até 2026-09-08 o banco só existia "ao vivo" no Supabase: todo o schema
 -- foi aplicado migração por migração direto no projeto (mcp Supabase),
@@ -7,18 +9,19 @@
 -- projeto não tinha como recriar o banco, só schema-supabase.sql mantido
 -- à mão como referência.
 --
--- O histórico de nomes/datas das 54 migrações aplicadas continua só no
+-- O histórico de nomes/datas das migrações aplicadas continua só no
 -- Supabase (list_migrations mostra nome e versão, não o SQL de cada
 -- uma) — não dá pra reconstruir aqui migração a migração. Em vez de
--- fingir um histórico que não existe mais, este arquivo único é a
+-- fingir um histórico que não existe, este arquivo único é a
 -- consolidação de schema-supabase.sql no estado atual: rodar ele do
 -- zero (`supabase db reset` num projeto novo, ou colar direto no SQL
 -- Editor) recria o banco inteiro.
 --
--- Daqui pra frente, toda migração nova aplicada via mcp Supabase deve
--- ganhar também um arquivo próprio aqui em supabase/migrations/, com o
--- mesmo nome e timestamp — pra não voltar a acumular mudança que só
--- existe no banco.
+-- Mudanças aplicadas só ao banco vivo (nunca a um schema-supabase.sql
+-- desatualizado) são sincronizadas aqui de volta assim que aplicadas —
+-- é por isso que este arquivo é atualizado no lugar em vez de crescer
+-- como uma migração incremental separada por vez: ele representa "o
+-- banco inteiro agora", não um passo isolado.
 -- =====================================================================
 
 -- =====================================================================
@@ -1835,6 +1838,23 @@ create policy aud_sel on auditoria for select to authenticated using (eh_gestor(
 
 -- --- grants: fechado por padrão, aberto só no que precisa -------------
 -- O operador nunca autentica: chega pelo QR e usa apenas os dois RPCs abaixo.
+-- ATENÇÃO pra quem for criar função nova depois deste ponto: o Supabase
+-- concede execute pra `anon` automaticamente em TODA função nova criada
+-- no schema public — isso é um privilégio padrão da própria plataforma,
+-- não algo que este arquivo controla. "revoke ... from public" NÃO
+-- revoga de anon (são grants independentes); e a sweep de "revoke ...
+-- from public, anon" logo abaixo só vale pras funções que já existem
+-- até aqui no arquivo — qualquer função criada depois (RPC nova de
+-- módulo novo) nasce executável por anon de novo, mesmo sem nenhum
+-- grant explícito escrito aqui.
+-- Confirmado na prática duas vezes nesta sessão: 9 RPCs do chão de
+-- fábrica e as 2 novas do checklist 5S vieram anon-executáveis assim
+-- que criadas, mesmo com "revoke ... from public" no bloco de cada
+-- uma. A sweep final no fim deste arquivo cobre isso pra quem rodar o
+-- arquivo inteiro do zero — mas ao aplicar uma migração nova avulsa
+-- (sem rodar o arquivo inteiro), sempre inclua
+-- "revoke execute on function <nova>(...) from anon;" explícito,
+-- a menos que a função seja mesmo pra ser pública (fluxo de QR).
 revoke all on all tables in schema public from anon;
 revoke execute on all functions in schema public from public, anon;
 alter default privileges in schema public revoke execute on functions from public;
@@ -2801,6 +2821,14 @@ do $$ begin
   );
 exception when duplicate_object then null; end $$;
 
+-- Checklist 5S da avaliação de limpeza por setor: 4 níveis de resposta,
+-- "não inspecionado" é por pergunta (não deu pra julgar aquele S), não
+-- confundir com o nao_inspecionado da tabela de setor (setor inteiro
+-- não visitado hoje).
+do $$ begin
+  create type resposta_5s as enum ('conforme', 'parcial', 'nao_conforme', 'nao_inspecionado');
+exception when duplicate_object then null; end $$;
+
 create sequence if not exists seq_numero_relatorio_chao start 1;
 
 -- (32) relatorios_chao -----------------------------------------------------
@@ -2849,12 +2877,17 @@ create trigger trg_rel_chao_atualizado before update on relatorios_chao
 -- (33) relatorio_chao_setores -----------------------------------------
 -- Setor previsto na abertura + avaliação de limpeza do dia (a mesma
 -- linha: um setor por relatório). "nota" e a confirmação ficam nulas até
--- a inspeção acontecer.
+-- a inspeção acontecer. nota é numeric (não mais smallint) porque agora
+-- é calculada automaticamente a partir do checklist 5S (ver tabela
+-- seguinte), não escolhida à mão — pode sair com casa decimal (ex.: 3.4).
+-- quadrantes_inspecionados/principais_problemas/observacao/acao_recomendada
+-- ficam mantidas por compatibilidade mas não são mais preenchidas pelo
+-- fluxo atual — o detalhe de cada problema mora em relatorio_chao_setor_5s.
 create table if not exists relatorio_chao_setores (
   id                        uuid primary key default gen_random_uuid(),
   relatorio_id              uuid not null references relatorios_chao(id) on delete cascade,
   setor_id                  uuid not null references setores(id) on delete restrict,
-  nota                      smallint check (nota between 1 and 5),
+  nota                      numeric(3, 1) check (nota is null or (nota >= 1 and nota <= 5)),
   nao_inspecionado          boolean not null default false,
   justificativa_nao_inspecionado text,
   quadrantes_inspecionados  text[] not null default '{}',
@@ -2869,6 +2902,28 @@ create table if not exists relatorio_chao_setores (
 );
 
 create index if not exists idx_rel_chao_setores_rel on relatorio_chao_setores(relatorio_id);
+
+-- (33b) relatorio_chao_setor_5s ------------------------------------------
+-- Uma linha por (avaliação de setor, item do 5S) — 5 linhas por setor
+-- visitado. "Não inspecionado" aqui é por pergunta (não deu pra julgar
+-- aquele S específico), diferente do nao_inspecionado da tabela acima
+-- (o setor inteiro não foi visitado hoje). Fase de aprendizado do 5S:
+-- pergunta simples, só pede detalhe quando a resposta é Parcial ou Não
+-- conforme — sem ranking nem cobrança por enquanto.
+create table if not exists relatorio_chao_setor_5s (
+  id                  uuid primary key default gen_random_uuid(),
+  setor_avaliacao_id  uuid not null references relatorio_chao_setores(id) on delete cascade,
+  item                text not null check (item in ('seiri', 'seiton', 'seiso', 'seiketsu', 'shitsuke')),
+  resposta            resposta_5s not null,
+  descricao_problema  text,
+  quadrante           text,
+  sugestao            text,
+  criado_em           timestamptz not null default now(),
+  atualizado_em       timestamptz not null default now(),
+  unique (setor_avaliacao_id, item)
+);
+
+create index if not exists idx_rel_chao_setor_5s_setor on relatorio_chao_setor_5s(setor_avaliacao_id);
 
 -- (34) materiais_residuo ------------------------------------------------
 -- "categoria" é texto livre (não enum): a fábrica vai inventar material
@@ -2980,18 +3035,23 @@ create table if not exists relatorio_chao_midias (
   relatorio_id        uuid not null references relatorios_chao(id) on delete cascade,
   lancamento_id       uuid references residuo_lancamentos(id) on delete cascade,
   setor_avaliacao_id  uuid references relatorio_chao_setores(id) on delete cascade,
+  -- Foto de um problema específico do checklist 5S (opcional, só quando
+  -- a resposta é Parcial/Não conforme) — além de setor_avaliacao_id
+  -- (o setor inteiro), pra saber qual dos 5 itens é a foto.
+  setor_5s_id         uuid references relatorio_chao_setor_5s(id) on delete cascade,
   url                 text not null,
   storage_path        text,
   mime_type           text,
   legenda             text,
   enviado_por         uuid references perfis(id) on delete set null,
   criado_em           timestamptz not null default now(),
-  check (lancamento_id is null or setor_avaliacao_id is null)
+  check (lancamento_id is null or (setor_avaliacao_id is null and setor_5s_id is null))
 );
 
 create index if not exists idx_rel_chao_midias_rel on relatorio_chao_midias(relatorio_id);
 create index if not exists idx_rel_chao_midias_lanc on relatorio_chao_midias(lancamento_id);
 create index if not exists idx_rel_chao_midias_setor on relatorio_chao_midias(setor_avaliacao_id);
+create index if not exists idx_rel_chao_midias_setor_5s on relatorio_chao_midias(setor_5s_id);
 
 -- (40) relatorio_chao_producao ---------------------------------------------
 -- Registro opcional de produção do dia, pra depois calcular kg de
@@ -3259,17 +3319,127 @@ end $$;
 revoke execute on function registrar_residuo(uuid, uuid, tipo_movimentacao_residuo, jsonb, origem_residuo, condicao_residuo, destinacao_residuo, text, uuid, text, text, uuid, uuid, text) from public;
 grant execute on function registrar_residuo(uuid, uuid, tipo_movimentacao_residuo, jsonb, origem_residuo, condicao_residuo, destinacao_residuo, text, uuid, text, text, uuid, uuid, text) to authenticated;
 
--- Avalia (ou marca não-inspecionado) um setor do relatório. Sempre update,
--- nunca insert — a linha já nasceu na abertura (um setor por relatório).
-create or replace function avaliar_limpeza_setor(
+-- Nota do setor não é mais escolhida à mão: recalcula sozinha sempre
+-- que uma resposta do checklist 5S muda (conforme=2, parcial=1, não
+-- conforme=0, média das respondidas — "não inspecionado" não entra na
+-- média — escalada de 1 a 5).
+create or replace function fn_recalcula_nota_5s() returns trigger
+language plpgsql security definer set search_path = public as $$
+declare
+  v_setor_avaliacao_id uuid := coalesce(new.setor_avaliacao_id, old.setor_avaliacao_id);
+  v_media numeric;
+  v_qtd_respondida int;
+begin
+  select
+    count(*) filter (where resposta <> 'nao_inspecionado'),
+    avg(case resposta
+          when 'conforme' then 2 when 'parcial' then 1 when 'nao_conforme' then 0
+        end) filter (where resposta <> 'nao_inspecionado')
+  into v_qtd_respondida, v_media
+  from relatorio_chao_setor_5s
+  where setor_avaliacao_id = v_setor_avaliacao_id;
+
+  update relatorio_chao_setores set
+    nota = case when v_qtd_respondida > 0 then round((1 + v_media * 2)::numeric, 1) else null end
+  where id = v_setor_avaliacao_id;
+
+  return coalesce(new, old);
+end $$;
+
+drop trigger if exists trg_recalcula_nota_5s on relatorio_chao_setor_5s;
+create trigger trg_recalcula_nota_5s
+after insert or update or delete on relatorio_chao_setor_5s
+for each row execute function fn_recalcula_nota_5s();
+
+revoke execute on function fn_recalcula_nota_5s() from anon, authenticated, public;
+
+-- Responde as 5 perguntas do checklist de uma vez (a tela manda o
+-- checklist inteiro). p_respostas: jsonb array de
+-- {item, resposta, descricao_problema, quadrante, sugestao}.
+create or replace function responder_checklist_5s(
   p_relatorio_setor_id uuid,
-  p_nota               smallint default null,
-  p_nao_inspecionado   boolean default false,
-  p_justificativa      text default null,
-  p_quadrantes         text[] default '{}',
-  p_principais_problemas text default null,
-  p_observacao         text default null,
-  p_acao_recomendada   text default null
+  p_respostas          jsonb
+)
+returns table(id uuid, nota numeric, mensagem text)
+language plpgsql security definer set search_path = public as $$
+declare
+  v_relatorio uuid;
+  v_item jsonb;
+  v_item_nome text;
+  v_resposta text;
+begin
+  select relatorio_chao_setores.relatorio_id into v_relatorio
+    from relatorio_chao_setores where relatorio_chao_setores.id = p_relatorio_setor_id;
+  if v_relatorio is null then
+    return query select null::uuid, null::numeric, 'Setor do relatório não encontrado.'::text;
+    return;
+  end if;
+  if not pode_editar_relatorio_chao(v_relatorio) then
+    return query select null::uuid, null::numeric, 'Esse relatório não está mais aberto pra edição.'::text;
+    return;
+  end if;
+  if jsonb_array_length(coalesce(p_respostas, '[]'::jsonb)) <> 5 then
+    return query select null::uuid, null::numeric, 'Responda as 5 perguntas do checklist.'::text;
+    return;
+  end if;
+
+  for v_item in select * from jsonb_array_elements(p_respostas) loop
+    v_item_nome := v_item->>'item';
+    if v_item_nome not in ('seiri', 'seiton', 'seiso', 'seiketsu', 'shitsuke') then
+      return query select null::uuid, null::numeric, format('Item de checklist desconhecido: %s', v_item_nome)::text;
+      return;
+    end if;
+    v_resposta := v_item->>'resposta';
+    if v_resposta not in ('conforme', 'parcial', 'nao_conforme', 'nao_inspecionado') then
+      return query select null::uuid, null::numeric, format('Resposta inválida em "%s".', v_item_nome)::text;
+      return;
+    end if;
+    if v_resposta in ('parcial', 'nao_conforme')
+       and nullif(btrim(coalesce(v_item->>'descricao_problema', '')), '') is null then
+      return query select null::uuid, null::numeric, format('Descreva o problema encontrado em "%s".', v_item_nome)::text;
+      return;
+    end if;
+
+    insert into relatorio_chao_setor_5s (setor_avaliacao_id, item, resposta, descricao_problema, quadrante, sugestao)
+    values (
+      p_relatorio_setor_id, v_item_nome, v_resposta::resposta_5s,
+      nullif(btrim(coalesce(v_item->>'descricao_problema', '')), ''),
+      nullif(btrim(coalesce(v_item->>'quadrante', '')), ''),
+      nullif(btrim(coalesce(v_item->>'sugestao', '')), '')
+    )
+    on conflict (setor_avaliacao_id, item) do update set
+      resposta = excluded.resposta,
+      descricao_problema = excluded.descricao_problema,
+      quadrante = excluded.quadrante,
+      sugestao = excluded.sugestao,
+      atualizado_em = now();
+  end loop;
+
+  update relatorio_chao_setores set
+    nao_inspecionado = false,
+    justificativa_nao_inspecionado = null,
+    confirmado_em = now(),
+    confirmado_por = auth.uid()
+  where relatorio_chao_setores.id = p_relatorio_setor_id;
+
+  update relatorios_chao set status = 'em_andamento'
+   where relatorios_chao.id = v_relatorio and relatorios_chao.status = 'aberta';
+
+  return query
+    select p_relatorio_setor_id, relatorio_chao_setores.nota, null::text
+    from relatorio_chao_setores where relatorio_chao_setores.id = p_relatorio_setor_id;
+end $$;
+
+revoke execute on function responder_checklist_5s(uuid, jsonb) from public, anon;
+grant execute on function responder_checklist_5s(uuid, jsonb) to authenticated;
+
+-- Pro caso do setor inteiro não ter dado pra visitar hoje (fechado,
+-- inacessível) — diferente de responder o checklist com tudo "não
+-- inspecionado", que significa que a pessoa entrou mas não deu pra
+-- julgar cada item.
+create or replace function marcar_setor_nao_inspecionado(
+  p_relatorio_setor_id uuid,
+  p_justificativa       text
 )
 returns table(id uuid, mensagem text)
 language plpgsql security definer set search_path = public as $$
@@ -3286,23 +3456,16 @@ begin
     return query select null::uuid, 'Esse relatório não está mais aberto pra edição.'::text;
     return;
   end if;
-  if not p_nao_inspecionado and p_nota is null then
-    return query select null::uuid, 'Dê uma nota de 1 a 5, ou marque não inspecionado.'::text;
-    return;
-  end if;
-  if p_nao_inspecionado and nullif(btrim(coalesce(p_justificativa, '')), '') is null then
-    return query select null::uuid, 'Setor não inspecionado precisa de justificativa.'::text;
+  if nullif(btrim(coalesce(p_justificativa, '')), '') is null then
+    return query select null::uuid, 'Informe o motivo de não ter dado pra visitar esse setor.'::text;
     return;
   end if;
 
+  delete from relatorio_chao_setor_5s where setor_avaliacao_id = p_relatorio_setor_id;
   update relatorio_chao_setores set
-    nota = case when p_nao_inspecionado then null else p_nota end,
-    nao_inspecionado = p_nao_inspecionado,
-    justificativa_nao_inspecionado = case when p_nao_inspecionado then p_justificativa else null end,
-    quadrantes_inspecionados = coalesce(p_quadrantes, '{}'),
-    principais_problemas = p_principais_problemas,
-    observacao = p_observacao,
-    acao_recomendada = p_acao_recomendada,
+    nota = null,
+    nao_inspecionado = true,
+    justificativa_nao_inspecionado = p_justificativa,
     confirmado_em = now(),
     confirmado_por = auth.uid()
   where relatorio_chao_setores.id = p_relatorio_setor_id;
@@ -3313,8 +3476,8 @@ begin
   return query select p_relatorio_setor_id, null::text;
 end $$;
 
-revoke execute on function avaliar_limpeza_setor(uuid, smallint, boolean, text, text[], text, text, text) from public;
-grant execute on function avaliar_limpeza_setor(uuid, smallint, boolean, text, text[], text, text, text) to authenticated;
+revoke execute on function marcar_setor_nao_inspecionado(uuid, text) from public, anon;
+grant execute on function marcar_setor_nao_inspecionado(uuid, text) to authenticated;
 
 -- Pesagem manual de bigbag: cria (ou usa) o bigbag pela identificação,
 -- registra a pesagem e, se resultar em peso líquido/gerado, já cria o
@@ -3698,10 +3861,27 @@ join relatorios_chao r on r.id = s.relatorio_id;
 grant select on vw_relatorio_chao_setor_avaliacoes to authenticated;
 revoke all on vw_relatorio_chao_setor_avaliacoes from anon;
 
+-- Cada resposta do checklist 5S já com o nome do setor e os dados do
+-- relatório resolvidos — pro histórico e pra exportação.
+create or replace view vw_relatorio_chao_setor_5s with (security_invoker = on) as
+select
+  c.id, c.setor_avaliacao_id, c.item, c.resposta, c.descricao_problema, c.quadrante, c.sugestao,
+  c.criado_em,
+  s.setor_id, st.nome as setor_nome,
+  s.relatorio_id, r.data as relatorio_data, r.unidade_id, r.turno
+from relatorio_chao_setor_5s c
+join relatorio_chao_setores s on s.id = c.setor_avaliacao_id
+join setores st on st.id = s.setor_id
+join relatorios_chao r on r.id = s.relatorio_id;
+
+grant select on vw_relatorio_chao_setor_5s to authenticated;
+revoke all on vw_relatorio_chao_setor_5s from anon;
+
 -- --- RLS ----------------------------------------------------------------
 
 alter table relatorios_chao          enable row level security;
 alter table relatorio_chao_setores   enable row level security;
+alter table relatorio_chao_setor_5s  enable row level security;
 alter table materiais_residuo        enable row level security;
 alter table residuo_lancamentos      enable row level security;
 alter table residuo_medicoes         enable row level security;
@@ -3742,6 +3922,18 @@ create policy rel_chao_setores_sel on relatorio_chao_setores for select to authe
 drop policy if exists rel_chao_setores_wri on relatorio_chao_setores;
 create policy rel_chao_setores_wri on relatorio_chao_setores for all to authenticated
   using (pode_editar_relatorio_chao(relatorio_id)) with check (pode_editar_relatorio_chao(relatorio_id));
+
+drop policy if exists rel_chao_setor_5s_sel on relatorio_chao_setor_5s;
+create policy rel_chao_setor_5s_sel on relatorio_chao_setor_5s for select to authenticated
+  using (eh_tecnico_ou_gestor());
+drop policy if exists rel_chao_setor_5s_wri on relatorio_chao_setor_5s;
+create policy rel_chao_setor_5s_wri on relatorio_chao_setor_5s for all to authenticated
+  using (pode_editar_relatorio_chao(
+    (select relatorio_id from relatorio_chao_setores where id = setor_avaliacao_id)
+  ))
+  with check (pode_editar_relatorio_chao(
+    (select relatorio_id from relatorio_chao_setores where id = setor_avaliacao_id)
+  ));
 
 drop policy if exists residuo_lanc_sel on residuo_lancamentos;
 create policy residuo_lanc_sel on residuo_lancamentos for select to authenticated
@@ -3807,7 +3999,7 @@ create policy metas_chao_wri on metas_chao for all to authenticated
   using (eh_gestor()) with check (eh_gestor());
 
 -- ninguém anônimo enxerga nada deste módulo (o operador do QR não participa)
-revoke all on relatorios_chao, relatorio_chao_setores, materiais_residuo,
+revoke all on relatorios_chao, relatorio_chao_setores, relatorio_chao_setor_5s, materiais_residuo,
   residuo_lancamentos, residuo_medicoes, residuo_bigbags, residuo_bigbag_pesagens,
   relatorio_chao_midias, relatorio_chao_producao, relatorio_chao_historico, metas_chao
   from anon;
@@ -3946,3 +4138,19 @@ cross join (values
 ) as i(descricao, ordem)
 where t.nome = 'Preventiva Quadro Elétrico'
   and not exists (select 1 from plano_template_itens x where x.template_id = t.id);
+
+-- --- varredura final: fecha anon em TUDO que existe até aqui ----------
+-- Vai por último de propósito: o Supabase concede execute pra anon
+-- automaticamente em toda função nova (ver comentário perto da sweep
+-- lá em cima, antes das primeiras grants) — então qualquer módulo
+-- adicionado depois daquela sweep e antes daqui (chão de fábrica,
+-- checklist 5S, e o que vier a seguir) nasce aberto pra anon de novo.
+-- Rodar isto por último, numa reconstrução do zero, fecha tudo e só
+-- reabre explicitamente o punhado de RPCs do fluxo de QR sem login.
+revoke execute on all functions in schema public from anon;
+
+grant execute on function ativo_por_qr(uuid) to anon;
+grant execute on function abrir_solicitacao_qr(uuid, text, text, boolean, text, text, int) to anon, authenticated;
+grant execute on function validar_pin_qr(uuid, text) to anon, authenticated, service_role;
+grant execute on function lancar_gasto_qr(uuid, text, text, date, tipo_os, text, numeric, text, numeric, numeric, numeric, numeric, uuid, boolean, uuid) to anon, authenticated, service_role;
+grant execute on function fornecedores_para_qr() to anon, authenticated, service_role;
