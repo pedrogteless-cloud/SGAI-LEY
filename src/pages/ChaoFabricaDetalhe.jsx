@@ -43,6 +43,7 @@ export default function ChaoFabricaDetalhe() {
   const [enviando, setEnviando] = useState(false)
   const [setorEditando, setSetorEditando] = useState(null)
   const [imprimindo, setImprimindo] = useState(false)
+  const [abaDetalhe, setAbaDetalhe] = useState('5s') // '5s' | 'residuos'
 
   const relatorio = useRegistro(
     'relatorios_chao', id,
@@ -479,128 +480,153 @@ export default function ChaoFabricaDetalhe() {
 
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="space-y-4 lg:col-span-2">
-          {/* ---------------------------------------------------- limpeza */}
-          <Cartao>
-            <CartaoTitulo>
-              <span className="inline-flex items-center gap-1.5">
-                <ClipboardCheck size={14} className="text-slate-400" /> Limpeza e organização por setor
-              </span>
-            </CartaoTitulo>
-            {(setoresRel.data || []).length === 0 ? (
-              <Vazio titulo="Nenhum setor definido na abertura" />
-            ) : (
-              <ul className="divide-y divide-slate-100">
-                {setoresRel.data.map((s) => {
-                  const respostas5s = (setor5s.data || []).filter((x) => x.setor_avaliacao_id === s.id)
-                  const comProblema = respostas5s.filter((x) => x.resposta === 'parcial' || x.resposta === 'nao_conforme')
-                  return (
-                  <li key={s.id} className="flex items-center justify-between gap-3 px-4 py-3">
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium text-slate-800">{s.setor?.nome}</p>
-                      {s.nao_inspecionado ? (
-                        <p className="text-xs text-amber-600">Não visitado — {s.justificativa_nao_inspecionado}</p>
-                      ) : s.nota != null ? (
-                        <p className="text-xs text-slate-500">
-                          {comProblema.length === 0
-                            ? 'Tudo conforme no checklist'
-                            : `${comProblema.length} item(ns) com ressalva no 5S`}
-                        </p>
-                      ) : (
-                        <p className="text-xs text-slate-400">Ainda não avaliado</p>
-                      )}
-                    </div>
-                    <div className="flex shrink-0 items-center gap-2">
-                      {s.nota != null && (
-                        <Etiqueta cor={corDaNota5s(s.nota)}>
-                          {numero(s.nota, 1)} · {labelDaNota5s(s.nota)}
-                        </Etiqueta>
-                      )}
-                      {podeEditar && (
-                        <Botao tamanho="sm" variante="secundario" onClick={() => abrirLimpeza(s)}>
-                          {s.nota != null || s.nao_inspecionado ? 'Editar' : 'Avaliar'}
-                        </Botao>
-                      )}
-                    </div>
-                  </li>
-                  )
-                })}
-              </ul>
-            )}
-          </Cartao>
+          <div className="flex gap-1 border-b border-slate-200">
+            {[
+              ['5s', '5S'],
+              ['residuos', 'Desperdícios e reaproveitamento'],
+            ].map(([v, l]) => (
+              <button
+                key={v}
+                onClick={() => setAbaDetalhe(v)}
+                className={`border-b-2 px-4 py-2 text-sm font-medium transition ${
+                  abaDetalhe === v
+                    ? 'border-sky-600 text-sky-700'
+                    : 'border-transparent text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                {l}
+              </button>
+            ))}
+          </div>
 
-          {/* ------------------------------------------------ desperdícios */}
-          <Cartao>
-            <CartaoTitulo
-              acao={podeEditar && (
-                <Botao tamanho="sm" variante="secundario" onClick={() => abrirNovoResiduo('desperdicio')}>
-                  <Plus size={14} /> Desperdício
-                </Botao>
+          {abaDetalhe === '5s' && (
+            /* ---------------------------------------------------- limpeza */
+            <Cartao>
+              <CartaoTitulo>
+                <span className="inline-flex items-center gap-1.5">
+                  <ClipboardCheck size={14} className="text-slate-400" /> Limpeza e organização por setor
+                </span>
+              </CartaoTitulo>
+              {(setoresRel.data || []).length === 0 ? (
+                <Vazio titulo="Nenhum setor definido na abertura" />
+              ) : (
+                <ul className="divide-y divide-slate-100">
+                  {setoresRel.data.map((s) => {
+                    const respostas5s = (setor5s.data || []).filter((x) => x.setor_avaliacao_id === s.id)
+                    const comProblema = respostas5s.filter((x) => x.resposta === 'parcial' || x.resposta === 'nao_conforme')
+                    return (
+                    <li key={s.id} className="flex items-center justify-between gap-3 px-4 py-3">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-slate-800">{s.setor?.nome}</p>
+                        {s.nao_inspecionado ? (
+                          <p className="text-xs text-amber-600">Não visitado — {s.justificativa_nao_inspecionado}</p>
+                        ) : s.nota != null ? (
+                          <p className="text-xs text-slate-500">
+                            {comProblema.length === 0
+                              ? 'Tudo conforme no checklist'
+                              : `${comProblema.length} item(ns) com ressalva no 5S`}
+                          </p>
+                        ) : (
+                          <p className="text-xs text-slate-400">Ainda não avaliado</p>
+                        )}
+                      </div>
+                      <div className="flex shrink-0 items-center gap-2">
+                        {s.nota != null && (
+                          <Etiqueta cor={corDaNota5s(s.nota)}>
+                            {numero(s.nota, 1)} · {labelDaNota5s(s.nota)}
+                          </Etiqueta>
+                        )}
+                        {podeEditar && (
+                          <Botao tamanho="sm" variante="secundario" onClick={() => abrirLimpeza(s)}>
+                            {s.nota != null || s.nao_inspecionado ? 'Editar' : 'Avaliar'}
+                          </Botao>
+                        )}
+                      </div>
+                    </li>
+                    )
+                  })}
+                </ul>
               )}
-            >
-              <span className="inline-flex items-center gap-1.5">
-                <Trash2 size={14} className="text-slate-400" /> Desperdícios e resíduos encontrados
-              </span>
-            </CartaoTitulo>
-            {desperdicios.length === 0 ? (
-              <Vazio
-                titulo={r.sem_desperdicio_confirmado ? 'Nenhum desperdício identificado na inspeção' : 'Nada registrado ainda'}
-                descricao={!r.sem_desperdicio_confirmado ? 'Registre o que for achando, ou confirme "nenhum" na conclusão.' : undefined}
-              />
-            ) : (
-              <ul className="divide-y divide-slate-100">
-                {desperdicios.map((l) => (
-                  <LinhaLancamento key={l.id} l={l} />
-                ))}
-              </ul>
-            )}
-          </Cartao>
-
-          {/* --------------------------------------------- reaproveitamento */}
-          <Cartao>
-            <CartaoTitulo
-              acao={podeEditar && (
-                <Botao tamanho="sm" variante="secundario" onClick={() => abrirNovoResiduo('reaproveitamento')}>
-                  <Plus size={14} /> Reaproveitamento
-                </Botao>
-              )}
-            >
-              <span className="inline-flex items-center gap-1.5">
-                <Recycle size={14} className="text-slate-400" /> Reaproveitamento
-              </span>
-            </CartaoTitulo>
-            {reaproveitamentos.length === 0 ? (
-              <Vazio
-                titulo={r.sem_reaproveitamento_confirmado ? 'Não houve movimentação de reaproveitamento hoje' : 'Nada registrado ainda'}
-              />
-            ) : (
-              <ul className="divide-y divide-slate-100">
-                {reaproveitamentos.map((l) => (
-                  <LinhaLancamento key={l.id} l={l} />
-                ))}
-              </ul>
-            )}
-          </Cartao>
-
-          {/* --------------------------------------------------- big bag */}
-          {podeEditar && (
-            <Cartao className="p-4">
-              <Botao variante="secundario" onClick={() => setModal('bigbag')}>
-                <Scale size={15} /> Pesar big bag
-              </Botao>
             </Cartao>
           )}
 
-          {/* ----------------------------------------------------- fotos */}
-          <Cartao className="p-4">
-            <p className="mb-3 flex items-center gap-1.5 text-sm font-semibold text-slate-800">
-              <ImageIcon size={14} className="text-slate-400" /> Fotos gerais do relatório
-            </p>
-            <GaleriaFotos
-              valor={fotosGeraisData.map((f) => ({ url: f.url }))}
-              aoMudar={enviarFotoGeral}
-              desabilitado={!podeEditar}
-            />
-          </Cartao>
+          {abaDetalhe === 'residuos' && (
+            <>
+              {/* ------------------------------------------------ desperdícios */}
+              <Cartao>
+                <CartaoTitulo
+                  acao={podeEditar && (
+                    <Botao tamanho="sm" variante="secundario" onClick={() => abrirNovoResiduo('desperdicio')}>
+                      <Plus size={14} /> Desperdício
+                    </Botao>
+                  )}
+                >
+                  <span className="inline-flex items-center gap-1.5">
+                    <Trash2 size={14} className="text-slate-400" /> Desperdícios e resíduos encontrados
+                  </span>
+                </CartaoTitulo>
+                {desperdicios.length === 0 ? (
+                  <Vazio
+                    titulo={r.sem_desperdicio_confirmado ? 'Nenhum desperdício identificado na inspeção' : 'Nada registrado ainda'}
+                    descricao={!r.sem_desperdicio_confirmado ? 'Registre o que for achando, ou confirme "nenhum" na conclusão.' : undefined}
+                  />
+                ) : (
+                  <ul className="divide-y divide-slate-100">
+                    {desperdicios.map((l) => (
+                      <LinhaLancamento key={l.id} l={l} />
+                    ))}
+                  </ul>
+                )}
+              </Cartao>
+
+              {/* --------------------------------------------- reaproveitamento */}
+              <Cartao>
+                <CartaoTitulo
+                  acao={podeEditar && (
+                    <Botao tamanho="sm" variante="secundario" onClick={() => abrirNovoResiduo('reaproveitamento')}>
+                      <Plus size={14} /> Reaproveitamento
+                    </Botao>
+                  )}
+                >
+                  <span className="inline-flex items-center gap-1.5">
+                    <Recycle size={14} className="text-slate-400" /> Reaproveitamento
+                  </span>
+                </CartaoTitulo>
+                {reaproveitamentos.length === 0 ? (
+                  <Vazio
+                    titulo={r.sem_reaproveitamento_confirmado ? 'Não houve movimentação de reaproveitamento hoje' : 'Nada registrado ainda'}
+                  />
+                ) : (
+                  <ul className="divide-y divide-slate-100">
+                    {reaproveitamentos.map((l) => (
+                      <LinhaLancamento key={l.id} l={l} />
+                    ))}
+                  </ul>
+                )}
+              </Cartao>
+
+              {/* --------------------------------------------------- big bag */}
+              {podeEditar && (
+                <Cartao className="p-4">
+                  <Botao variante="secundario" onClick={() => setModal('bigbag')}>
+                    <Scale size={15} /> Pesar big bag
+                  </Botao>
+                </Cartao>
+              )}
+
+              {/* ----------------------------------------------------- fotos */}
+              <Cartao className="p-4">
+                <p className="mb-3 flex items-center gap-1.5 text-sm font-semibold text-slate-800">
+                  <ImageIcon size={14} className="text-slate-400" /> Fotos gerais do relatório
+                </p>
+                <GaleriaFotos
+                  valor={fotosGeraisData.map((f) => ({ url: f.url }))}
+                  aoMudar={enviarFotoGeral}
+                  desabilitado={!podeEditar}
+                />
+              </Cartao>
+            </>
+          )}
         </div>
 
         <div className="space-y-4">
