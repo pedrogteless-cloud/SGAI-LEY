@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react'
 import { usePaletaPlanta } from '../hooks/useTema'
 import {
-  caixa, cor, encaixar, prender, divisoes, endereco, letraFaixa,
+  caixa, cor, encaixar, prender, divisoes, endereco, letraFaixaDoTopo,
   caixaEtapa, pontoNaBorda, saidaNaParede, ALTURA_ETAPA, PASSO,
   caixaQuadro, pontosCabo, caminhoSvg,
 } from '../lib/planta'
@@ -449,7 +449,10 @@ export default function PlantaCanvas({
         )}
 
         {/* letra da faixa na lateral: cruzando com o número do vão sai o
-            endereço, do mesmo jeito que se lê um tabuleiro ou um mapa */}
+            endereço, do mesmo jeito que se lê um tabuleiro ou um mapa.
+            A numeração de campo começa no fundo (1A no canto inferior
+            esquerdo), então o índice de cima pra baixo do desenho é
+            convertido pra letra "de baixo pra cima" em letraFaixaDoTopo. */}
         {faixas.slice(0, -1).map((y, i) => (
           <text
             key={`fx${i}`}
@@ -460,7 +463,7 @@ export default function PlantaCanvas({
             textAnchor="middle"
             pointerEvents="none"
           >
-            {letraFaixa(i)}
+            {letraFaixaDoTopo(i, faixas.length - 1)}
           </text>
         ))}
 

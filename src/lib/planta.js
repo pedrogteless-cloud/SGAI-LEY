@@ -91,6 +91,20 @@ export function letraFaixa(i) {
 }
 
 /**
+ * Letra da faixa a partir do índice de cima para baixo — que é como o
+ * desenho (linha por linha) e o cursor (y crescendo) calculam natural.
+ *
+ * A numeração de campo começa no fundo do galpão: 1A fica no canto
+ * inferior esquerdo, e as letras sobem (B, C, D…) conforme a faixa se
+ * afasta do fundo. Por isso inverte aqui — todo o resto do código
+ * continua contando de cima pra baixo, só a letra final é que nasce de
+ * baixo pra cima.
+ */
+export function letraFaixaDoTopo(iDoTopo, totalFaixas) {
+  return letraFaixa(totalFaixas - 1 - iDoTopo)
+}
+
+/**
  * Endereço de um ponto do galpão: vão no comprimento, faixa na largura.
  * "Vão 7 · Faixa C" para falar, "7C" para escrever na etiqueta e na lista.
  */
@@ -109,8 +123,9 @@ export function endereco(x, y, planta) {
 
   // um ponto exatamente na parede do fim pertence ao último vão, não a um a mais
   const vao = Math.min(Math.floor(cx / cComp) + 1, Math.max(1, Math.ceil(comp / cComp)))
-  const iFaixa = Math.min(Math.floor(cy / cLarg), Math.max(0, Math.ceil(larg / cLarg) - 1))
-  const faixa = letraFaixa(iFaixa)
+  const totalFaixas = Math.max(1, Math.ceil(larg / cLarg))
+  const iFaixa = Math.min(Math.floor(cy / cLarg), totalFaixas - 1)
+  const faixa = letraFaixaDoTopo(iFaixa, totalFaixas)
 
   return { vao, faixa, curto: `${vao}${faixa}`, completo: `Vão ${vao} · Faixa ${faixa}` }
 }
