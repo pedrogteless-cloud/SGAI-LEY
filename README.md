@@ -254,6 +254,41 @@ casados pelo nome, ignorando acento e maiúscula.
 Para máquinas iguais, cadastre uma e use **Clonar** na tela do ativo: copia tudo,
 inclusive a ficha elétrica e os componentes, e você só troca o número de série.
 
+## Meus painéis
+
+O Resumo e os Relatórios mostram o que foi decidido no código. Em **Meus painéis**
+quem decide é quem usa: você cria uma tela sua, escolhe os blocos e arrasta cada um
+pro lugar que quiser.
+
+Seis tipos de bloco — **Número** (um valor grande), **Barras**, **Linha do tempo**,
+**Pizza**, **Lista** e **Texto** (pra separar seções). Cada bloco escolhe de onde vêm
+os dados, qual conta fazer (contar, somar, média, menor, maior), por qual campo agrupar
+e quantos filtros quiser. O período e a unidade valem pro painel inteiro, então mudar
+o mês em cima reflete em todos os blocos de uma vez.
+
+Arrastar é pela barra de cima do bloco; o canto de baixo à direita redimensiona. Quem
+está embaixo desce pra abrir espaço, e o buraco que sobra fecha sozinho. No celular o
+painel vira uma coluna só, na ordem em que foi desenhado — dá pra olhar, não pra
+montar: quem monta, monta sentado.
+
+**Compartilhar dá vista, não caneta.** Um painel marcado como compartilhado aparece pros
+outros em modo leitura; quem quiser mexer duplica e ajusta a cópia. É de propósito: o
+layout salva como documento inteiro, então dois editando ao mesmo tempo se sobrescreveriam
+em silêncio.
+
+Duas coisas que o construtor não deixa fazer, e o porquê:
+
+- **Não guarda SQL.** O bloco guarda "qual fonte, qual campo, qual filtro" e a tela monta
+  a consulta, sempre com o login de quem está olhando — o RLS continua valendo. O catálogo
+  do que é consultável está em `src/lib/painelFontes.js`; fonte fora dele não existe.
+- **Não soma unidade de medida diferente.** No módulo de resíduos o mesmo material aparece
+  em kg, em m³ e em unidade. Pedir a soma sem separar a unidade não devolve um número
+  plausível e errado: devolve a explicação de por que aquela conta não existe, e o que
+  fazer (agrupar por unidade, ou filtrar uma só).
+
+Quando um bloco bate no teto de linhas, ele diz na cara — *"mostrando 2.000 de 7.431"* —
+em vez de desenhar um gráfico incompleto calado.
+
 ## Deploy
 
 Hospedado na Vercel. O `vercel.json` já redireciona todas as rotas para o `index.html`

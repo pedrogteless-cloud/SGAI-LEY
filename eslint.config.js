@@ -31,7 +31,13 @@ export default [
       ...reactHooks.configs.recommended.rules,
       // Variável não usada é aviso, não erro — menos o que começa com
       // maiúscula (componente/constante importada e esquecida) e o `_`.
-      'no-unused-vars': ['warn', { varsIgnorePattern: '^[A-Z_]', argsIgnorePattern: '^_' }],
+      //
+      // O mesmo vale pro parâmetro: sem o plugin do React, o ESLint não
+      // enxerga `<Icone />` como uso, então um componente recebido por
+      // prop (`{ icone: Icone }`) era acusado de não usado sendo que é o
+      // que desenha a tela. Alinhar os dois padrões conserta o falso
+      // positivo sem trazer plugin novo só pra isso.
+      'no-unused-vars': ['warn', { varsIgnorePattern: '^[A-Z_]', argsIgnorePattern: '^(_|[A-Z])' }],
       'react-refresh/only-export-components': 'off',
       // Dependência faltando em hook é aviso: tem caso no app onde a
       // omissão é proposital e está comentada no código.

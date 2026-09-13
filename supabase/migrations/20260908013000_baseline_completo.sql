@@ -1,7 +1,7 @@
 -- =====================================================================
 -- BASELINE CONSOLIDADA — não é uma das migrações originais aplicadas
 -- direto no Supabase; é um retrato do schema-supabase.sql atualizado
--- sempre que ele muda (última atualização: fotos e limpeza do storage).
+-- sempre que ele muda (última atualização: painéis montados pelo usuário).
 -- =====================================================================
 -- Até 2026-09-08 o banco só existia "ao vivo" no Supabase: todo o schema
 -- foi aplicado migração por migração direto no projeto (mcp Supabase),
@@ -4341,6 +4341,175 @@ revoke all on relatorios_chao, relatorio_chao_setores, relatorio_chao_setor_5s, 
   relatorio_chao_midias, relatorio_chao_producao, relatorio_chao_historico, metas_chao,
   acoes_chao
   from anon;
+
+-- =====================================================================
+-- PAINÉIS MONTADOS PELO PRÓPRIO USUÁRIO
+-- =====================================================================
+--
+-- A diferença pro Resumo e pros Relatórios: lá o que aparece foi decidido
+-- no código. Aqui quem decide é quem usa — cada um monta a tela que
+-- precisa olhar todo dia, sem esperar alguém programar.
+--
+-- O que NÃO está aqui de propósito: nada de SQL guardado. O bloco guarda
+-- "qual fonte, qual campo, qual filtro" e a tela monta a consulta pelo
+-- PostgREST, dentro do RLS de quem está olhando. Guardar SQL livre seria
+-- entregar o banco pra qualquer um que soubesse editar um painel. O
+-- catálogo do que é consultável mora em src/lib/painelFontes.js.
+
+-- (44) paineis ---------------------------------------------------------
+-- O layout inteiro num jsonb em vez de uma tabela de blocos: um painel é
+-- editado como um documento só (arrasta cinco blocos, redimensiona dois,
+-- salva uma vez). Tabela separada obrigaria a orquestrar insert, update e
+-- delete em transação a cada arrastar, sem nenhum ganho — nunca se
+-- consulta um bloco isolado.
+create table if not exists paineis (
+  id            uuid primary key default gen_random_uuid(),
+  nome          text not null check (btrim(nome) <> ''),
+  descricao     text,
+  dono_id       uuid not null references perfis(id) on delete cascade,
+  unidade_id    uuid references unidades(id) on delete set null,
+  -- Compartilhado é sempre só leitura pros outros: quem edita é o dono.
+  -- Sem isso, dois gestores arrastando o mesmo bloco se sobrescreveriam
+  -- em silêncio, já que o layout salva como documento inteiro.
+  compartilhado boolean not null default false,
+  blocos        jsonb not null default '[]'::jsonb,
+  criado_em     timestamptz not null default now(),
+  atualizado_em timestamptz not null default now(),
+  constraint paineis_blocos_e_lista check (jsonb_typeof(blocos) = 'array'),
+  -- Teto de blocos: um painel com 60 já é ilegível, e o limite impede que
+  -- um laço com defeito na tela encha a linha até estourar.
+  constraint paineis_blocos_teto check (jsonb_array_length(blocos) <= 60)
+);
+
+create index if not exists idx_paineis_dono on paineis(dono_id);
+create index if not exists idx_paineis_compartilhado on paineis(compartilhado) where compartilhado;
+
+drop trigger if exists trg_paineis_atualizado on paineis;
+create trigger trg_paineis_atualizado before update on paineis
+for each row execute function fn_atualizado_em();
+
+alter table paineis enable row level security;
+
+drop policy if exists paineis_sel on paineis;
+create policy paineis_sel on paineis for select to authenticated
+  using (eh_tecnico_ou_gestor() and (dono_id = auth.uid() or compartilhado));
+
+drop policy if exists paineis_ins on paineis;
+create policy paineis_ins on paineis for insert to authenticated
+  with check (eh_tecnico_ou_gestor() and dono_id = auth.uid());
+
+drop policy if exists paineis_upd on paineis;
+create policy paineis_upd on paineis for update to authenticated
+  using (eh_tecnico_ou_gestor() and dono_id = auth.uid())
+  with check (dono_id = auth.uid());
+
+drop policy if exists paineis_del on paineis;
+create policy paineis_del on paineis for delete to authenticated
+  using (eh_tecnico_ou_gestor() and dono_id = auth.uid());
+
+revoke all on paineis from anon;
+
+-- Quem é o dono, pra tela dizer "compartilhado por Fulano" sem abrir a
+-- tabela de perfis inteira pra join no cliente.
+create or replace view vw_paineis with (security_invoker = on) as
+select
+  p.id, p.nome, p.descricao, p.dono_id, p.unidade_id, p.compartilhado,
+  p.blocos, p.criado_em, p.atualizado_em,
+  d.nome as dono_nome,
+  u.nome as unidade_nome,
+  jsonb_array_length(p.blocos) as qtd_blocos,
+  (p.dono_id = auth.uid()) as meu
+from paineis p
+join perfis d on d.id = p.dono_id
+left join unidades u on u.id = p.unidade_id;
+
+grant select on vw_paineis to authenticated;
+revoke all on vw_paineis from anon;
+
+-- --- duas views planas só pro construtor ------------------------------
+-- Existem porque o construtor agrupa e soma no cliente: pra "custo por
+-- setor por mês" sair certo, setor e mês precisam ser colunas de verdade
+-- na linha, não um join que a tela teria que montar sozinha.
+
+-- Diferente de vw_kpi_backlog_os (só as abertas), esta traz TODA a
+-- história: é de onde sai "quantas corretivas por mês", "custo por setor
+-- no ano".
+create or replace view vw_painel_os with (security_invoker = on) as
+select
+  o.id,
+  o.numero,
+  o.titulo,
+  o.tipo,
+  o.status,
+  o.prioridade,
+  o.aberta_em,
+  o.concluida_em,
+  -- A data sai convertida pro fuso da fábrica: agrupar por mês usando UTC
+  -- joga o serviço aberto às 21h do dia 31 pro mês seguinte.
+  (o.aberta_em at time zone 'America/Fortaleza')::date as data_abertura,
+  date_trunc('month', o.aberta_em at time zone 'America/Fortaleza')::date as mes_abertura,
+  o.custo_pecas,
+  o.custo_servicos,
+  o.custo_mao_obra,
+  o.custo_total,
+  o.tempo_parada_min,
+  case
+    when o.concluida_em is null then null
+    else round((extract(epoch from (o.concluida_em - o.aberta_em)) / 3600.0)::numeric, 2)
+  end as horas_ate_concluir,
+  a.id     as ativo_id,
+  a.codigo as ativo_codigo,
+  a.nome   as ativo,
+  a.criticidade,
+  u.id     as unidade_id,
+  u.nome   as unidade,
+  s.nome   as setor,
+  c.nome   as categoria,
+  r.nome   as responsavel
+from ordens_servico o
+join ativos a    on a.id = o.ativo_id
+join unidades u  on u.id = a.unidade_id
+left join setores s          on s.id = a.setor_id
+left join categorias_ativo c on c.id = a.categoria_id
+left join perfis r           on r.id = o.responsavel_id;
+
+grant select on vw_painel_os to authenticated;
+revoke all on vw_painel_os from anon;
+
+-- Uma linha por MEDIÇÃO, não por lançamento. É a diferença que impede o
+-- erro mais caro do módulo de resíduos: o mesmo lançamento pode ter 30 kg
+-- e 2 m³, e somar os dois dá um número que não significa nada. Aqui a
+-- unidade vem como coluna, então o construtor pode exigir que ela esteja
+-- no agrupamento antes de deixar somar (ver validarBloco em
+-- src/lib/painelDados.js).
+create or replace view vw_painel_residuos with (security_invoker = on) as
+select
+  m.id  as medicao_id,
+  l.id  as lancamento_id,
+  r.data as data,
+  date_trunc('month', r.data)::date as mes,
+  r.unidade_id,
+  un.nome as unidade,
+  l.tipo_movimentacao,
+  l.origem,
+  l.condicao,
+  l.destinacao,
+  l.motivo,
+  l.quadrante,
+  mat.nome      as material,
+  mat.categoria as material_categoria,
+  s.nome        as setor,
+  m.unidade_medida,
+  m.quantidade
+from residuo_medicoes m
+join residuo_lancamentos l on l.id = m.lancamento_id
+join relatorios_chao r     on r.id = l.relatorio_id
+join unidades un           on un.id = r.unidade_id
+join materiais_residuo mat on mat.id = l.material_id
+left join setores s        on s.id = l.setor_id;
+
+grant select on vw_painel_residuos to authenticated;
+revoke all on vw_painel_residuos from anon;
 
 -- --- materiais iniciais ---------------------------------------------------
 insert into materiais_residuo (nome, categoria, unidade_principal, permite_reaproveitamento)
