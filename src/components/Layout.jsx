@@ -3,7 +3,7 @@ import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Package, ClipboardList, Inbox, Boxes, Truck,
   Menu, X, LogOut, CalendarClock, LayoutGrid, MonitorPlay, BellRing, FileSpreadsheet, Moon, Sun,
-  KeyRound, Recycle, ClipboardCheck, ListChecks,
+  KeyRound, Recycle, ClipboardCheck, ListChecks, TrendingUp,
 } from 'lucide-react'
 import { useAuth } from '../hooks/useAuth'
 import { useTabela } from '../hooks/useDados'
@@ -46,6 +46,7 @@ const GRUPOS = [
     itens: [
       { para: '/5s', rotulo: '5S', icone: ClipboardCheck },
       { para: '/5s/acoes', rotulo: 'Ações do 5S', icone: ListChecks, contador: 'acoes' },
+      { para: '/5s/evolucao', rotulo: 'Evolução do 5S', icone: TrendingUp },
       { para: '/desperdicios', rotulo: 'Desperdícios', icone: Recycle },
     ],
   },

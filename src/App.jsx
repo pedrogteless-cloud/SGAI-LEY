@@ -24,6 +24,7 @@ import Relatorios from './pages/Relatorios'
 import ChaoFabrica from './pages/ChaoFabrica'
 import Chao5S from './pages/Chao5S'
 import Acoes5S from './pages/Acoes5S'
+import Evolucao5S from './pages/Evolucao5S'
 import ChaoFabricaDetalhe from './pages/ChaoFabricaDetalhe'
 import MateriaisResiduo from './pages/MateriaisResiduo'
 
@@ -93,6 +94,7 @@ export default function App() {
                 <Route path="desperdicios/materiais" element={<MateriaisResiduo />} />
                 <Route path="5s" element={<Chao5S />} />
                 <Route path="5s/acoes" element={<Acoes5S />} />
+                <Route path="5s/evolucao" element={<Evolucao5S />} />
                 <Route path="desperdicios/:id" element={<ChaoFabricaDetalhe />} />
               </Route>
 
