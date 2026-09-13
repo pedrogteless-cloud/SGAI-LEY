@@ -22,6 +22,7 @@ import {
 } from '../components/ui'
 import GaleriaFotos from '../components/GaleriaFotos'
 import BlocoAcao5S from '../components/BlocoAcao5S'
+import { descartarFotos } from '../lib/fotos'
 import ImpressaoRelatorio from '../components/ImpressaoRelatorio'
 
 const INVALIDAR = [
@@ -214,12 +215,26 @@ export default function ChaoFabricaDetalhe() {
     if (linha?.mensagem) { setErro(new Error(linha.mensagem)); return }
 
     if (fotosNovas.length) {
-      await supabase.from('relatorio_chao_midias').insert(
+      const { error: erroFoto } = await supabase.from('relatorio_chao_midias').insert(
         fotosNovas.map((f) => ({
-          relatorio_id: id, lancamento_id: linha.id, url: f.url, enviado_por: perfil?.id ?? null,
+          relatorio_id: id,
+          lancamento_id: linha.id,
+          url: f.url,
+          storage_path: f.storage_path ?? null,
+          mime_type: f.mime_type ?? null,
+          enviado_por: perfil?.id ?? null,
         }))
       )
+      // O lançamento já foi gravado — o que falhou foi só o vínculo da
+      // foto. Engolir isso em silêncio fazia a pessoa fechar o modal
+      // achando que a foto estava lá.
+      if (erroFoto) {
+        setErro(new Error('O lançamento foi registrado, mas a foto não ficou anexada. Anexe de novo pelo lançamento.'))
+        invalidar(...INVALIDAR, 'relatorio_chao_midias')
+        return
+      }
     }
+    setFotosNovas([])
 
     setModal(null)
     avisar('Registrado.')
@@ -348,10 +363,20 @@ export default function ChaoFabricaDetalhe() {
           setor_avaliacao_id: setorEditando.id,
           setor_5s_id: idPorItem[i.item],
           url: f.url,
+          storage_path: f.storage_path ?? null,
+          mime_type: f.mime_type ?? null,
           enviado_por: perfil?.id ?? null,
         }))
       )
-      if (midias.length) await supabase.from('relatorio_chao_midias').insert(midias)
+      if (midias.length) {
+        const { error: erroFoto } = await supabase.from('relatorio_chao_midias').insert(midias)
+        if (erroFoto) {
+          setEnviando(false)
+          setErro(new Error('A avaliação foi salva, mas as fotos não ficaram anexadas. Abra o setor de novo e anexe.'))
+          invalidar(...INVALIDAR, 'vw_relatorio_chao_setor_5s', 'relatorio_chao_midias', 'vw_acoes_chao')
+          return
+        }
+      }
     }
 
     setEnviando(false)
@@ -395,12 +420,45 @@ export default function ChaoFabricaDetalhe() {
     invalidar(...INVALIDAR)
   }
 
+  // Antes daqui só entrava a última foto da leva (`novas[novas.length-1]`):
+  // mandar três de uma vez gravava uma e deixava duas no bucket sem
+  // nenhuma linha apontando pra elas. E como a galeria chama o mesmo
+  // aoMudar quando REMOVE uma foto, remover regravava a última — ou
+  // estourava, se você tirasse a única que tinha.
   const enviarFotoGeral = async (novas) => {
-    const adicionada = novas[novas.length - 1]
-    await supabase.from('relatorio_chao_midias').insert({
-      relatorio_id: id, url: adicionada.url, enviado_por: perfil?.id ?? null,
-    })
+    const jaSalvas = new Set(fotosGeraisData.map((f) => f.url))
+    const adicionadas = novas.filter((f) => !jaSalvas.has(f.url))
+    if (!adicionadas.length) return
+    const { error } = await supabase.from('relatorio_chao_midias').insert(
+      adicionadas.map((f) => ({
+        relatorio_id: id,
+        url: f.url,
+        storage_path: f.storage_path ?? null,
+        mime_type: f.mime_type ?? null,
+        enviado_por: perfil?.id ?? null,
+      }))
+    )
+    if (error) { avisar('A foto subiu mas não ficou anexada ao relatório. Tente de novo.', 'erro'); return }
     invalidar('relatorio_chao_midias')
+  }
+
+  const removerFotoGeral = async (foto) => {
+    const { error } = await supabase.from('relatorio_chao_midias').delete().eq('id', foto.id)
+    if (error) { avisar('Não deu pra remover essa foto.', 'erro'); return }
+    descartarFotos([foto])
+    invalidar('relatorio_chao_midias')
+  }
+
+  // Fechar no Cancelar/X joga fora o que subiu e não vai ser usado.
+  const fecharModal = () => {
+    if (modal === 'desperdicio' || modal === 'reaproveitamento') {
+      descartarFotos(fotosNovas)
+      setFotosNovas([])
+    }
+    if (modal === 'limpeza') {
+      descartarFotos(ITENS_5S.flatMap((i) => formLimpeza.respostas[i.item]?.fotos || []))
+    }
+    setModal(null)
   }
 
   // Diferente do PDF de Relatorios.jsx, aqui os dados já estão todos
@@ -652,8 +710,11 @@ export default function ChaoFabricaDetalhe() {
                   <ImageIcon size={14} className="text-slate-400" /> Fotos gerais do relatório
                 </p>
                 <GaleriaFotos
-                  valor={fotosGeraisData.map((f) => ({ url: f.url }))}
+                  valor={fotosGeraisData.map((f) => ({
+                    id: f.id, url: f.url, storage_path: f.storage_path,
+                  }))}
                   aoMudar={enviarFotoGeral}
+                  aoRemover={removerFotoGeral}
                   desabilitado={!podeEditar}
                 />
               </Cartao>
@@ -704,11 +765,11 @@ export default function ChaoFabricaDetalhe() {
       {/* ---------------------------------------------------------- modais */}
       <Modal
         aberto={modal === 'desperdicio' || modal === 'reaproveitamento'}
-        aoFechar={() => setModal(null)}
+        aoFechar={fecharModal}
         titulo={modal === 'desperdicio' ? 'Registrar desperdício' : 'Registrar reaproveitamento'}
         rodape={
           <>
-            <Botao variante="secundario" onClick={() => setModal(null)}>Cancelar</Botao>
+            <Botao variante="secundario" onClick={fecharModal}>Cancelar</Botao>
             <Botao onClick={salvarResiduo} carregando={enviando}>Registrar</Botao>
           </>
         }
@@ -845,12 +906,12 @@ export default function ChaoFabricaDetalhe() {
 
       <Modal
         aberto={modal === 'limpeza'}
-        aoFechar={() => setModal(null)}
+        aoFechar={fecharModal}
         titulo={`Checklist 5S — ${setorEditando?.setor?.nome || ''}`}
         largura="max-w-2xl"
         rodape={
           <>
-            <Botao variante="secundario" onClick={() => setModal(null)}>Cancelar</Botao>
+            <Botao variante="secundario" onClick={fecharModal}>Cancelar</Botao>
             <Botao onClick={salvarLimpeza} carregando={enviando}>Salvar</Botao>
           </>
         }

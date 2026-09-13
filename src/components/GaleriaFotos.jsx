@@ -1,8 +1,6 @@
 import { useRef, useState } from 'react'
 import { Camera, Trash2, X } from 'lucide-react'
-import { supabase } from '../lib/supabase'
-
-const extensao = (mime) => (mime.includes('png') ? 'png' : mime.includes('webp') ? 'webp' : 'jpg')
+import { enviarFoto, descartarFotos } from '../lib/fotos'
 
 /**
  * Várias fotos no mesmo lugar — mesma mecânica de upload do FotoCaptura
@@ -10,14 +8,29 @@ const extensao = (mime) => (mime.includes('png') ? 'png' : mime.includes('webp')
  * onde o pedido explicitamente quer "uma ou mais fotos" (desperdício,
  * reaproveitamento, avaliação de setor).
  *
- * `valor`: array de { url, legenda }. Avisa o pai por `aoMudar(novoArray)`.
+ * `valor`: array de { url, storage_path, legenda }. Avisa o pai por
+ * `aoMudar(novoArray)` — sempre com a lista inteira, nunca só a última.
+ *
+ * `aoRemover(foto, indice)`: opcional. Quando a galeria mostra fotos que
+ * já estão salvas no banco, quem manda apagar é o pai (ele tem que tirar
+ * a linha do banco também). Sem isso, a galeria cuida sozinha: tira da
+ * lista e apaga do bucket a foto que ela mesma acabou de subir, pra não
+ * deixar arquivo órfão quando a pessoa muda de ideia.
+ *
+ * `maximo`: quantas cabem. Existe pro caso em que o banco guarda uma só
+ * (a evidência de conclusão da ação): deixar escolher cinco e gravar a
+ * primeira seria perder quatro sem avisar.
  */
-export default function GaleriaFotos({ valor = [], aoMudar, desabilitado = false }) {
+export default function GaleriaFotos({ valor = [], aoMudar, aoRemover, maximo, desabilitado = false }) {
   const [enviando, setEnviando] = useState(false)
   const [erro, setErro] = useState(null)
   const [ampliada, setAmpliada] = useState(null)
   const arquivo = useRef(null)
+  // Só as que subiram nesta sessão da galeria podem ser apagadas do
+  // bucket na remoção: as que vieram prontas do banco são do pai.
+  const subidasAqui = useRef(new Set())
 
+  const lotado = maximo != null && valor.length >= maximo
   const escolher = () => arquivo.current?.click()
 
   const aoSelecionar = async (e) => {
@@ -27,24 +40,37 @@ export default function GaleriaFotos({ valor = [], aoMudar, desabilitado = false
     setErro(null)
     setEnviando(true)
 
+    const vagas = maximo != null ? Math.max(0, maximo - valor.length) : arquivos.length
     const enviadas = []
-    for (const file of arquivos) {
-      const nome = `${crypto.randomUUID()}.${extensao(file.type || 'image/jpeg')}`
-      const { error } = await supabase.storage
-        .from('fotos')
-        .upload(nome, file, { contentType: file.type || 'image/jpeg', upsert: false })
-      if (error) {
-        setErro('Uma das fotos não subiu. Confira a internet e tente de novo.')
-        continue
-      }
-      const { data } = supabase.storage.from('fotos').getPublicUrl(nome)
-      enviadas.push({ url: data.publicUrl, legenda: '' })
+    const falhas = []
+    if (arquivos.length > vagas) {
+      falhas.push(maximo === 1 ? 'Aqui cabe só uma foto.' : `Aqui cabem ${maximo} foto(s).`)
+    }
+    for (const file of arquivos.slice(0, vagas)) {
+      const { foto, erro: falha } = await enviarFoto(file)
+      if (falha) { falhas.push(falha); continue }
+      subidasAqui.current.add(foto.storage_path)
+      enviadas.push(foto)
     }
     setEnviando(false)
+
+    // Uma mensagem por motivo, não uma por arquivo: mandar 5 fotos e
+    // levar 5 avisos iguais não ajuda ninguém a entender o que houve.
+    if (falhas.length) setErro([...new Set(falhas)].join(' '))
+    // Uma chamada só, com a lista inteira — o pai sempre recebe todas as
+    // fotos novas de uma vez.
     if (enviadas.length) aoMudar([...valor, ...enviadas])
   }
 
-  const remover = (i) => aoMudar(valor.filter((_, idx) => idx !== i))
+  const remover = async (i) => {
+    const foto = valor[i]
+    if (aoRemover) { await aoRemover(foto, i); return }
+    aoMudar(valor.filter((_, idx) => idx !== i))
+    if (foto?.storage_path && subidasAqui.current.has(foto.storage_path)) {
+      subidasAqui.current.delete(foto.storage_path)
+      descartarFotos([foto])
+    }
+  }
 
   return (
     <div className="space-y-2">
@@ -53,14 +79,14 @@ export default function GaleriaFotos({ valor = [], aoMudar, desabilitado = false
         type="file"
         accept="image/*"
         capture="environment"
-        multiple
+        multiple={maximo !== 1}
         onChange={aoSelecionar}
         className="hidden"
       />
 
       <div className="flex flex-wrap gap-2">
         {valor.map((f, i) => (
-          <div key={f.url} className="group relative size-20 shrink-0">
+          <div key={f.storage_path || f.url} className="group relative size-20 shrink-0">
             <button
               type="button"
               onClick={() => setAmpliada(f.url)}
@@ -82,7 +108,7 @@ export default function GaleriaFotos({ valor = [], aoMudar, desabilitado = false
           </div>
         ))}
 
-        {!desabilitado && (
+        {!desabilitado && !lotado && (
           <button
             type="button"
             onClick={escolher}

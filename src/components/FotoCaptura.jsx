@@ -1,8 +1,6 @@
 import { useRef, useState } from 'react'
 import { Camera, Trash2, ImagePlus } from 'lucide-react'
-import { supabase } from '../lib/supabase'
-
-const extensao = (mime) => (mime.includes('png') ? 'png' : mime.includes('webp') ? 'webp' : 'jpg')
+import { enviarFoto, descartarFotos } from '../lib/fotos'
 
 /**
  * Foto do problema, tirada na hora com a câmera do celular.
@@ -12,12 +10,17 @@ const extensao = (mime) => (mime.includes('png') ? 'png' : mime.includes('webp')
  * abre direto a câmera no celular, sem passar pela galeria.
  *
  * Avisa o pai por `aoMudar(url)`, ou `aoMudar(null)` quando apaga.
+ *
+ * "Tirar outra" e "apagar" tiram do bucket a foto que foi substituída:
+ * sem isso, cada vez que alguém não gostava do enquadramento sobrava um
+ * arquivo no storage que nenhuma linha do banco apontava.
  */
 export default function FotoCaptura({ aoMudar, desabilitado = false }) {
   const [estado, setEstado] = useState('vazio') // vazio | enviando | pronto
   const [previa, setPrevia] = useState(null)
   const [erro, setErro] = useState(null)
   const arquivo = useRef(null)
+  const atual = useRef(null)
 
   const escolher = () => arquivo.current?.click()
 
@@ -29,24 +32,25 @@ export default function FotoCaptura({ aoMudar, desabilitado = false }) {
     setEstado('enviando')
     setPrevia(URL.createObjectURL(file))
 
-    const nome = `${crypto.randomUUID()}.${extensao(file.type || 'image/jpeg')}`
-    const { error } = await supabase.storage
-      .from('fotos')
-      .upload(nome, file, { contentType: file.type || 'image/jpeg', upsert: false })
-
-    if (error) {
-      setErro('A foto não subiu. Confira a internet e tire de novo.')
+    const { foto, erro: falha } = await enviarFoto(file)
+    if (falha) {
+      setErro(falha)
       setEstado('vazio')
       setPrevia(null)
       return
     }
-    const { data } = supabase.storage.from('fotos').getPublicUrl(nome)
+
+    // a anterior perdeu a vez: sai do bucket
+    if (atual.current) descartarFotos([atual.current])
+    atual.current = foto
     setEstado('pronto')
-    aoMudar(data.publicUrl)
+    aoMudar(foto.url)
   }
 
   const apagar = () => {
     if (previa) URL.revokeObjectURL(previa)
+    if (atual.current) descartarFotos([atual.current])
+    atual.current = null
     setPrevia(null)
     setEstado('vazio')
     aoMudar(null)

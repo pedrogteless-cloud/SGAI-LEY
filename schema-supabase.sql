@@ -2648,7 +2648,8 @@ end $$;
 -- =====================================================================
 --
 -- O operador grava sem ter conta, então o anônimo precisa poder enviar.
--- Ele envia e nada mais: não lista, não apaga, não sobrescreve.
+-- Ele envia e nada mais: não lista, não apaga, não sobrescreve. Apagar é
+-- só de quem está logado, e só do que subiu (ver fotos_apagar abaixo).
 
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 values ('audios', 'audios', true, 10485760,
@@ -2666,6 +2667,11 @@ drop policy if exists audios_leitura on storage.objects;
 create policy audios_leitura on storage.objects
   for select to anon, authenticated
   using (bucket_id = 'audios');
+
+drop policy if exists audios_apagar on storage.objects;
+create policy audios_apagar on storage.objects
+  for delete to authenticated
+  using (bucket_id = 'audios' and (owner = auth.uid() or eh_gestor()));
 
 -- Mesma lógica pra foto: quem não sabe escrever bem, tira uma foto do
 -- problema. Mais simples de "ler" que qualquer frase.
@@ -2685,6 +2691,21 @@ drop policy if exists fotos_leitura on storage.objects;
 create policy fotos_leitura on storage.objects
   for select to anon, authenticated
   using (bucket_id = 'fotos');
+
+-- Faltava DELETE em qualquer bucket: ninguém conseguia apagar nada, então
+-- toda foto enviada e depois descartada (a pessoa tira a foto, muda de
+-- ideia e fecha o modal) ficava pra sempre no storage sem nenhuma linha
+-- do banco apontando pra ela.
+--
+-- Quem apaga: só quem está logado, e só o que subiu — o storage grava
+-- owner = auth.uid() no upload autenticado. Gestor apaga qualquer uma,
+-- porque é quem limpa a casa. O anônimo do QR continua só enviando: a
+-- foto do problema que ele reportou não pode sumir por um toque errado,
+-- nem por alguém de fora.
+drop policy if exists fotos_apagar on storage.objects;
+create policy fotos_apagar on storage.objects
+  for delete to authenticated
+  using (bucket_id = 'fotos' and (owner = auth.uid() or eh_gestor()));
 
 -- =====================================================================
 -- 8.1 CRIANDO USUÁRIO POR SQL (leia antes de usar)

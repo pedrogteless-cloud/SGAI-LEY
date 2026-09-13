@@ -14,6 +14,7 @@ import {
   Modal, Erro, useAviso, Segmentado,
 } from '../components/ui'
 import GaleriaFotos from '../components/GaleriaFotos'
+import { descartarFotos } from '../lib/fotos'
 
 /**
  * O pedaço que faltava pro 5S virar melhoria de verdade: o problema
@@ -82,6 +83,14 @@ export default function Acoes5S() {
     setFormConclusao({ observacao: '', fotos: [] })
     setErro(null)
     setConcluindo(a)
+  }
+
+  // Desistir de concluir joga fora a foto que subiu: ela não vai virar
+  // evidência de nada.
+  const fecharConclusao = () => {
+    descartarFotos(formConclusao.fotos)
+    setFormConclusao({ observacao: '', fotos: [] })
+    setConcluindo(null)
   }
 
   const confirmarConclusao = async () => {
@@ -302,11 +311,11 @@ export default function Acoes5S() {
       {/* ------------------------------------------------------- concluir */}
       <Modal
         aberto={Boolean(concluindo)}
-        aoFechar={() => setConcluindo(null)}
+        aoFechar={fecharConclusao}
         titulo="Concluir ação"
         rodape={
           <>
-            <Botao variante="secundario" onClick={() => setConcluindo(null)}>Cancelar</Botao>
+            <Botao variante="secundario" onClick={fecharConclusao}>Cancelar</Botao>
             <Botao variante="sucesso" onClick={confirmarConclusao} carregando={enviando}>Concluir</Botao>
           </>
         }
@@ -327,8 +336,11 @@ export default function Acoes5S() {
             />
           </Campo>
           <Campo rotulo="Foto de evidência" dica="Opcional, mas é o que prova que resolveu">
+            {/* Uma só: acoes_chao guarda uma evidencia_url. Antes dava pra
+                escolher várias e só a primeira era gravada. */}
             <GaleriaFotos
               valor={formConclusao.fotos}
+              maximo={1}
               aoMudar={(novo) => setFormConclusao((f) => ({ ...f, fotos: novo }))}
             />
           </Campo>

@@ -15,6 +15,7 @@ import {
 } from '../components/ui'
 import GaleriaFotos from '../components/GaleriaFotos'
 import BlocoAcao5S from '../components/BlocoAcao5S'
+import { descartarFotos } from '../lib/fotos'
 
 /**
  * Tela própria do checklist 5S — separada da tela de Desperdícios de
@@ -88,6 +89,13 @@ export default function Chao5S() {
     }
   }
   const [formLimpeza, setFormLimpeza] = useState(campoLimpezaVazio())
+
+  // Fechar no Cancelar/X joga fora as fotos que subiram e não vão ser
+  // usadas — senão cada desistência deixa arquivo órfão no bucket.
+  const fecharModal = () => {
+    descartarFotos(ITENS_5S.flatMap((i) => formLimpeza.respostas[i.item]?.fotos || []))
+    setModalAberto(false)
+  }
 
   const abrirLimpeza = (s) => {
     const existentes = (setor5s.data || []).filter((x) => x.setor_avaliacao_id === s.id)
@@ -208,10 +216,22 @@ export default function Chao5S() {
           setor_avaliacao_id: setorEditando.id,
           setor_5s_id: idPorItem[i.item],
           url: f.url,
+          storage_path: f.storage_path ?? null,
+          mime_type: f.mime_type ?? null,
           enviado_por: perfil?.id ?? null,
         }))
       )
-      if (midias.length) await supabase.from('relatorio_chao_midias').insert(midias)
+      if (midias.length) {
+        const { error: erroFoto } = await supabase.from('relatorio_chao_midias').insert(midias)
+        // A avaliação já está gravada; só o anexo falhou. Dizer isso é
+        // melhor do que deixar a pessoa achar que a foto foi junto.
+        if (erroFoto) {
+          setEnviando(false)
+          setErro(new Error('A avaliação foi salva, mas as fotos não ficaram anexadas. Abra o setor de novo e anexe.'))
+          invalidar('relatorio_chao_setores', 'vw_relatorio_chao_setor_5s', 'vw_acoes_chao')
+          return
+        }
+      }
     }
 
     setEnviando(false)
@@ -344,12 +364,12 @@ export default function Chao5S() {
 
       <Modal
         aberto={modalAberto}
-        aoFechar={() => setModalAberto(false)}
+        aoFechar={fecharModal}
         titulo={`Checklist 5S — ${setorEditando?.setor?.nome || ''}`}
         largura="max-w-2xl"
         rodape={
           <>
-            <Botao variante="secundario" onClick={() => setModalAberto(false)}>Cancelar</Botao>
+            <Botao variante="secundario" onClick={fecharModal}>Cancelar</Botao>
             <Botao onClick={salvarLimpeza} carregando={enviando}>Salvar</Botao>
           </>
         }
