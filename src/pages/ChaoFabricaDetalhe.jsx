@@ -112,6 +112,21 @@ export default function ChaoFabricaDetalhe() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [modal])
 
+  // Precisa ficar ANTES dos returns antecipados abaixo: hook chamado
+  // depois de um `return` só roda em parte das renderizações, e o React
+  // quebra a tela inteira quando a contagem de hooks muda entre uma
+  // renderização e outra (foi o que acontecia ao sair do "carregando").
+  useEffect(() => {
+    if (!imprimindo) return
+    const aoTerminar = () => setImprimindo(false)
+    window.addEventListener('afterprint', aoTerminar, { once: true })
+    const idTimeout = setTimeout(() => window.print(), 50)
+    return () => {
+      clearTimeout(idTimeout)
+      window.removeEventListener('afterprint', aoTerminar)
+    }
+  }, [imprimindo])
+
   if (relatorio.isLoading) return <Carregando />
   if (relatorio.error || !r) return <Erro erro={relatorio.error || new Error('Relatório não encontrado.')} />
 
@@ -413,17 +428,6 @@ export default function ChaoFabricaDetalhe() {
       }] : []),
     ],
   } : null
-
-  useEffect(() => {
-    if (!imprimindo) return
-    const aoTerminar = () => setImprimindo(false)
-    window.addEventListener('afterprint', aoTerminar, { once: true })
-    const idTimeout = setTimeout(() => window.print(), 50)
-    return () => {
-      clearTimeout(idTimeout)
-      window.removeEventListener('afterprint', aoTerminar)
-    }
-  }, [imprimindo])
 
   return (
     <div className="space-y-5">

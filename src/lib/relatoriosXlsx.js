@@ -203,7 +203,7 @@ async function gerarCustos({ inicio, fim }) {
     moeda(ws1, rr, 3, m.pecas, { zebra })
     moeda(ws1, rr, 4, m.servicos, { zebra })
     moeda(ws1, rr, 5, m.mao_obra, { zebra })
-    const t = celula(ws1, rr, 6, { formula: `C${rr}+D${rr}+E${rr}` }, { zebra, bold: true, numFmt: 'R$ #,##0.00' })
+    celula(ws1, rr, 6, { formula: `C${rr}+D${rr}+E${rr}` }, { zebra, bold: true, numFmt: 'R$ #,##0.00' })
   })
   const rlast1 = meses.length ? r0a + meses.length - 1 : r0a
   if (meses.length) linhaTotal(ws1, rlast1 + 1, 6, [3, 4, 5, 6], r0a, rlast1)
@@ -271,7 +271,7 @@ async function gerarCustos({ inicio, fim }) {
     celula(ws3, rr, 3, s.qtd, { zebra })
     moeda(ws3, rr, 4, s.total, { zebra })
     const rlastPct = r0c + setores.length - 1
-    const p = celula(ws3, rr, 5, { formula: `IFERROR(D${rr}/SUM($D$${r0c}:$D$${rlastPct}),0)` }, { zebra, numFmt: '0.0%' })
+    celula(ws3, rr, 5, { formula: `IFERROR(D${rr}/SUM($D$${r0c}:$D$${rlastPct}),0)` }, { zebra, numFmt: '0.0%' })
   })
   largurasColunas(ws3, [20, 14, 14, 14, 12])
   if (!setores.length) notaFonte(ws3, r0c, 'Nenhuma ordem de serviço aberta nesse período.')

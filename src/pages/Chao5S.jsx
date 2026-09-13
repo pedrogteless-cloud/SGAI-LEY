@@ -40,10 +40,9 @@ export default function Chao5S() {
     ordem: { coluna: 'aberta_em' },
   })
 
-  useEffect(() => {
-    setRelatorioId(null)
-  }, [unidadeAtual, data])
-
+  // Sem efeito pra "resetar" a escolha quando muda unidade/data: se o
+  // relatório escolhido não está na lista nova, o find devolve nada e cai
+  // sozinho no primeiro do dia.
   const lista = relatoriosDoDia.data || []
   const relatorioAtivo = (relatorioId ? lista.find((r) => r.id === relatorioId) : null) || lista[0] || null
   const podeEditar = relatorioAtivo && ['aberta', 'em_andamento', 'reaberta'].includes(relatorioAtivo.status)

@@ -75,9 +75,12 @@ export default function PlantaCanvas({
   // leitura do ponto sob o cursor. Fica aqui e não na página de propósito:
   // muda a cada movimento do mouse e redesenharia a tela toda se subisse.
   const [cursor, setCursor] = useState(null)
-  const reduzMovimento = useRef(
-    typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
-  ).current
+  // Lazy state em vez de ref: ler `.current` durante a renderização é
+  // justamente o que o React pede pra não fazer, e aqui o valor é lido
+  // no corpo do componente.
+  const [reduzMovimento] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+  )
 
   const ponteiros = useRef(new Map())
   const gesto = useRef(null)

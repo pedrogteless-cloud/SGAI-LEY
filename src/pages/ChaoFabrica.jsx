@@ -10,7 +10,7 @@ import { useAuth } from '../hooks/useAuth'
 import {
   useTabela, useUnidades, useSetores, useTecnicos, useMateriaisResiduo, useInserir, useInvalidar,
 } from '../hooks/useDados'
-import { data as fmtData, dataHora, numero } from '../lib/format'
+import { data as fmtData, numero } from '../lib/format'
 import { hojeISO } from '../lib/tempo'
 import { M_STATUS_CHAO, STATUS_RELATORIO_CHAO } from '../lib/constants'
 import {

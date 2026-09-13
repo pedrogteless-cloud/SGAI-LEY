@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import {
   ArrowLeft, Pencil, Copy, QrCode, Zap, Wrench, Printer, Plus, Image as Imagem,

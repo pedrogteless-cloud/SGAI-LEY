@@ -382,7 +382,6 @@ export function calcularRealizadoMeta(meta, { linhasAchatadas, avaliacoes, relat
 export function situacaoMeta(realizado, meta) {
   if (realizado.valor == null) return 'sem_dado'
   const alvo = realizado.alvoForcado ?? Number(meta.valor_alvo)
-  const pct = alvo > 0 ? (realizado.valor / alvo) * 100 : realizado.valor === 0 ? 0 : 100
   if (realizado.sentido === 'max') {
     if (realizado.valor <= alvo) return 'dentro'
     if (realizado.valor <= alvo * 1.15) return 'atencao'

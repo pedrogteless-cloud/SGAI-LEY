@@ -47,7 +47,7 @@ const lerSalvo = () => {
 }
 
 export default function EtiquetaQR({ aberto, aoFechar, ativo, link }) {
-  const salvo = useMemo(lerSalvo, [aberto])
+  const salvo = useMemo(() => lerSalvo(), [aberto])
   const [formato, setFormato] = useState(salvo?.formato || '6082')
   const [larg, setLarg] = useState(salvo?.larg || 101.6)
   const [alt, setAlt] = useState(salvo?.alt || 33.9)

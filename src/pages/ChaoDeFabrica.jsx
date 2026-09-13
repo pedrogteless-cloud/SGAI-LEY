@@ -23,7 +23,7 @@ function tempoDesde(data) {
 export default function ChaoDeFabrica() {
   const cliente = useQueryClient()
   const { perfil } = useAuth()
-  const [agora, setAgora] = useState(Date.now())
+  const [agora, setAgora] = useState(() => Date.now())
   const ordens = useTabela('ordens_servico', { select: 'id, numero, titulo, status, prioridade, aberta_em, ativo:ativos(nome)', filtros: [['status', 'in', STATUS_ATIVOS]], ordem: { coluna: 'aberta_em', asc: true } })
   const ativos = useTabela('ativos', { select: 'id, nome, situacao', filtros: [['situacao', 'in', ['parado', 'em_manutencao']]], ordem: { coluna: 'nome' } })
   const avisos = useTabela('solicitacoes_servico', { select: 'id, numero, descricao, criado_em, ativo:ativos(nome)', filtros: [['status', 'in', ['aberta', 'em_triagem']]], ordem: { coluna: 'criado_em', asc: true } })
