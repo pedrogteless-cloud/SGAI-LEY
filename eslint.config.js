@@ -48,4 +48,10 @@ export default [
     files: ['**/*.test.js'],
     languageOptions: { globals: { ...globals.node } },
   },
+  {
+    // O service worker roda no worker global scope, não no de janela:
+    // `self`, `caches`, `clients` não existem no conjunto `browser`.
+    files: ['public/sw.js'],
+    languageOptions: { globals: { ...globals.serviceworker } },
+  },
 ]

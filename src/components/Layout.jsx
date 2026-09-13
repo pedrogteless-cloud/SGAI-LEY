@@ -7,6 +7,8 @@ import {
 } from 'lucide-react'
 import { useAuth } from '../hooks/useAuth'
 import { useTabela } from '../hooks/useDados'
+import { useAtualizacao } from '../hooks/useAtualizacao'
+import BarraDeCampo from './BarraDeCampo'
 import DefinirPin from './DefinirPin'
 import logoLey from '../assets/logo-ley.jpg'
 
@@ -91,6 +93,7 @@ export default function Layout() {
   const [pinAberto, setPinAberto] = useState(false)
   const [escuro, setEscuro] = useState(() => localStorage.getItem('sgai-tema') === 'escuro')
   const contadores = Contadores()
+  const atualizacao = useAtualizacao()
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', escuro)
@@ -280,25 +283,30 @@ export default function Layout() {
       )}
 
       <div className="flex min-w-0 flex-1 flex-col lg:pl-60">
-        {/* Header do celular: fundo translúcido com desfoque, então o
-            conteúdo passa por baixo em vez de sumir atrás de uma faixa. */}
-        <header
-          className="nao-imprimir area-segura-topo sticky top-0 z-30 flex items-center gap-3 px-4 py-3
-            backdrop-blur-xl lg:hidden"
-          style={{
-            backgroundColor: 'color-mix(in srgb, var(--sup-cartao) 82%, transparent)',
-            borderBottom: '1px solid var(--traco)',
-          }}
-        >
-          <button
-            onClick={() => setMenuAberto(true)}
-            className="-m-2 rounded-lg p-2 text-slate-600 transition-transform active:scale-90"
-            aria-label="Abrir menu"
+        {/* Faixa de campo e header do celular grudam juntos no topo: se
+            cada um tivesse seu próprio sticky, um cobriria o outro quando
+            a internet caísse. */}
+        <div className="area-segura-topo sticky top-0 z-40">
+          <BarraDeCampo atualizacao={atualizacao} />
+          {/* Fundo translúcido com desfoque, então o conteúdo passa por
+              baixo em vez de sumir atrás de uma faixa. */}
+          <header
+            className="nao-imprimir flex items-center gap-3 px-4 py-3 backdrop-blur-xl lg:hidden"
+            style={{
+              backgroundColor: 'color-mix(in srgb, var(--sup-cartao) 82%, transparent)',
+              borderBottom: '1px solid var(--traco)',
+            }}
           >
-            <Menu size={22} />
-          </button>
-          <span className="truncate text-sm font-semibold text-slate-900">{paginaAtual}</span>
-        </header>
+            <button
+              onClick={() => setMenuAberto(true)}
+              className="-m-2 rounded-lg p-2 text-slate-600 transition-transform active:scale-90"
+              aria-label="Abrir menu"
+            >
+              <Menu size={22} />
+            </button>
+            <span className="truncate text-sm font-semibold text-slate-900">{paginaAtual}</span>
+          </header>
+        </div>
 
         <main className="area-segura-base flex-1 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
           <Outlet />

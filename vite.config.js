@@ -19,10 +19,10 @@ export default defineConfig({
   test: {
     include: ['src/**/*.test.js', 'src/**/*.test.jsx'],
     setupFiles: ['./src/teste/preparo.js'],
-    environmentMatchGlobs: [
-      ['src/**/*.test.jsx', 'jsdom'],
-      ['**', 'node'],
-    ],
+    // jsdom pros dois tipos: as contas puras (.test.js) não usam nada do
+    // DOM, então rodam igual em qualquer ambiente; as telas (.test.jsx)
+    // precisam dele. Um ambiente só evita manter duas configurações.
+    environment: 'jsdom',
   },
   build: {
     rollupOptions: {
