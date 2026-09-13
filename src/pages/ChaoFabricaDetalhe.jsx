@@ -6,7 +6,7 @@ import {
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import {
-  useRegistro, useTabela, useInvalidar, useSetores, useMateriaisResiduo,
+  useRegistro, useTabela, useInvalidar, useSetores, useMateriaisResiduo, useTecnicos,
 } from '../hooks/useDados'
 import { useAuth } from '../hooks/useAuth'
 import { dataHora, data as fmtDataBr, numero } from '../lib/format'
@@ -21,6 +21,7 @@ import {
   Vazio, Modal, Erro, useAviso,
 } from '../components/ui'
 import GaleriaFotos from '../components/GaleriaFotos'
+import BlocoAcao5S from '../components/BlocoAcao5S'
 import ImpressaoRelatorio from '../components/ImpressaoRelatorio'
 
 const INVALIDAR = [
@@ -56,6 +57,14 @@ export default function ChaoFabricaDetalhe() {
   const setor5s = useTabela('vw_relatorio_chao_setor_5s', {
     filtros: [['relatorio_id', 'eq', id]],
   })
+  // Ações já abertas a partir desse relatório, pra reabrir o checklist
+  // com quem resolve e até quando já preenchidos em vez de parecer que
+  // não salvou e a pessoa cadastrar a mesma ação de novo.
+  const acoesDoRelatorio = useTabela('vw_acoes_chao', {
+    select: 'id, setor_5s_id, responsavel_id, prazo, prioridade, status',
+    filtros: [['relatorio_id', 'eq', id]],
+  })
+  const tecnicos = useTecnicos()
   const lancamentos = useTabela('vw_residuo_lancamentos', {
     filtros: [['relatorio_id', 'eq', id]],
     ordem: { coluna: 'criado_em', asc: false },
@@ -139,7 +148,10 @@ export default function ChaoFabricaDetalhe() {
     }
   }
   function respostaVazia5s() {
-    return { resposta: '', descricao_problema: '', quadrante: '', sugestao: '', fotos: [] }
+    return {
+      resposta: '', descricao_problema: '', quadrante: '', sugestao: '', fotos: [],
+      acao_responsavel_id: '', acao_prazo: '', acao_prioridade: '',
+    }
   }
   function campoLimpezaVazio() {
     return {
@@ -216,20 +228,28 @@ export default function ChaoFabricaDetalhe() {
 
   const abrirLimpeza = (s) => {
     const existentes = (setor5s.data || []).filter((x) => x.setor_avaliacao_id === s.id)
+    const acaoPorItem5s = Object.fromEntries(
+      (acoesDoRelatorio.data || [])
+        .filter((a) => a.setor_5s_id && ['aberta', 'em_andamento'].includes(a.status))
+        .map((a) => [a.setor_5s_id, a])
+    )
     const respostas = Object.fromEntries(
       ITENS_5S.map((i) => {
         const ex = existentes.find((x) => x.item === i.item)
+        if (!ex) return [i.item, respostaVazia5s()]
+        const acao = acaoPorItem5s[ex.id]
         return [
           i.item,
-          ex
-            ? {
-                resposta: ex.resposta,
-                descricao_problema: ex.descricao_problema || '',
-                quadrante: ex.quadrante || '',
-                sugestao: ex.sugestao || '',
-                fotos: [],
-              }
-            : respostaVazia5s(),
+          {
+            resposta: ex.resposta,
+            descricao_problema: ex.descricao_problema || '',
+            quadrante: ex.quadrante || '',
+            sugestao: ex.sugestao || '',
+            fotos: [],
+            acao_responsavel_id: acao?.responsavel_id || '',
+            acao_prazo: acao?.prazo || '',
+            acao_prioridade: acao?.prioridade || '',
+          },
         ]
       })
     )
@@ -288,12 +308,20 @@ export default function ChaoFabricaDetalhe() {
     setEnviando(true)
     const payload = ITENS_5S.map((i) => {
       const r = formLimpeza.respostas[i.item]
+      // A ação só nasce quando alguém assume ou quando tem data. Criar
+      // uma ação sem dono e sem prazo pra todo item com ressalva só
+      // encheria o plano de ação de linha que ninguém vai fechar.
+      const geraAcao =
+        ['parcial', 'nao_conforme'].includes(r.resposta) && !!(r.acao_responsavel_id || r.acao_prazo)
       return {
         item: i.item,
         resposta: r.resposta,
         descricao_problema: r.descricao_problema.trim() || null,
         quadrante: r.quadrante.trim() || null,
         sugestao: r.sugestao.trim() || null,
+        acao_responsavel_id: geraAcao ? r.acao_responsavel_id || null : null,
+        acao_prazo: geraAcao ? r.acao_prazo || null : null,
+        acao_prioridade: geraAcao ? r.acao_prioridade || null : null,
       }
     })
     const { data: linhas, error } = await supabase.rpc('responder_checklist_5s', {
@@ -329,7 +357,7 @@ export default function ChaoFabricaDetalhe() {
     setEnviando(false)
     setModal(null)
     avisar('Avaliação salva.')
-    invalidar(...INVALIDAR, 'vw_relatorio_chao_setor_5s', 'relatorio_chao_midias')
+    invalidar(...INVALIDAR, 'vw_relatorio_chao_setor_5s', 'relatorio_chao_midias', 'vw_acoes_chao')
   }
 
   const concluir = async () => {
@@ -914,6 +942,11 @@ export default function ChaoFabricaDetalhe() {
                             aoMudar={(novo) => mudarResposta5s(i.item, 'fotos', novo)}
                           />
                         </Campo>
+                        <BlocoAcao5S
+                          resposta={r}
+                          pessoas={tecnicos.data || []}
+                          aoMudar={(campo, valor) => mudarResposta5s(i.item, campo, valor)}
+                        />
                       </div>
                     )}
                   </div>

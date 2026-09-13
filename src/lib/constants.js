@@ -155,6 +155,22 @@ export const ITENS_5S = [
   { item: 'shitsuke', titulo: 'Shitsuke — Disciplina', pergunta: 'O setor está mantendo a organização sem precisar de cobrança constante?' },
 ]
 
+// Plano de ação: o pedaço que faz o problema achado no 5S virar conserto
+// com dono e prazo, em vez de só ficar registrado.
+export const STATUS_ACAO_CHAO = [
+  { valor: 'aberta', label: 'Aberta', cor: 'bg-sky-100 text-sky-700 ring-sky-200' },
+  { valor: 'em_andamento', label: 'Em andamento', cor: 'bg-amber-100 text-amber-700 ring-amber-200' },
+  { valor: 'concluida', label: 'Concluída', cor: 'bg-emerald-100 text-emerald-700 ring-emerald-200' },
+  { valor: 'cancelada', label: 'Cancelada', cor: 'bg-slate-100 text-slate-500 ring-slate-200' },
+]
+
+export const PRIORIDADES_ACAO = [
+  { valor: 'baixa', label: 'Baixa', cor: 'bg-slate-100 text-slate-600 ring-slate-200' },
+  { valor: 'media', label: 'Média', cor: 'bg-sky-100 text-sky-700 ring-sky-200' },
+  { valor: 'alta', label: 'Alta', cor: 'bg-amber-100 text-amber-700 ring-amber-200' },
+  { valor: 'emergencia', label: 'Emergência', cor: 'bg-red-100 text-red-700 ring-red-200' },
+]
+
 export const RESPOSTAS_5S = [
   { valor: 'conforme', label: 'Conforme', pontos: 2, cor: 'bg-emerald-100 text-emerald-700 ring-emerald-200' },
   { valor: 'parcial', label: 'Parcial', pontos: 1, cor: 'bg-amber-100 text-amber-700 ring-amber-200' },
@@ -192,3 +208,6 @@ export const M_CONDICAO_RESIDUO = mapa(CONDICOES_RESIDUO)
 export const M_DESTINACAO_RESIDUO = mapa(DESTINACOES_RESIDUO)
 export const M_UNIDADE_RESIDUO = mapa(UNIDADES_MEDIDA_RESIDUO)
 export const M_RESPOSTA_5S = mapa(RESPOSTAS_5S)
+export const M_STATUS_ACAO_CHAO = mapa(STATUS_ACAO_CHAO)
+export const M_PRIORIDADE_ACAO = mapa(PRIORIDADES_ACAO)
+export const M_ITEM_5S = Object.fromEntries(ITENS_5S.map((i) => [i.item, i]))

@@ -3086,6 +3086,61 @@ create table if not exists metas_chao (
   ))
 );
 
+-- (43) acoes_chao ------------------------------------------------------
+-- O pedaço que fecha o PDCA: o item com ressalva no 5S (ou o desperdício
+-- que chamou atenção) vira uma ação com dono, prazo e evidência de
+-- conclusão. Sem isso o sistema registra o problema e para por aí.
+--
+-- Cada item do checklist tem no máximo uma ação VIVA (ver o índice único
+-- parcial abaixo): reenviar o checklist corrige a ação existente em vez
+-- de criar uma segunda igual, mas um problema que voltou depois da ação
+-- anterior ter sido fechada abre ação nova — um unique cru em
+-- setor_5s_id deixaria o segundo achado sem ação nenhuma, em silêncio.
+do $$ begin
+  create type status_acao_chao as enum ('aberta','em_andamento','concluida','cancelada');
+exception when duplicate_object then null; end $$;
+
+create table if not exists acoes_chao (
+  id                   uuid primary key default gen_random_uuid(),
+  unidade_id           uuid not null references unidades(id) on delete restrict,
+  relatorio_id         uuid references relatorios_chao(id) on delete set null,
+  setor_5s_id          uuid references relatorio_chao_setor_5s(id) on delete set null,
+  lancamento_id        uuid references residuo_lancamentos(id) on delete set null,
+  setor_id             uuid references setores(id) on delete set null,
+  quadrante            text,
+  descricao            text not null,
+  prioridade           prioridade_nivel not null default 'media',
+  prazo                date,
+  responsavel_id       uuid references perfis(id) on delete set null,
+  status               status_acao_chao not null default 'aberta',
+  observacao_conclusao text,
+  evidencia_url        text,
+  concluida_em         timestamptz,
+  concluida_por        uuid references perfis(id) on delete set null,
+  criado_em            timestamptz not null default now(),
+  criado_por           uuid references perfis(id) on delete set null,
+  atualizado_em        timestamptz not null default now()
+);
+
+-- "um item do 5S, no máximo uma ação viva" — é este índice que o
+-- `on conflict (setor_5s_id) where status in (...)` das RPCs mira.
+create unique index if not exists acoes_chao_setor_5s_viva
+  on acoes_chao(setor_5s_id)
+  where status in ('aberta','em_andamento');
+
+create index if not exists idx_acoes_chao_unidade    on acoes_chao(unidade_id, status);
+create index if not exists idx_acoes_chao_responsavel on acoes_chao(responsavel_id, status);
+create index if not exists idx_acoes_chao_relatorio  on acoes_chao(relatorio_id);
+create index if not exists idx_acoes_chao_setor      on acoes_chao(setor_id);
+-- O índice do prazo só cobre o que ainda está em aberto: é sobre isso que
+-- a tela pergunta ("o que venceu?"), ação concluída nunca entra na conta.
+create index if not exists idx_acoes_chao_prazo on acoes_chao(prazo)
+  where status in ('aberta','em_andamento');
+
+drop trigger if exists trg_acoes_chao_atualizado on acoes_chao;
+create trigger trg_acoes_chao_atualizado before update on acoes_chao
+for each row execute function fn_atualizado_em();
+
 -- --- numeração do relatório, igual OS/solicitação ----------------------
 create or replace function fn_numero_relatorio_chao()
 returns trigger language plpgsql set search_path = public as $$
@@ -3329,7 +3384,13 @@ revoke execute on function fn_recalcula_nota_5s() from anon, authenticated, publ
 
 -- Responde as 5 perguntas do checklist de uma vez (a tela manda o
 -- checklist inteiro). p_respostas: jsonb array de
--- {item, resposta, descricao_problema, quadrante, sugestao}.
+-- {item, resposta, descricao_problema, quadrante, sugestao,
+--  acao_responsavel_id, acao_prazo, acao_prioridade}.
+--
+-- Os três campos de ação são opcionais: quando vem quem resolve OU até
+-- quando, o item com ressalva já nasce como ação no plano de ação. Se não
+-- vier nenhum dos dois, o achado fica só registrado — que na fase de
+-- aprendizado ainda é melhor do que não anotar.
 create or replace function responder_checklist_5s(
   p_relatorio_setor_id uuid,
   p_respostas          jsonb
@@ -3338,12 +3399,21 @@ returns table(id uuid, nota numeric, mensagem text)
 language plpgsql security definer set search_path = public as $$
 declare
   v_relatorio uuid;
+  v_unidade uuid;
+  v_setor uuid;
   v_item jsonb;
   v_item_nome text;
   v_resposta text;
+  v_5s_id uuid;
+  v_descricao_acao text;
+  v_prioridade prioridade_nivel;
 begin
-  select relatorio_chao_setores.relatorio_id into v_relatorio
-    from relatorio_chao_setores where relatorio_chao_setores.id = p_relatorio_setor_id;
+  select s.relatorio_id, r.unidade_id, s.setor_id
+    into v_relatorio, v_unidade, v_setor
+    from relatorio_chao_setores s
+    join relatorios_chao r on r.id = s.relatorio_id
+   where s.id = p_relatorio_setor_id;
+
   if v_relatorio is null then
     return query select null::uuid, null::numeric, 'Setor do relatório não encontrado.'::text;
     return;
@@ -3386,7 +3456,54 @@ begin
       descricao_problema = excluded.descricao_problema,
       quadrante = excluded.quadrante,
       sugestao = excluded.sugestao,
-      atualizado_em = now();
+      atualizado_em = now()
+    returning relatorio_chao_setor_5s.id into v_5s_id;
+
+    if v_resposta in ('parcial', 'nao_conforme')
+       and coalesce(nullif(v_item->>'acao_responsavel_id', ''), nullif(v_item->>'acao_prazo', '')) is not null
+    then
+      -- A sugestão do encarregado ("o que fazer") é a melhor descrição de
+      -- ação que existe. Sem ela, cai pro problema descrito.
+      v_descricao_acao := coalesce(
+        nullif(btrim(coalesce(v_item->>'sugestao', '')), ''),
+        nullif(btrim(coalesce(v_item->>'descricao_problema', '')), '')
+      );
+      -- não conforme entra como alta por padrão; parcial, média
+      v_prioridade := coalesce(
+        nullif(v_item->>'acao_prioridade', '')::prioridade_nivel,
+        (case when v_resposta = 'nao_conforme' then 'alta' else 'media' end)::prioridade_nivel
+      );
+
+      insert into acoes_chao (
+        unidade_id, relatorio_id, setor_5s_id, setor_id, quadrante,
+        descricao, prioridade, prazo, responsavel_id, criado_por
+      ) values (
+        v_unidade, v_relatorio, v_5s_id, v_setor,
+        nullif(btrim(coalesce(v_item->>'quadrante', '')), ''),
+        v_descricao_acao, v_prioridade,
+        nullif(v_item->>'acao_prazo', '')::date,
+        nullif(v_item->>'acao_responsavel_id', '')::uuid,
+        auth.uid()
+      )
+      -- só mira a ação viva do item: ação fechada é histórico e nem entra
+      -- no índice, então reenviar o checklist não apaga que alguém
+      -- resolveu — e um problema que voltou abre ação nova.
+      on conflict (setor_5s_id) where status in ('aberta','em_andamento') do update set
+        descricao = excluded.descricao,
+        prioridade = excluded.prioridade,
+        prazo = excluded.prazo,
+        responsavel_id = excluded.responsavel_id,
+        quadrante = excluded.quadrante;
+    elsif v_resposta in ('conforme', 'nao_inspecionado') then
+      -- O item deixou de ter ressalva na revisão: a ação que nasceu dele e
+      -- que ninguém começou não faz mais sentido ficar cobrando.
+      update acoes_chao a set
+        status = 'cancelada',
+        observacao_conclusao = 'Cancelada porque o item passou a Conforme na revisão do checklist.',
+        concluida_em = now(),
+        concluida_por = auth.uid()
+       where a.setor_5s_id = v_5s_id and a.status = 'aberta';
+    end if;
   end loop;
 
   update relatorio_chao_setores set
@@ -3435,6 +3552,19 @@ begin
     return;
   end if;
 
+  -- A avaliação do dia está sendo retirada, então a ação que nasceu dela e
+  -- que ninguém começou some junto. Se alguém já pôs em andamento, o
+  -- trabalho é real: a ação fica, só perde o vínculo com o item apagado.
+  update acoes_chao a set
+    status = 'cancelada',
+    observacao_conclusao = 'Cancelada porque o setor passou a constar como não visitado nesse dia.',
+    concluida_em = now(),
+    concluida_por = auth.uid()
+   where a.status = 'aberta'
+     and a.setor_5s_id in (
+       select c.id from relatorio_chao_setor_5s c where c.setor_avaliacao_id = p_relatorio_setor_id
+     );
+
   delete from relatorio_chao_setor_5s where setor_avaliacao_id = p_relatorio_setor_id;
   update relatorio_chao_setores set
     nota = null,
@@ -3452,6 +3582,144 @@ end $$;
 
 revoke execute on function marcar_setor_nao_inspecionado(uuid, text) from public, anon;
 grant execute on function marcar_setor_nao_inspecionado(uuid, text) to authenticated;
+
+-- --- plano de ação -----------------------------------------------------
+-- Abre uma ação avulsa (a tela de Ações do 5S) ou reaproveita a que já
+-- existe pro mesmo item do checklist.
+create or replace function criar_acao_chao(
+  p_unidade_id    uuid,
+  p_descricao     text,
+  p_relatorio_id  uuid default null,
+  p_setor_5s_id   uuid default null,
+  p_lancamento_id uuid default null,
+  p_setor_id      uuid default null,
+  p_quadrante     text default null,
+  p_prioridade    prioridade_nivel default 'media',
+  p_prazo         date default null,
+  p_responsavel_id uuid default null
+)
+returns table(id uuid, mensagem text)
+language plpgsql security definer set search_path = public as $$
+declare
+  v_id uuid;
+begin
+  if not eh_tecnico_ou_gestor() then
+    return query select null::uuid, 'Sem permissão pra abrir ação.'::text;
+    return;
+  end if;
+  if nullif(btrim(coalesce(p_descricao, '')), '') is null then
+    return query select null::uuid, 'Descreva o que precisa ser feito.'::text;
+    return;
+  end if;
+  if p_prazo is not null and p_prazo < current_date then
+    return query select null::uuid, 'O prazo não pode ser numa data que já passou.'::text;
+    return;
+  end if;
+
+  insert into acoes_chao (
+    unidade_id, relatorio_id, setor_5s_id, lancamento_id, setor_id, quadrante,
+    descricao, prioridade, prazo, responsavel_id, criado_por
+  ) values (
+    p_unidade_id, p_relatorio_id, p_setor_5s_id, p_lancamento_id, p_setor_id,
+    nullif(btrim(coalesce(p_quadrante, '')), ''),
+    btrim(p_descricao), coalesce(p_prioridade, 'media'), p_prazo, p_responsavel_id, auth.uid()
+  )
+  -- corrige a ação viva do mesmo item; ação já fechada é histórico e não
+  -- entra no índice, então um problema que voltou abre ação nova
+  on conflict (setor_5s_id) where status in ('aberta','em_andamento') do update set
+    descricao = excluded.descricao,
+    prioridade = excluded.prioridade,
+    prazo = excluded.prazo,
+    responsavel_id = excluded.responsavel_id,
+    quadrante = excluded.quadrante
+  returning acoes_chao.id into v_id;
+
+  return query select v_id, null::text;
+end $$;
+
+revoke execute on function criar_acao_chao(uuid, text, uuid, uuid, uuid, uuid, text, prioridade_nivel, date, uuid) from public, anon;
+grant execute on function criar_acao_chao(uuid, text, uuid, uuid, uuid, uuid, text, prioridade_nivel, date, uuid) to authenticated;
+
+-- Conclui pedindo o que aconteceu e, de preferência, a foto do depois.
+create or replace function concluir_acao_chao(
+  p_acao_id       uuid,
+  p_observacao    text default null,
+  p_evidencia_url text default null
+)
+returns table(id uuid, mensagem text)
+language plpgsql security definer set search_path = public as $$
+begin
+  if not eh_tecnico_ou_gestor() then
+    return query select null::uuid, 'Sem permissão.'::text;
+    return;
+  end if;
+  if not exists (select 1 from acoes_chao where acoes_chao.id = p_acao_id) then
+    return query select null::uuid, 'Ação não encontrada.'::text;
+    return;
+  end if;
+  -- concluir duas vezes reescreveria quem concluiu e quando; o primeiro
+  -- registro é o que vale
+  if exists (select 1 from acoes_chao where acoes_chao.id = p_acao_id and acoes_chao.status = 'concluida') then
+    return query select null::uuid, 'Essa ação já foi concluída.'::text;
+    return;
+  end if;
+
+  update acoes_chao set
+    status = 'concluida',
+    observacao_conclusao = nullif(btrim(coalesce(p_observacao, '')), ''),
+    evidencia_url = nullif(btrim(coalesce(p_evidencia_url, '')), ''),
+    concluida_em = now(),
+    concluida_por = auth.uid()
+  where acoes_chao.id = p_acao_id;
+
+  return query select p_acao_id, null::text;
+end $$;
+
+revoke execute on function concluir_acao_chao(uuid, text, text) from public, anon;
+grant execute on function concluir_acao_chao(uuid, text, text) to authenticated;
+
+-- Edita o que dá pra editar. Concluir não passa por aqui de propósito:
+-- lá se pede evidência, aqui não.
+create or replace function atualizar_acao_chao(
+  p_acao_id        uuid,
+  p_descricao      text default null,
+  p_prioridade     prioridade_nivel default null,
+  p_prazo          date default null,
+  p_responsavel_id uuid default null,
+  p_status         status_acao_chao default null,
+  p_motivo         text default null
+)
+returns table(id uuid, mensagem text)
+language plpgsql security definer set search_path = public as $$
+begin
+  if not eh_tecnico_ou_gestor() then
+    return query select null::uuid, 'Sem permissão.'::text;
+    return;
+  end if;
+  if p_status = 'concluida' then
+    return query select null::uuid, 'Pra concluir use a tela de conclusão (ela pede a evidência).'::text;
+    return;
+  end if;
+  if p_status = 'cancelada' and nullif(btrim(coalesce(p_motivo, '')), '') is null then
+    return query select null::uuid, 'Cancelar exige motivo.'::text;
+    return;
+  end if;
+
+  update acoes_chao set
+    descricao = coalesce(nullif(btrim(coalesce(p_descricao, '')), ''), descricao),
+    prioridade = coalesce(p_prioridade, prioridade),
+    prazo = coalesce(p_prazo, prazo),
+    responsavel_id = coalesce(p_responsavel_id, responsavel_id),
+    status = coalesce(p_status, status),
+    observacao_conclusao = case
+      when p_status = 'cancelada' then btrim(p_motivo) else observacao_conclusao end
+  where acoes_chao.id = p_acao_id;
+
+  return query select p_acao_id, null::text;
+end $$;
+
+revoke execute on function atualizar_acao_chao(uuid, text, prioridade_nivel, date, uuid, status_acao_chao, text) from public, anon;
+grant execute on function atualizar_acao_chao(uuid, text, prioridade_nivel, date, uuid, status_acao_chao, text) to authenticated;
 
 -- Pesagem manual de bigbag: cria (ou usa) o bigbag pela identificação,
 -- registra a pesagem e, se resultar em peso líquido/gerado, já cria o
@@ -3851,6 +4119,43 @@ join relatorios_chao r on r.id = s.relatorio_id;
 grant select on vw_relatorio_chao_setor_5s to authenticated;
 revoke all on vw_relatorio_chao_setor_5s from anon;
 
+-- --- plano de ação, já com os nomes e o atraso calculado ---------------
+-- dias_atraso sai do banco e não da tela porque "hoje" tem que ser o hoje
+-- da fábrica (o banco está em America/Fortaleza) e não o do celular de
+-- quem abriu a tela. Ação concluída ou cancelada nunca aparece atrasada:
+-- cobrar o que já foi resolvido é o jeito mais rápido de fazer o pessoal
+-- parar de olhar a lista.
+create or replace view vw_acoes_chao with (security_invoker = on) as
+select
+  a.id, a.unidade_id, a.relatorio_id, a.setor_5s_id, a.lancamento_id, a.setor_id,
+  a.quadrante, a.descricao, a.prioridade, a.prazo, a.responsavel_id, a.status,
+  a.observacao_conclusao, a.evidencia_url, a.concluida_em, a.concluida_por,
+  a.criado_em, a.criado_por,
+  u.nome  as unidade_nome,
+  st.nome as setor_nome,
+  p.nome  as responsavel_nome,
+  pc.nome as concluida_por_nome,
+  r.numero as relatorio_numero,
+  r.data   as relatorio_data,
+  c5.item     as item_5s,
+  c5.resposta as resposta_5s,
+  c5.descricao_problema,
+  case
+    when a.status in ('concluida','cancelada') then null::int
+    when a.prazo is null then null::int
+    else current_date - a.prazo
+  end as dias_atraso
+from acoes_chao a
+join unidades u on u.id = a.unidade_id
+left join setores st on st.id = a.setor_id
+left join perfis p on p.id = a.responsavel_id
+left join perfis pc on pc.id = a.concluida_por
+left join relatorios_chao r on r.id = a.relatorio_id
+left join relatorio_chao_setor_5s c5 on c5.id = a.setor_5s_id;
+
+grant select on vw_acoes_chao to authenticated;
+revoke all on vw_acoes_chao from anon;
+
 -- --- RLS ----------------------------------------------------------------
 
 alter table relatorios_chao          enable row level security;
@@ -3862,6 +4167,7 @@ alter table residuo_medicoes         enable row level security;
 alter table residuo_bigbags          enable row level security;
 alter table residuo_bigbag_pesagens  enable row level security;
 alter table relatorio_chao_midias    enable row level security;
+alter table acoes_chao               enable row level security;
 alter table relatorio_chao_producao  enable row level security;
 alter table relatorio_chao_historico enable row level security;
 alter table metas_chao               enable row level security;
@@ -3908,6 +4214,16 @@ create policy rel_chao_setor_5s_wri on relatorio_chao_setor_5s for all to authen
   with check (pode_editar_relatorio_chao(
     (select relatorio_id from relatorio_chao_setores where id = setor_avaliacao_id)
   ));
+
+-- A ação não morre junto com o relatório: ela continua viva depois que o
+-- relatório do dia é concluído — é justamente isso que faz o ciclo fechar.
+-- Por isso aqui a regra é papel, não "relatório ainda aberto".
+drop policy if exists acoes_chao_sel on acoes_chao;
+create policy acoes_chao_sel on acoes_chao for select to authenticated
+  using (eh_tecnico_ou_gestor());
+drop policy if exists acoes_chao_wri on acoes_chao;
+create policy acoes_chao_wri on acoes_chao for all to authenticated
+  using (eh_tecnico_ou_gestor()) with check (eh_tecnico_ou_gestor());
 
 drop policy if exists residuo_lanc_sel on residuo_lancamentos;
 create policy residuo_lanc_sel on residuo_lancamentos for select to authenticated
@@ -3975,7 +4291,8 @@ create policy metas_chao_wri on metas_chao for all to authenticated
 -- ninguém anônimo enxerga nada deste módulo (o operador do QR não participa)
 revoke all on relatorios_chao, relatorio_chao_setores, relatorio_chao_setor_5s, materiais_residuo,
   residuo_lancamentos, residuo_medicoes, residuo_bigbags, residuo_bigbag_pesagens,
-  relatorio_chao_midias, relatorio_chao_producao, relatorio_chao_historico, metas_chao
+  relatorio_chao_midias, relatorio_chao_producao, relatorio_chao_historico, metas_chao,
+  acoes_chao
   from anon;
 
 -- --- materiais iniciais ---------------------------------------------------

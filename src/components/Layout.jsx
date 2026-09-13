@@ -3,7 +3,7 @@ import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Package, ClipboardList, Inbox, Boxes, Truck,
   Menu, X, LogOut, CalendarClock, LayoutGrid, MonitorPlay, BellRing, FileSpreadsheet, Moon, Sun,
-  KeyRound, Recycle, ClipboardCheck,
+  KeyRound, Recycle, ClipboardCheck, ListChecks,
 } from 'lucide-react'
 import { useAuth } from '../hooks/useAuth'
 import { useTabela } from '../hooks/useDados'
@@ -45,6 +45,7 @@ const GRUPOS = [
     titulo: 'Chão de fábrica',
     itens: [
       { para: '/5s', rotulo: '5S', icone: ClipboardCheck },
+      { para: '/5s/acoes', rotulo: 'Ações do 5S', icone: ListChecks, contador: 'acoes' },
       { para: '/desperdicios', rotulo: 'Desperdícios', icone: Recycle },
     ],
   },
@@ -66,11 +67,18 @@ function Contadores() {
   })
   const os = useTabela('vw_kpi_os_atrasadas', { select: 'id' })
   const estoque = useTabela('vw_kpi_estoque_baixo', { select: 'estoque_id' })
+  // Só as atrasadas viram número vermelho no menu: pendência dentro do
+  // prazo não é cobrança, é trabalho combinado.
+  const acoes = useTabela('vw_acoes_chao', {
+    select: 'id, status, dias_atraso',
+    filtros: [['status', 'in', ['aberta', 'em_andamento']]],
+  })
 
   return {
     solicitacoes: solicitacoes.data?.length || 0,
     os: os.data?.length || 0,
     estoque: estoque.data?.length || 0,
+    acoes: (acoes.data || []).filter((a) => a.dias_atraso != null && a.dias_atraso > 0).length,
   }
 }
 

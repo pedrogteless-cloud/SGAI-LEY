@@ -3,15 +3,18 @@ import { Link } from 'react-router-dom'
 import { ClipboardCheck, ArrowRight } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../hooks/useAuth'
-import { useTabela, useUnidades, useInvalidar } from '../hooks/useDados'
+import { useTabela, useUnidades, useTecnicos, useInvalidar } from '../hooks/useDados'
 import { numero } from '../lib/format'
 import { hojeISO } from '../lib/tempo'
-import { ITENS_5S, RESPOSTAS_5S, M_STATUS_CHAO, corDaNota5s, labelDaNota5s } from '../lib/constants'
+import {
+  ITENS_5S, RESPOSTAS_5S, PRIORIDADES_ACAO, M_STATUS_CHAO, corDaNota5s, labelDaNota5s,
+} from '../lib/constants'
 import {
   Botao, Cartao, CartaoTitulo, Campo, Entrada, Area, Selecao, Etiqueta, Carregando, Vazio,
   Modal, Erro, useAviso,
 } from '../components/ui'
 import GaleriaFotos from '../components/GaleriaFotos'
+import BlocoAcao5S from '../components/BlocoAcao5S'
 
 /**
  * Tela própria do checklist 5S — separada da tela de Desperdícios de
@@ -56,6 +59,15 @@ export default function Chao5S() {
     filtros: [['relatorio_id', 'eq', relatorioAtivo?.id]],
     ativo: !!relatorioAtivo?.id,
   })
+  // Ações já abertas a partir desse relatório: servem pra reabrir o
+  // checklist já com quem resolve e até quando preenchidos, em vez de a
+  // pessoa achar que não salvou e cadastrar a mesma ação de novo.
+  const acoesDoRelatorio = useTabela('vw_acoes_chao', {
+    select: 'id, setor_5s_id, responsavel_id, prazo, prioridade, status',
+    filtros: [['relatorio_id', 'eq', relatorioAtivo?.id]],
+    ativo: !!relatorioAtivo?.id,
+  })
+  const tecnicos = useTecnicos()
 
   const [setorEditando, setSetorEditando] = useState(null)
   const [modalAberto, setModalAberto] = useState(false)
@@ -63,7 +75,10 @@ export default function Chao5S() {
   const [enviando, setEnviando] = useState(false)
 
   function respostaVazia5s() {
-    return { resposta: '', descricao_problema: '', quadrante: '', sugestao: '', fotos: [] }
+    return {
+      resposta: '', descricao_problema: '', quadrante: '', sugestao: '', fotos: [],
+      acao_responsavel_id: '', acao_prazo: '', acao_prioridade: '',
+    }
   }
   function campoLimpezaVazio() {
     return {
@@ -76,20 +91,28 @@ export default function Chao5S() {
 
   const abrirLimpeza = (s) => {
     const existentes = (setor5s.data || []).filter((x) => x.setor_avaliacao_id === s.id)
+    const acaoPorItem5s = Object.fromEntries(
+      (acoesDoRelatorio.data || [])
+        .filter((a) => a.setor_5s_id && ['aberta', 'em_andamento'].includes(a.status))
+        .map((a) => [a.setor_5s_id, a])
+    )
     const respostas = Object.fromEntries(
       ITENS_5S.map((i) => {
         const ex = existentes.find((x) => x.item === i.item)
+        if (!ex) return [i.item, respostaVazia5s()]
+        const acao = acaoPorItem5s[ex.id]
         return [
           i.item,
-          ex
-            ? {
-                resposta: ex.resposta,
-                descricao_problema: ex.descricao_problema || '',
-                quadrante: ex.quadrante || '',
-                sugestao: ex.sugestao || '',
-                fotos: [],
-              }
-            : respostaVazia5s(),
+          {
+            resposta: ex.resposta,
+            descricao_problema: ex.descricao_problema || '',
+            quadrante: ex.quadrante || '',
+            sugestao: ex.sugestao || '',
+            fotos: [],
+            acao_responsavel_id: acao?.responsavel_id || '',
+            acao_prazo: acao?.prazo || '',
+            acao_prioridade: acao?.prioridade || '',
+          },
         ]
       })
     )
@@ -148,12 +171,20 @@ export default function Chao5S() {
     setEnviando(true)
     const payload = ITENS_5S.map((i) => {
       const r = formLimpeza.respostas[i.item]
+      // A ação só nasce quando alguém assume ou quando tem data. Criar
+      // uma ação sem dono e sem prazo pra todo item com ressalva só
+      // encheria o plano de ação de linha que ninguém vai fechar.
+      const geraAcao =
+        ['parcial', 'nao_conforme'].includes(r.resposta) && !!(r.acao_responsavel_id || r.acao_prazo)
       return {
         item: i.item,
         resposta: r.resposta,
         descricao_problema: r.descricao_problema.trim() || null,
         quadrante: r.quadrante.trim() || null,
         sugestao: r.sugestao.trim() || null,
+        acao_responsavel_id: geraAcao ? r.acao_responsavel_id || null : null,
+        acao_prazo: geraAcao ? r.acao_prazo || null : null,
+        acao_prioridade: geraAcao ? r.acao_prioridade || null : null,
       }
     })
     const { data: linhas, error } = await supabase.rpc('responder_checklist_5s', {
@@ -186,7 +217,7 @@ export default function Chao5S() {
     setEnviando(false)
     setModalAberto(false)
     avisar('Avaliação salva.')
-    invalidar('relatorio_chao_setores', 'vw_relatorio_chao_setor_5s')
+    invalidar('relatorio_chao_setores', 'vw_relatorio_chao_setor_5s', 'vw_acoes_chao')
   }
 
   return (
@@ -260,6 +291,10 @@ export default function Chao5S() {
               {setoresRel.data.map((s) => {
                 const respostas5s = (setor5s.data || []).filter((x) => x.setor_avaliacao_id === s.id)
                 const comProblema = respostas5s.filter((x) => x.resposta === 'parcial' || x.resposta === 'nao_conforme')
+                const ids5s = new Set(respostas5s.map((x) => x.id))
+                const acoesVivas = (acoesDoRelatorio.data || []).filter(
+                  (a) => ids5s.has(a.setor_5s_id) && ['aberta', 'em_andamento'].includes(a.status)
+                )
                 return (
                   <li key={s.id} className="flex items-center justify-between gap-3 px-4 py-3">
                     <div className="min-w-0">
@@ -271,6 +306,17 @@ export default function Chao5S() {
                           {comProblema.length === 0
                             ? 'Tudo conforme no checklist'
                             : `${comProblema.length} item(ns) com ressalva no 5S`}
+                          {/* O que fecha o ciclo aparece aqui do lado do que
+                              abriu: quem olha o setor vê na mesma linha se a
+                              ressalva já virou conserto com dono. */}
+                          {acoesVivas.length > 0 && (
+                            <>
+                              {' · '}
+                              <Link to="/5s/acoes" className="font-medium text-sky-600 hover:text-sky-700">
+                                {acoesVivas.length} ação(ões) em aberto
+                              </Link>
+                            </>
+                          )}
                         </p>
                       ) : (
                         <p className="text-xs text-slate-400">Ainda não avaliado</p>
@@ -395,6 +441,11 @@ export default function Chao5S() {
                             aoMudar={(novo) => mudarResposta5s(i.item, 'fotos', novo)}
                           />
                         </Campo>
+                        <BlocoAcao5S
+                          resposta={r}
+                          pessoas={tecnicos.data || []}
+                          aoMudar={(campo, valor) => mudarResposta5s(i.item, campo, valor)}
+                        />
                       </div>
                     )}
                   </div>
