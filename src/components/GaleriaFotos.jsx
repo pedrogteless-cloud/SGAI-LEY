@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { Camera, Trash2, X } from 'lucide-react'
+import { Camera, Images, Trash2, X } from 'lucide-react'
 import { enviarFoto, descartarFotos } from '../lib/fotos'
 
 /**
@@ -20,18 +20,35 @@ import { enviarFoto, descartarFotos } from '../lib/fotos'
  * `maximo`: quantas cabem. Existe pro caso em que o banco guarda uma só
  * (a evidência de conclusão da ação): deixar escolher cinco e gravar a
  * primeira seria perder quatro sem avisar.
+ *
+ * Tirar e escolher são dois botões, não um. O `capture` do HTML abre a
+ * câmera DIRETO e pula a galeria — então, com um botão só, quem já tinha
+ * a foto no celular (tirou antes, recebeu no zap) simplesmente não
+ * conseguia anexar. No computador só aparece "Escolher": lá `capture` não
+ * quer dizer nada e um botão de câmera que abre seletor de arquivo seria
+ * mentira.
  */
+// Celular/tablet: tem câmera pra apontar pro problema. Num desktop o
+// `capture` é ignorado pelo navegador, então nem oferecemos.
+const temCamera = () =>
+  typeof window !== 'undefined' &&
+  typeof window.matchMedia === 'function' &&
+  window.matchMedia('(pointer: coarse)').matches
+
 export default function GaleriaFotos({ valor = [], aoMudar, aoRemover, maximo, desabilitado = false }) {
   const [enviando, setEnviando] = useState(false)
   const [erro, setErro] = useState(null)
   const [ampliada, setAmpliada] = useState(null)
+  const [naCamera] = useState(temCamera)
   const arquivo = useRef(null)
+  const camera = useRef(null)
   // Só as que subiram nesta sessão da galeria podem ser apagadas do
   // bucket na remoção: as que vieram prontas do banco são do pai.
   const subidasAqui = useRef(new Set())
 
   const lotado = maximo != null && valor.length >= maximo
   const escolher = () => arquivo.current?.click()
+  const fotografar = () => camera.current?.click()
 
   const aoSelecionar = async (e) => {
     const arquivos = Array.from(e.target.files || [])
@@ -74,12 +91,21 @@ export default function GaleriaFotos({ valor = [], aoMudar, aoRemover, maximo, d
 
   return (
     <div className="space-y-2">
+      {/* Dois inputs, não um: o de cima abre a galeria (sem `capture`), o
+          de baixo abre a câmera. O mesmo input não faz as duas coisas. */}
       <input
         ref={arquivo}
         type="file"
         accept="image/*"
-        capture="environment"
         multiple={maximo !== 1}
+        onChange={aoSelecionar}
+        className="hidden"
+      />
+      <input
+        ref={camera}
+        type="file"
+        accept="image/*"
+        capture="environment"
         onChange={aoSelecionar}
         className="hidden"
       />
@@ -109,21 +135,29 @@ export default function GaleriaFotos({ valor = [], aoMudar, aoRemover, maximo, d
         ))}
 
         {!desabilitado && !lotado && (
-          <button
-            type="button"
-            onClick={escolher}
-            disabled={enviando}
-            className="flex size-20 shrink-0 flex-col items-center justify-center gap-1 rounded-lg
-              border-2 border-dashed border-slate-300 text-slate-400 transition
-              hover:border-sky-400 hover:text-sky-600 disabled:opacity-50"
-          >
-            <Camera size={20} />
-            <span className="text-[10px] font-medium">{enviando ? 'Enviando…' : 'Foto'}</span>
-          </button>
+          <>
+            {naCamera && (
+              <BotaoFoto icone={Camera} rotulo="Tirar" onClick={fotografar} enviando={enviando} />
+            )}
+            <BotaoFoto
+              icone={Images}
+              rotulo={naCamera ? 'Escolher' : 'Foto'}
+              onClick={escolher}
+              enviando={enviando}
+            />
+          </>
         )}
       </div>
 
       {erro && <p className="text-xs text-red-600">{erro}</p>}
+
+      {/* Só na primeira vez: quem já anexou uma foto entendeu a diferença,
+          e duas linhas cinzas empilhadas viram ruído. */}
+      {naCamera && !desabilitado && !lotado && valor.length === 0 && (
+        <p className="text-[11px] text-slate-400">
+          Tirar abre a câmera; escolher pega uma foto que já está no celular.
+        </p>
+      )}
 
       {ampliada && (
         <div
@@ -140,5 +174,21 @@ export default function GaleriaFotos({ valor = [], aoMudar, aoRemover, maximo, d
         </div>
       )}
     </div>
+  )
+}
+
+function BotaoFoto({ icone: Icone, rotulo, onClick, enviando }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={enviando}
+      className="flex size-20 shrink-0 flex-col items-center justify-center gap-1 rounded-lg
+        border-2 border-dashed border-slate-300 text-slate-400 transition
+        hover:border-sky-400 hover:text-sky-600 disabled:opacity-50"
+    >
+      <Icone size={20} />
+      <span className="text-[10px] font-medium">{enviando ? 'Enviando…' : rotulo}</span>
+    </button>
   )
 }

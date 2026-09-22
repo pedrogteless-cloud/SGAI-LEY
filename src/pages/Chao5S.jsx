@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ClipboardCheck, ArrowRight } from 'lucide-react'
+import { ClipboardCheck, ArrowRight, Image as IconeFoto } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../hooks/useAuth'
 import { useTabela, useUnidades, useTecnicos, useInvalidar } from '../hooks/useDados'
@@ -69,6 +69,16 @@ export default function Chao5S() {
     ativo: !!relatorioAtivo?.id,
   })
   const tecnicos = useTecnicos()
+  // Fotos já salvas. As do setor inteiro são as que NÃO apontam pra um
+  // item do checklist — é o que separa "foto do setor" de "foto do
+  // problema do Seiri".
+  const midias = useTabela('relatorio_chao_midias', {
+    select: 'id, setor_avaliacao_id, setor_5s_id, url, storage_path',
+    filtros: [['relatorio_id', 'eq', relatorioAtivo?.id]],
+    ativo: !!relatorioAtivo?.id,
+  })
+  const fotosSalvasDoSetor = (setorId) =>
+    (midias.data || []).filter((m) => m.setor_avaliacao_id === setorId && m.setor_5s_id == null)
 
   const [setorEditando, setSetorEditando] = useState(null)
   const [modalAberto, setModalAberto] = useState(false)
@@ -86,6 +96,10 @@ export default function Chao5S() {
       modo: 'checklist',
       respostas: Object.fromEntries(ITENS_5S.map((i) => [i.item, respostaVazia5s()])),
       justificativaSetor: '',
+      // Só as que subiram agora. As que já estão no banco vêm da consulta
+      // de mídias — misturar as duas no estado faria a tela apagar do
+      // bucket uma foto que outra pessoa já tinha salvo.
+      fotosSetor: [],
     }
   }
   const [formLimpeza, setFormLimpeza] = useState(campoLimpezaVazio())
@@ -93,7 +107,10 @@ export default function Chao5S() {
   // Fechar no Cancelar/X joga fora as fotos que subiram e não vão ser
   // usadas — senão cada desistência deixa arquivo órfão no bucket.
   const fecharModal = () => {
-    descartarFotos(ITENS_5S.flatMap((i) => formLimpeza.respostas[i.item]?.fotos || []))
+    descartarFotos([
+      ...ITENS_5S.flatMap((i) => formLimpeza.respostas[i.item]?.fotos || []),
+      ...(formLimpeza.fotosSetor || []),
+    ])
     setModalAberto(false)
   }
 
@@ -128,6 +145,7 @@ export default function Chao5S() {
       modo: s.nao_inspecionado ? 'nao_visitado' : 'checklist',
       respostas,
       justificativaSetor: s.justificativa_nao_inspecionado || '',
+      fotosSetor: [],
     })
     setSetorEditando(s)
     setErro(null)
@@ -139,6 +157,41 @@ export default function Chao5S() {
       ...f,
       respostas: { ...f.respostas, [item]: { ...f.respostas[item], [campo]: valor } },
     }))
+
+  /**
+   * Grava as fotos do setor inteiro: sem setor_5s_id, que é justamente o
+   * que as diferencia da foto de um item do checklist.
+   */
+  const gravarFotosDoSetor = async () => {
+    const novas = formLimpeza.fotosSetor || []
+    if (!novas.length) return { ok: true }
+    const { error } = await supabase.from('relatorio_chao_midias').insert(
+      novas.map((f) => ({
+        relatorio_id: relatorioAtivo.id,
+        setor_avaliacao_id: setorEditando.id,
+        url: f.url,
+        storage_path: f.storage_path ?? null,
+        mime_type: f.mime_type ?? null,
+        enviado_por: perfil?.id ?? null,
+      }))
+    )
+    return error ? { ok: false, erro: error.message } : { ok: true }
+  }
+
+  const removerFotoDoSetor = async (foto) => {
+    // Sem id ainda não foi salva: sai da lista e do bucket, sem tocar no
+    // banco. Com id já é registro de alguém — apaga a linha primeiro e só
+    // then o arquivo.
+    if (!foto.id) {
+      setFormLimpeza((f) => ({ ...f, fotosSetor: (f.fotosSetor || []).filter((x) => x.url !== foto.url) }))
+      descartarFotos([foto])
+      return
+    }
+    const { error } = await supabase.from('relatorio_chao_midias').delete().eq('id', foto.id)
+    if (error) { avisar('Não deu pra remover essa foto.', 'erro'); return }
+    descartarFotos([foto])
+    invalidar('relatorio_chao_midias')
+  }
 
   const salvarLimpeza = async () => {
     setErro(null)
@@ -157,9 +210,17 @@ export default function Chao5S() {
       if (error) { setErro(new Error(error.message)); return }
       const linha = linhas?.[0]
       if (linha?.mensagem) { setErro(new Error(linha.mensagem)); return }
+      // A foto vale aqui também: portão fechado, obra na frente do setor —
+      // é a prova do motivo que a pessoa acabou de escrever.
+      const foto = await gravarFotosDoSetor()
+      if (!foto.ok) {
+        setErro(new Error('O setor foi marcado, mas a foto não ficou anexada. Abra de novo e anexe.'))
+        invalidar('relatorio_chao_setores', 'vw_relatorio_chao_setor_5s', 'relatorio_chao_midias')
+        return
+      }
       setModalAberto(false)
       avisar('Setor marcado como não visitado hoje.')
-      invalidar('relatorio_chao_setores', 'vw_relatorio_chao_setor_5s')
+      invalidar('relatorio_chao_setores', 'vw_relatorio_chao_setor_5s', 'relatorio_chao_midias')
       return
     }
 
@@ -210,7 +271,7 @@ export default function Chao5S() {
         .select('id, item')
         .eq('setor_avaliacao_id', setorEditando.id)
       const idPorItem = Object.fromEntries((itensSalvos || []).map((x) => [x.item, x.id]))
-      const midias = ITENS_5S.flatMap((i) =>
+      const midiasDosItens = ITENS_5S.flatMap((i) =>
         formLimpeza.respostas[i.item].fotos.map((f) => ({
           relatorio_id: relatorioAtivo.id,
           setor_avaliacao_id: setorEditando.id,
@@ -221,23 +282,31 @@ export default function Chao5S() {
           enviado_por: perfil?.id ?? null,
         }))
       )
-      if (midias.length) {
-        const { error: erroFoto } = await supabase.from('relatorio_chao_midias').insert(midias)
+      if (midiasDosItens.length) {
+        const { error: erroFoto } = await supabase.from('relatorio_chao_midias').insert(midiasDosItens)
         // A avaliação já está gravada; só o anexo falhou. Dizer isso é
         // melhor do que deixar a pessoa achar que a foto foi junto.
         if (erroFoto) {
           setEnviando(false)
           setErro(new Error('A avaliação foi salva, mas as fotos não ficaram anexadas. Abra o setor de novo e anexe.'))
-          invalidar('relatorio_chao_setores', 'vw_relatorio_chao_setor_5s', 'vw_acoes_chao')
+          invalidar('relatorio_chao_setores', 'vw_relatorio_chao_setor_5s', 'vw_acoes_chao', 'relatorio_chao_midias')
           return
         }
       }
     }
 
+    const fotoSetor = await gravarFotosDoSetor()
+    if (!fotoSetor.ok) {
+      setEnviando(false)
+      setErro(new Error('A avaliação foi salva, mas as fotos do setor não ficaram anexadas. Abra o setor de novo e anexe.'))
+      invalidar('relatorio_chao_setores', 'vw_relatorio_chao_setor_5s', 'vw_acoes_chao', 'relatorio_chao_midias')
+      return
+    }
+
     setEnviando(false)
     setModalAberto(false)
     avisar('Avaliação salva.')
-    invalidar('relatorio_chao_setores', 'vw_relatorio_chao_setor_5s', 'vw_acoes_chao')
+    invalidar('relatorio_chao_setores', 'vw_relatorio_chao_setor_5s', 'vw_acoes_chao', 'relatorio_chao_midias')
   }
 
   return (
@@ -315,6 +384,7 @@ export default function Chao5S() {
                 const acoesVivas = (acoesDoRelatorio.data || []).filter(
                   (a) => ids5s.has(a.setor_5s_id) && ['aberta', 'em_andamento'].includes(a.status)
                 )
+                const fotos = fotosSalvasDoSetor(s.id)
                 return (
                   <li key={s.id} className="flex items-center justify-between gap-3 px-4 py-3">
                     <div className="min-w-0">
@@ -340,6 +410,13 @@ export default function Chao5S() {
                         </p>
                       ) : (
                         <p className="text-xs text-slate-400">Ainda não avaliado</p>
+                      )}
+                      {/* Fica fora do if de cima porque vale nos três
+                          casos: avaliado, não visitado e ainda em branco. */}
+                      {fotos.length > 0 && (
+                        <p className="mt-0.5 flex items-center gap-1 text-[11px] text-slate-400">
+                          <IconeFoto size={11} /> {fotos.length} foto(s) do setor
+                        </p>
                       )}
                     </div>
                     <div className="flex shrink-0 items-center gap-2">
@@ -391,6 +468,30 @@ export default function Chao5S() {
               Não deu pra visitar hoje
             </button>
           </div>
+
+          {/* Vale nos dois modos: no checklist é a foto de como o setor
+              está; no "não deu pra visitar" é a prova do motivo. Fica
+              antes das perguntas porque é a primeira coisa que a pessoa
+              faz ao chegar no setor — aponta a câmera e fotografa. */}
+          <Campo
+            rotulo="Fotos do setor"
+            dica={
+              formLimpeza.modo === 'nao_visitado'
+                ? 'Opcional — uma foto do que impediu a visita vale mais que a explicação escrita'
+                : 'Opcional — como o setor está hoje, no geral'
+            }
+          >
+            <GaleriaFotos
+              valor={[
+                ...(setorEditando ? fotosSalvasDoSetor(setorEditando.id) : []),
+                ...(formLimpeza.fotosSetor || []),
+              ]}
+              aoMudar={(lista) =>
+                setFormLimpeza((f) => ({ ...f, fotosSetor: lista.filter((x) => !x.id) }))
+              }
+              aoRemover={removerFotoDoSetor}
+            />
+          </Campo>
 
           {formLimpeza.modo === 'nao_visitado' ? (
             <Campo rotulo="Por que não deu pra visitar esse setor hoje? *">

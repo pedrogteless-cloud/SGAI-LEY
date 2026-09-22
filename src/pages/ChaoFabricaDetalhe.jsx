@@ -84,6 +84,12 @@ export default function ChaoFabricaDetalhe() {
   const fotosGeraisData = (midiasRelatorio.data || []).filter(
     (m) => m.lancamento_id == null && m.setor_avaliacao_id == null
   )
+  // Foto do setor inteiro: aponta pro setor mas não pra um item do
+  // checklist. É o que a separa da foto do problema do Seiri.
+  const fotosSalvasDoSetor = (setorId) =>
+    (midiasRelatorio.data || []).filter(
+      (m) => m.setor_avaliacao_id === setorId && m.setor_5s_id == null
+    )
 
   const materiais = useMateriaisResiduo()
   const r = relatorio.data
@@ -159,6 +165,8 @@ export default function ChaoFabricaDetalhe() {
       modo: 'checklist', // 'checklist' | 'nao_visitado'
       respostas: Object.fromEntries(ITENS_5S.map((i) => [i.item, respostaVazia5s()])),
       justificativaSetor: '',
+      // Só as que subiram agora; as já salvas vêm de midiasRelatorio.
+      fotosSetor: [],
     }
   }
 
@@ -272,6 +280,7 @@ export default function ChaoFabricaDetalhe() {
       modo: s.nao_inspecionado ? 'nao_visitado' : 'checklist',
       respostas,
       justificativaSetor: s.justificativa_nao_inspecionado || '',
+      fotosSetor: [],
     })
     setSetorEditando(s)
     setErro(null)
@@ -283,6 +292,35 @@ export default function ChaoFabricaDetalhe() {
       ...f,
       respostas: { ...f.respostas, [item]: { ...f.respostas[item], [campo]: valor } },
     }))
+
+  /** Fotos do setor inteiro: sem setor_5s_id, que é o que as diferencia. */
+  const gravarFotosDoSetor = async () => {
+    const novas = formLimpeza.fotosSetor || []
+    if (!novas.length) return { ok: true }
+    const { error } = await supabase.from('relatorio_chao_midias').insert(
+      novas.map((f) => ({
+        relatorio_id: id,
+        setor_avaliacao_id: setorEditando.id,
+        url: f.url,
+        storage_path: f.storage_path ?? null,
+        mime_type: f.mime_type ?? null,
+        enviado_por: perfil?.id ?? null,
+      }))
+    )
+    return error ? { ok: false, erro: error.message } : { ok: true }
+  }
+
+  const removerFotoDoSetor = async (foto) => {
+    if (!foto.id) {
+      setFormLimpeza((f) => ({ ...f, fotosSetor: (f.fotosSetor || []).filter((x) => x.url !== foto.url) }))
+      descartarFotos([foto])
+      return
+    }
+    const { error } = await supabase.from('relatorio_chao_midias').delete().eq('id', foto.id)
+    if (error) { avisar('Não deu pra remover essa foto.', 'erro'); return }
+    descartarFotos([foto])
+    invalidar('relatorio_chao_midias')
+  }
 
   const salvarLimpeza = async () => {
     setErro(null)
@@ -301,9 +339,17 @@ export default function ChaoFabricaDetalhe() {
       if (error) { setErro(new Error(error.message)); return }
       const linha = linhas?.[0]
       if (linha?.mensagem) { setErro(new Error(linha.mensagem)); return }
+      // A foto vale aqui também: portão fechado, obra na frente do setor —
+      // é a prova do motivo que a pessoa acabou de escrever.
+      const fotoNaoVisitado = await gravarFotosDoSetor()
+      if (!fotoNaoVisitado.ok) {
+        setErro(new Error('O setor foi marcado, mas a foto não ficou anexada. Abra de novo e anexe.'))
+        invalidar(...INVALIDAR, 'vw_relatorio_chao_setor_5s', 'relatorio_chao_midias')
+        return
+      }
       setModal(null)
       avisar('Setor marcado como não visitado hoje.')
-      invalidar(...INVALIDAR, 'vw_relatorio_chao_setor_5s')
+      invalidar(...INVALIDAR, 'vw_relatorio_chao_setor_5s', 'relatorio_chao_midias')
       return
     }
 
@@ -377,6 +423,14 @@ export default function ChaoFabricaDetalhe() {
           return
         }
       }
+    }
+
+    const fotoSetor = await gravarFotosDoSetor()
+    if (!fotoSetor.ok) {
+      setEnviando(false)
+      setErro(new Error('A avaliação foi salva, mas as fotos do setor não ficaram anexadas. Abra o setor de novo e anexe.'))
+      invalidar(...INVALIDAR, 'vw_relatorio_chao_setor_5s', 'relatorio_chao_midias', 'vw_acoes_chao')
+      return
     }
 
     setEnviando(false)
@@ -456,7 +510,10 @@ export default function ChaoFabricaDetalhe() {
       setFotosNovas([])
     }
     if (modal === 'limpeza') {
-      descartarFotos(ITENS_5S.flatMap((i) => formLimpeza.respostas[i.item]?.fotos || []))
+      descartarFotos([
+        ...ITENS_5S.flatMap((i) => formLimpeza.respostas[i.item]?.fotos || []),
+        ...(formLimpeza.fotosSetor || []),
+      ])
     }
     setModal(null)
   }
@@ -470,7 +527,7 @@ export default function ChaoFabricaDetalhe() {
     tabelas: [
       {
         titulo: 'Limpeza por setor — checklist 5S',
-        colunas: ['Setor', 'Nota', 'Situação', 'Itens com ressalva'],
+        colunas: ['Setor', 'Nota', 'Situação', 'Itens com ressalva', 'Fotos'],
         linhas: (setoresRel.data || []).map((s) => {
           const respostas = (setor5s.data || []).filter((x) => x.setor_avaliacao_id === s.id)
           const comProblema = respostas.filter((x) => x.resposta === 'parcial' || x.resposta === 'nao_conforme')
@@ -481,6 +538,12 @@ export default function ChaoFabricaDetalhe() {
             comProblema.length === 0
               ? (s.nota != null ? 'Tudo conforme' : '—')
               : comProblema.map((x) => `${ITENS_5S.find((i) => i.item === x.item)?.titulo || x.item}: ${x.descricao_problema || ''}`).join(' · '),
+            // O PDF é papel: não dá pra colar a imagem, mas dizer que
+            // existe foto avisa quem for conferir depois no sistema.
+            (() => {
+              const n = fotosSalvasDoSetor(s.id).length
+              return n ? `${n} foto(s)` : '—'
+            })(),
           ]
         }),
       },
@@ -604,6 +667,7 @@ export default function ChaoFabricaDetalhe() {
                   {setoresRel.data.map((s) => {
                     const respostas5s = (setor5s.data || []).filter((x) => x.setor_avaliacao_id === s.id)
                     const comProblema = respostas5s.filter((x) => x.resposta === 'parcial' || x.resposta === 'nao_conforme')
+                    const fotos = fotosSalvasDoSetor(s.id)
                     return (
                     <li key={s.id} className="flex items-center justify-between gap-3 px-4 py-3">
                       <div className="min-w-0">
@@ -618,6 +682,13 @@ export default function ChaoFabricaDetalhe() {
                           </p>
                         ) : (
                           <p className="text-xs text-slate-400">Ainda não avaliado</p>
+                        )}
+                        {/* Fora do if de cima porque vale nos três casos:
+                            avaliado, não visitado e ainda em branco. */}
+                        {fotos.length > 0 && (
+                          <p className="mt-0.5 flex items-center gap-1 text-[11px] text-slate-400">
+                            <ImageIcon size={11} /> {fotos.length} foto(s) do setor
+                          </p>
                         )}
                       </div>
                       <div className="flex shrink-0 items-center gap-2">
@@ -933,6 +1004,28 @@ export default function ChaoFabricaDetalhe() {
               Não deu pra visitar hoje
             </button>
           </div>
+
+          {/* Vale nos dois modos: no checklist é como o setor está; no
+              "não deu pra visitar" é a prova do motivo. */}
+          <Campo
+            rotulo="Fotos do setor"
+            dica={
+              formLimpeza.modo === 'nao_visitado'
+                ? 'Opcional — uma foto do que impediu a visita vale mais que a explicação escrita'
+                : 'Opcional — como o setor está hoje, no geral'
+            }
+          >
+            <GaleriaFotos
+              valor={[
+                ...(setorEditando ? fotosSalvasDoSetor(setorEditando.id) : []),
+                ...(formLimpeza.fotosSetor || []),
+              ]}
+              aoMudar={(lista) =>
+                setFormLimpeza((f) => ({ ...f, fotosSetor: lista.filter((x) => !x.id) }))
+              }
+              aoRemover={removerFotoDoSetor}
+            />
+          </Campo>
 
           {formLimpeza.modo === 'nao_visitado' ? (
             <Campo rotulo="Por que não deu pra visitar esse setor hoje? *">
