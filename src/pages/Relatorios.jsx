@@ -1,8 +1,11 @@
 import { useEffect, useState } from 'react'
-import { FileSpreadsheet, Download, Printer } from 'lucide-react'
+import { FileSpreadsheet, Download, Printer, FileText, ClipboardCheck } from 'lucide-react'
 import { TIPOS_RELATORIO, gerarEBaixarRelatorio } from '../lib/relatoriosXlsx'
 import { buscarDadosImpressao } from '../lib/relatoriosImpressao'
+import { gerarEBaixarRelatorio5S } from '../lib/relatorio5sWord'
+import { dataPorExtenso } from '../lib/relatorio5s'
 import { hojeISO } from '../lib/tempo'
+import { useUnidades } from '../hooks/useDados'
 import { Botao, Cartao, CartaoTitulo, Campo, Selecao, Entrada, useAviso } from '../components/ui'
 import ImpressaoRelatorio from '../components/ImpressaoRelatorio'
 
@@ -19,7 +22,23 @@ export default function Relatorios() {
   const [gerando, setGerando] = useState(false)
   const [gerandoPdf, setGerandoPdf] = useState(false)
   const [dadosImpressao, setDadosImpressao] = useState(null)
+  const [data5s, setData5s] = useState(hojeISO())
+  const [unidade5s, setUnidade5s] = useState('')
+  const [gerandoWord, setGerandoWord] = useState(false)
+  const unidades = useUnidades()
   const avisar = useAviso()
+
+  const gerarWord5S = async () => {
+    setGerandoWord(true)
+    try {
+      const r = await gerarEBaixarRelatorio5S({ data: data5s, unidadeId: unidade5s || null })
+      avisar(`Relatório ${r.numero} gerado.`)
+    } catch (e) {
+      avisar(e.message, 'erro')
+    } finally {
+      setGerandoWord(false)
+    }
+  }
 
   const tipo = TIPOS_RELATORIO.find((t) => t.id === tipoId)
 
@@ -122,6 +141,47 @@ export default function Relatorios() {
         A planilha sai com as mesmas cores da tela e as abas certas pra cada necessidade. O PDF é a versão
         resumida pra imprimir ou anexar num e-mail — abre a caixa de impressão do navegador; escolha
         &ldquo;Salvar como PDF&rdquo; em vez de uma impressora.
+      </div>
+
+      {/* O relatório do 5S sai em Word, não em planilha: é documento de
+          leitura, assinado e arquivado — e quem recebe às vezes precisa
+          acrescentar uma observação antes de mandar adiante. */}
+      <Cartao className="max-w-xl">
+        <CartaoTitulo>Relatório do 5S em Word</CartaoTitulo>
+        <div className="space-y-4 p-4">
+          <p className="text-sm text-slate-500">
+            A inspeção de um dia específico, escrita setor por setor, com as fotos anexadas
+            embaixo do resumo de cada um. Cabeçalho preenchido sozinho com responsável,
+            horário de início, data e dia da semana.
+          </p>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Campo rotulo="Dia da inspeção" dica={data5s ? dataPorExtenso(data5s) : undefined}>
+              <Entrada type="date" value={data5s} max={hojeISO()} onChange={(e) => setData5s(e.target.value)} />
+            </Campo>
+            {(unidades.data || []).length > 1 && (
+              <Campo rotulo="Unidade">
+                <Selecao value={unidade5s} onChange={(e) => setUnidade5s(e.target.value)}>
+                  <option value="">Primeira do dia</option>
+                  {(unidades.data || []).map((u) => (
+                    <option key={u.id} value={u.id}>{u.nome}</option>
+                  ))}
+                </Selecao>
+              </Campo>
+            )}
+          </div>
+
+          <Botao onClick={gerarWord5S} carregando={gerandoWord} className="w-full">
+            <FileText size={16} /> Baixar relatório (.docx)
+          </Botao>
+        </div>
+      </Cartao>
+
+      <div className="flex max-w-xl items-start gap-2 rounded-lg bg-slate-50 px-3 py-2.5 text-xs text-slate-600 ring-1 ring-slate-200 ring-inset">
+        <ClipboardCheck size={15} className="mt-0.5 shrink-0" />
+        O documento cabe em três páginas: capa com o resumo do dia, depois cada setor com o
+        que foi encontrado. Quando há mais foto do que cabe, ele mostra as principais e diz
+        por escrito quantas ficaram no sistema — nunca some com elas calado.
       </div>
 
       <ImpressaoRelatorio dados={dadosImpressao} />
