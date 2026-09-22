@@ -1,7 +1,7 @@
 -- =====================================================================
 -- BASELINE CONSOLIDADA — não é uma das migrações originais aplicadas
 -- direto no Supabase; é um retrato do schema-supabase.sql atualizado
--- sempre que ele muda (última atualização: painéis montados pelo usuário).
+-- sempre que ele muda (última atualização: equipe, permissões e auditoria).
 -- =====================================================================
 -- Até 2026-09-08 o banco só existia "ao vivo" no Supabase: todo o schema
 -- foi aplicado migração por migração direto no projeto (mcp Supabase),
@@ -651,10 +651,160 @@ create table if not exists auditoria (
   dados_antes jsonb,
   dados_depois jsonb,
   autor_id    uuid,
-  criado_em   timestamptz not null default now()
+  criado_em   timestamptz not null default now(),
+  campos      text[]
 );
 
 create index if not exists idx_auditoria_tabela on auditoria(tabela, criado_em desc);
+create index if not exists idx_auditoria_criado on auditoria(criado_em desc);
+create index if not exists idx_auditoria_autor on auditoria(autor_id, criado_em desc);
+
+-- --- auditoria automática ----------------------------------------------
+-- A tabela acima existia desde o começo, mas sem gatilho nenhum: só duas
+-- RPCs escreviam nela à mão. Na prática, "quem mexeu nisso?" não tinha
+-- resposta — e a pergunta que mais importa (quem mudou o papel de quem)
+-- era justamente a que ninguém registrava.
+
+-- O que nunca pode ir pro log: pin_hash é credencial, e guardar o hash
+-- antigo no histórico daria a quem lê a auditoria um material que ele não
+-- deveria ter. atualizado_em sai porque muda em toda linha e só faz
+-- barulho.
+create or replace function fn_auditoria_limpa(dados jsonb)
+returns jsonb language sql immutable as $$
+  select case
+    when dados is null then null
+    else (dados - 'atualizado_em')
+         || case
+              when dados ? 'pin_hash'
+                then jsonb_build_object(
+                  'pin_hash',
+                  case when dados->>'pin_hash' is null then null else '(definido)' end
+                )
+              else '{}'::jsonb
+            end
+  end
+$$;
+
+create or replace function fn_auditoria_campos(antes jsonb, depois jsonb)
+returns text[] language sql immutable as $$
+  select coalesce(array_agg(chave order by chave), '{}')
+  from (
+    select key as chave from jsonb_each(coalesce(depois, '{}'::jsonb))
+    where antes is null or antes->key is distinct from depois->key
+    union
+    select key from jsonb_each(coalesce(antes, '{}'::jsonb))
+    where depois is null or antes->key is distinct from depois->key
+  ) x
+$$;
+
+create or replace function fn_auditar()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare
+  v_bruto_antes  jsonb;
+  v_bruto_depois jsonb;
+  v_campos text[];
+begin
+  if TG_OP = 'DELETE' then
+    v_bruto_antes  := to_jsonb(OLD) - 'atualizado_em';
+    v_bruto_depois := null;
+  elsif TG_OP = 'INSERT' then
+    v_bruto_antes  := null;
+    v_bruto_depois := to_jsonb(NEW) - 'atualizado_em';
+  else
+    v_bruto_antes  := to_jsonb(OLD) - 'atualizado_em';
+    v_bruto_depois := to_jsonb(NEW) - 'atualizado_em';
+    -- Update que não mudou nada de verdade não vira linha, senão um
+    -- gatilho de atualizado_em em cascata encheria a auditoria de ruído.
+    --
+    -- A comparação é no CRU de propósito: comparar o valor já mascarado
+    -- faria uma troca de PIN ficar idêntica dos dois lados e ser
+    -- descartada — o evento que mais interessa numa auditoria sumiria.
+    if v_bruto_antes = v_bruto_depois then
+      return NEW;
+    end if;
+  end if;
+
+  v_campos := fn_auditoria_campos(v_bruto_antes, v_bruto_depois);
+
+  insert into auditoria (tabela, registro_id, operacao, dados_antes, dados_depois, autor_id, campos)
+  values (
+    TG_TABLE_NAME,
+    coalesce(to_jsonb(NEW)->>'id', to_jsonb(OLD)->>'id'),
+    lower(TG_OP),
+    fn_auditoria_limpa(to_jsonb(OLD)),
+    case when TG_OP = 'DELETE' then null else fn_auditoria_limpa(to_jsonb(NEW)) end,
+    auth.uid(),
+    v_campos
+  );
+
+  return coalesce(NEW, OLD);
+end $$;
+
+revoke execute on function fn_auditar() from anon, authenticated, public;
+revoke execute on function fn_auditoria_limpa(jsonb) from anon, public;
+revoke execute on function fn_auditoria_campos(jsonb, jsonb) from anon;
+
+-- Onde o gatilho entra. A lista é escolhida, não automática: o que
+-- interessa é decisão de gente. Tabela de anexo, de medição e de
+-- histórico fica de fora — já é append-only, e duplicar isso aqui só
+-- faria o log crescer sem responder nada.
+do $$
+declare
+  t text;
+  alvos text[] := array[
+    'perfis',                -- o mais importante: mudança de permissão
+    'unidades', 'setores',
+    'ativos', 'categorias_ativo', 'quadros_eletricos',
+    'ordens_servico', 'solicitacoes_servico',
+    'pecas', 'estoque', 'fornecedores',
+    'planos_preventiva', 'plano_templates',
+    'relatorios_chao', 'relatorio_chao_setores', 'acoes_chao',
+    'materiais_residuo', 'metas_chao',
+    'configuracoes'
+  ];
+begin
+  foreach t in array alvos loop
+    execute format('drop trigger if exists trg_auditar_%1$s on %1$I', t);
+    execute format(
+      'create trigger trg_auditar_%1$s after insert or update or delete on %1$I
+         for each row execute function fn_auditar()', t
+    );
+  end loop;
+end $$;
+
+create or replace view vw_auditoria with (security_invoker = on) as
+select
+  a.id, a.criado_em, a.tabela, a.registro_id, a.operacao, a.autor_id,
+  -- Sem autor quer dizer que não veio de gente logada: RPC de QR sem
+  -- login, função no servidor ou manutenção direta no banco. Dizer
+  -- "Sistema" é mais honesto que deixar em branco e parecer defeito.
+  coalesce(p.nome, 'Sistema') as autor,
+  p.papel as autor_papel,
+  a.dados_antes, a.dados_depois,
+  coalesce(a.campos, fn_auditoria_campos(a.dados_antes, a.dados_depois)) as campos,
+  coalesce(
+    a.dados_depois->>'numero', a.dados_depois->>'nome',
+    a.dados_antes->>'numero',  a.dados_antes->>'nome',
+    a.registro_id
+  ) as rotulo
+from auditoria a
+left join perfis p on p.id = a.autor_id;
+
+alter table auditoria enable row level security;
+
+-- Auditoria é leitura de gestor. Técnico ver o histórico de mudança de
+-- permissão dos colegas não ajuda o trabalho dele.
+drop policy if exists auditoria_sel on auditoria;
+create policy auditoria_sel on auditoria for select to authenticated
+  using (eh_gestor());
+
+-- Ninguém escreve na auditoria pela API: quem escreve é o gatilho, que
+-- roda como definer. Sem política de insert/update/delete, ela é
+-- append-only na prática — inclusive pra quem é gestor.
+revoke all on auditoria from anon, authenticated;
+grant select on auditoria to authenticated;
+grant select on vw_auditoria to authenticated;
+revoke all on vw_auditoria from anon;
 
 -- =====================================================================
 -- 3. SEQUÊNCIAS DE NUMERAÇÃO
@@ -1871,13 +2021,19 @@ grant execute on function abrir_solicitacao_qr(uuid, text, text, boolean, text, 
 
 create or replace function fn_novo_usuario()
 returns trigger language plpgsql security definer set search_path = public as $$
+declare
+  v_unidade text := new.raw_user_meta_data->>'unidade_id';
 begin
-  insert into perfis (id, nome, email, papel)
+  insert into perfis (id, nome, email, papel, unidade_id, telefone)
   values (
     new.id,
     coalesce(new.raw_user_meta_data->>'nome', split_part(new.email, '@', 1)),
     new.email,
-    coalesce((new.raw_user_meta_data->>'papel')::papel_usuario, 'operador')
+    coalesce((new.raw_user_meta_data->>'papel')::papel_usuario, 'operador'),
+    -- Cast defensivo: metadado é texto livre, e um uuid torto aqui
+    -- derrubaria a criação do usuário inteira dentro do gatilho.
+    case when v_unidade ~ '^[0-9a-fA-F-]{36}$' then v_unidade::uuid else null end,
+    new.raw_user_meta_data->>'telefone'
   )
   on conflict (id) do nothing;
   return new;
@@ -1886,6 +2042,110 @@ end $$;
 drop trigger if exists trg_novo_usuario on auth.users;
 create trigger trg_novo_usuario after insert on auth.users
 for each row execute function fn_novo_usuario();
+
+/**
+ * Muda os dados e as permissões de alguém.
+ *
+ * As travas existem pra impedir o acidente que não tem conserto pela
+ * tela: o sistema ficar sem nenhum gestor ativo. A partir daí ninguém
+ * consegue promover ninguém, e só dá pra sair disso mexendo no banco
+ * direto — que é exatamente o que esta funcionalidade veio evitar.
+ *
+ * Quem CRIA usuário não é esta função: criar conta exige a chave de
+ * serviço do Supabase, então é uma função no servidor (edge function
+ * `criar-usuario`), que confere o papel de quem pediu antes de criar.
+ */
+create or replace function atualizar_perfil(
+  p_perfil_id  uuid,
+  p_nome       text default null,
+  p_papel      papel_usuario default null,
+  p_unidade_id uuid default null,
+  p_ativo      boolean default null,
+  p_custo_hora numeric default null,
+  p_telefone   text default null,
+  p_limpar_unidade boolean default false
+)
+returns table(id uuid, mensagem text)
+language plpgsql security definer set search_path = public as $$
+declare
+  v_alvo perfis%rowtype;
+  v_gestores_ativos int;
+begin
+  if not eh_gestor() then
+    return query select null::uuid, 'Só gestor pode mexer em permissão.'::text;
+    return;
+  end if;
+
+  select * into v_alvo from perfis where perfis.id = p_perfil_id;
+  if v_alvo.id is null then
+    return query select null::uuid, 'Pessoa não encontrada.'::text;
+    return;
+  end if;
+
+  -- Mexer no próprio papel é o caminho mais curto pra se trancar do lado
+  -- de fora: basta um clique errado pra deixar de ser gestor e não
+  -- conseguir voltar.
+  if p_perfil_id = auth.uid() and p_papel is not null and p_papel <> v_alvo.papel then
+    return query select null::uuid,
+      'Você não pode mudar o seu próprio papel. Peça pra outro gestor fazer isso.'::text;
+    return;
+  end if;
+  if p_perfil_id = auth.uid() and p_ativo = false then
+    return query select null::uuid, 'Você não pode desativar a sua própria conta.'::text;
+    return;
+  end if;
+
+  -- Tirar o último gestor (rebaixando ou desativando) deixaria o sistema
+  -- sem ninguém que possa arrumar isso pela tela.
+  if v_alvo.papel = 'gestor' and v_alvo.ativo
+     and ((p_papel is not null and p_papel <> 'gestor') or p_ativo = false) then
+    select count(*) into v_gestores_ativos
+      from perfis where papel = 'gestor' and ativo and perfis.id <> p_perfil_id;
+    if v_gestores_ativos = 0 then
+      return query select null::uuid,
+        'Este é o único gestor ativo. Promova outra pessoa antes de mudar este.'::text;
+      return;
+    end if;
+  end if;
+
+  if p_nome is not null and btrim(p_nome) = '' then
+    return query select null::uuid, 'O nome não pode ficar em branco.'::text;
+    return;
+  end if;
+  if p_custo_hora is not null and p_custo_hora < 0 then
+    return query select null::uuid, 'O custo por hora não pode ser negativo.'::text;
+    return;
+  end if;
+
+  update perfis set
+    nome       = coalesce(nullif(btrim(coalesce(p_nome, '')), ''), perfis.nome),
+    papel      = coalesce(p_papel, perfis.papel),
+    -- Sem unidade quer dizer "vê as duas": por isso limpar precisa de um
+    -- sinal próprio, senão o coalesce nunca deixaria voltar pra nulo.
+    unidade_id = case when p_limpar_unidade then null else coalesce(p_unidade_id, perfis.unidade_id) end,
+    ativo      = coalesce(p_ativo, perfis.ativo),
+    custo_hora = coalesce(p_custo_hora, perfis.custo_hora),
+    telefone   = coalesce(nullif(btrim(coalesce(p_telefone, '')), ''), perfis.telefone)
+  where perfis.id = p_perfil_id;
+
+  return query select p_perfil_id, null::text;
+end $$;
+
+revoke execute on function atualizar_perfil(uuid, text, papel_usuario, uuid, boolean, numeric, text, boolean) from public, anon;
+grant execute on function atualizar_perfil(uuid, text, papel_usuario, uuid, boolean, numeric, text, boolean) to authenticated;
+
+-- A equipe com o que a tela precisa, sem expor pin_hash pra ninguém.
+create or replace view vw_equipe with (security_invoker = on) as
+select
+  p.id, p.nome, p.email, p.telefone, p.papel, p.ativo, p.custo_hora,
+  p.unidade_id, u.nome as unidade_nome, p.criado_em,
+  (p.pin_hash is not null) as tem_pin,
+  (p.id = auth.uid()) as sou_eu
+from perfis p
+left join unidades u on u.id = p.unidade_id;
+
+grant select on vw_equipe to authenticated;
+revoke all on vw_equipe from anon;
 
 -- =====================================================================
 -- 8.0 CAMINHO CURTO: DESPESA POR MÁQUINA

@@ -27,6 +27,8 @@ import Acoes5S from './pages/Acoes5S'
 import Evolucao5S from './pages/Evolucao5S'
 import Paineis from './pages/Paineis'
 import PainelMontar from './pages/PainelMontar'
+import Equipe from './pages/Equipe'
+import Auditoria from './pages/Auditoria'
 import ChaoFabricaDetalhe from './pages/ChaoFabricaDetalhe'
 import MateriaisResiduo from './pages/MateriaisResiduo'
 
@@ -94,6 +96,8 @@ export default function App() {
                 <Route path="relatorios" element={<Relatorios />} />
                 <Route path="paineis" element={<Paineis />} />
                 <Route path="paineis/:id" element={<PainelMontar />} />
+                <Route path="equipe" element={<Equipe />} />
+                <Route path="auditoria" element={<Auditoria />} />
                 <Route path="desperdicios" element={<ChaoFabrica />} />
                 <Route path="desperdicios/materiais" element={<MateriaisResiduo />} />
                 <Route path="5s" element={<Chao5S />} />

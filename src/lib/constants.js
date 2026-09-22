@@ -193,8 +193,93 @@ export function labelDaNota5s(nota) {
   return 'Bom'
 }
 
+/* ------------------------------------------------- pessoas e permissões */
+
+// Os três papéis são o modelo de permissão de verdade: é o que o RLS do
+// banco enxerga. A descrição existe pra tela não obrigar ninguém a
+// adivinhar o que está entregando ao promover alguém.
+export const PAPEIS = [
+  {
+    valor: 'operador',
+    label: 'Operador',
+    cor: 'bg-slate-100 text-slate-600 ring-slate-200',
+    resumo: 'Avisa problema pelo QR da máquina',
+    pode: ['Abrir aviso lendo o QR, falando ou escrevendo'],
+    naoPode: ['Entrar no sistema', 'Ver custo de qualquer coisa'],
+  },
+  {
+    valor: 'tecnico',
+    label: 'Técnico',
+    cor: 'bg-sky-100 text-sky-700 ring-sky-200',
+    resumo: 'Executa o serviço e registra o que fez',
+    pode: [
+      'Entrar no sistema e ver as máquinas',
+      'Tocar serviço, marcar passo, lançar peça e hora',
+      'Fazer o checklist 5S e abrir ação',
+      'Montar painéis pra si',
+    ],
+    naoPode: ['Liberar custo', 'Mexer em permissão', 'Ver a auditoria'],
+  },
+  {
+    valor: 'gestor',
+    label: 'Gestor',
+    cor: 'bg-indigo-100 text-indigo-700 ring-indigo-200',
+    resumo: 'Tudo do técnico, mais dinheiro e pessoas',
+    pode: [
+      'Tudo o que o técnico faz',
+      'Lançar e liberar custo, planejar revisão',
+      'Criar pessoa e mudar permissão',
+      'Ver a auditoria de quem fez o quê',
+    ],
+    naoPode: ['Mudar o próprio papel nem se desativar (trava contra se trancar de fora)'],
+  },
+]
+
+// O que a auditoria mostra no lugar do nome cru da tabela.
+export const M_TABELA_AUDITORIA = {
+  perfis: 'Pessoa',
+  unidades: 'Unidade',
+  setores: 'Setor',
+  ativos: 'Máquina',
+  categorias_ativo: 'Categoria de máquina',
+  quadros_eletricos: 'Quadro elétrico',
+  ordens_servico: 'Serviço',
+  solicitacoes_servico: 'Aviso',
+  pecas: 'Peça',
+  estoque: 'Estoque',
+  fornecedores: 'Fornecedor',
+  planos_preventiva: 'Plano de revisão',
+  plano_templates: 'Modelo de revisão',
+  relatorios_chao: 'Relatório do chão de fábrica',
+  relatorio_chao_setores: 'Setor no relatório',
+  acoes_chao: 'Ação do 5S',
+  materiais_residuo: 'Material de resíduo',
+  metas_chao: 'Meta',
+  configuracoes: 'Configuração',
+  residuo_lancamentos: 'Lançamento de resíduo',
+}
+
+export const M_OPERACAO_AUDITORIA = {
+  insert: { label: 'Criou', cor: 'bg-emerald-100 text-emerald-700 ring-emerald-200' },
+  update: { label: 'Alterou', cor: 'bg-sky-100 text-sky-700 ring-sky-200' },
+  delete: { label: 'Apagou', cor: 'bg-red-100 text-red-700 ring-red-200' },
+  criar_usuario: { label: 'Criou pessoa', cor: 'bg-indigo-100 text-indigo-700 ring-indigo-200' },
+}
+
+// Nome de campo em português, pra auditoria não falar em snake_case.
+export const M_CAMPO_AUDITORIA = {
+  nome: 'nome', email: 'e-mail', telefone: 'telefone', papel: 'papel',
+  unidade_id: 'unidade', ativo: 'situação (ativo/inativo)', custo_hora: 'custo por hora',
+  pin_hash: 'PIN de campo', status: 'situação', prioridade: 'prioridade',
+  responsavel_id: 'responsável', prazo: 'prazo', descricao: 'descrição',
+  custo_total: 'custo total', quantidade: 'quantidade', nota: 'nota',
+  observacao: 'observação', criticidade: 'importância', situacao: 'situação',
+  setor_id: 'setor', categoria_id: 'categoria', titulo: 'título',
+}
+
 const mapa = (lista) => Object.fromEntries(lista.map((i) => [i.valor, i]))
 
+export const M_PAPEL = mapa(PAPEIS)
 export const M_CRITICIDADE = mapa(CRITICIDADES)
 export const M_SITUACAO = mapa(SITUACOES_ATIVO)
 export const M_STATUS_OS = mapa(STATUS_OS)

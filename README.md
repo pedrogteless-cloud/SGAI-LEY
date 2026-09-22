@@ -289,6 +289,49 @@ Duas coisas que o construtor não deixa fazer, e o porquê:
 Quando um bloco bate no teto de linhas, ele diz na cara — *"mostrando 2.000 de 7.431"* —
 em vez de desenhar um gráfico incompleto calado.
 
+## Equipe, permissões e auditoria
+
+Em **Equipe** (só gestor) dá pra criar pessoa, mudar papel, trocar de unidade e
+desativar quem saiu. A tela mostra por extenso o que cada papel entrega, porque
+"promover pra técnico" não diz nada pra quem está decidindo.
+
+Criar conta exige a chave de serviço do Supabase, e essa chave não pode existir no
+navegador — por isso a criação passa por uma função no servidor (`criar-usuario`),
+que confere no banco se quem pediu é gestor ativo antes de criar qualquer coisa.
+Confiar no que vem do navegador seria deixar qualquer um dizer "sou gestor".
+
+Três travas impedem o acidente sem conserto — ficar sem nenhum gestor:
+
+- Você não muda o seu próprio papel (peça a outro gestor)
+- Você não desativa a sua própria conta
+- O último gestor ativo não pode ser rebaixado nem desativado
+
+**Não existe apagar pessoa, só desativar.** Quem sai deixa serviço lançado, relatório
+assinado e histórico na auditoria; apagar o cadastro deixaria tudo isso órfão.
+
+### Auditoria
+
+**Auditoria** (só gestor, no banco também) responde quem fez o quê e a que horas.
+O registro é escrito por gatilho no banco — não pela tela —, então vale para
+qualquer caminho: pelo app, por RPC ou direto no SQL. Não existe editar nem apagar
+registro: auditoria que dá pra mexer não serve de auditoria.
+
+O que entra: cadastro, serviço, aviso, estoque, relatório do chão de fábrica, ação
+do 5S, meta e — o mais importante — mudança de permissão. Cada linha diz quem,
+o quê, onde e quais campos mudaram, com o de/para lado a lado.
+
+Dois cuidados que valem conhecer:
+
+- **PIN nunca vai pro log.** O campo aparece como `(definido)`, nunca o hash. Mas a
+  *troca* de PIN é registrada: a decisão de "isto mudou?" olha o valor cru, e só
+  a gravação usa o valor mascarado. Comparar o mascarado faria a troca de uma
+  credencial sumir do histórico, que é o oposto do que uma auditoria serve.
+- **Update que não mudou nada não vira linha**, senão o log viraria um muro de
+  "alterou" sem alteração nenhuma.
+
+Autor em branco aparece como **Sistema**: é o que veio do QR sem login, de função
+no servidor ou de manutenção direta no banco.
+
 ## Deploy
 
 Hospedado na Vercel. O `vercel.json` já redireciona todas as rotas para o `index.html`

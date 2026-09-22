@@ -4,6 +4,7 @@ import {
   LayoutDashboard, Package, ClipboardList, Inbox, Boxes, Truck,
   Menu, X, LogOut, CalendarClock, LayoutGrid, MonitorPlay, BellRing, FileSpreadsheet, Moon, Sun,
   KeyRound, Recycle, ClipboardCheck, ListChecks, TrendingUp, LayoutPanelLeft,
+  Users, History,
 } from 'lucide-react'
 import { useAuth } from '../hooks/useAuth'
 import { useTabela } from '../hooks/useDados'
@@ -58,6 +59,10 @@ const GRUPOS = [
       { para: '/alertas', rotulo: 'Alertas', icone: BellRing },
       { para: '/relatorios', rotulo: 'Relatórios', icone: FileSpreadsheet },
       { para: '/paineis', rotulo: 'Meus painéis', icone: LayoutPanelLeft },
+      // Só gestor: o banco também fecha essas duas, então esconder aqui é
+      // pra não oferecer porta que não abre — não é a trava em si.
+      { para: '/equipe', rotulo: 'Equipe', icone: Users, sóGestor: true },
+      { para: '/auditoria', rotulo: 'Auditoria', icone: History, sóGestor: true },
     ],
   },
 ]
@@ -124,7 +129,7 @@ export default function Layout() {
               {grupo.titulo}
             </p>
           )}
-          {grupo.itens.map(({ para, rotulo, icone: Icone, fim, contador }) => {
+          {grupo.itens.filter((item) => !item.sóGestor || ehGestor).map(({ para, rotulo, icone: Icone, fim, contador }) => {
             const n = contador ? contadores[contador] : 0
             return (
               <NavLink
