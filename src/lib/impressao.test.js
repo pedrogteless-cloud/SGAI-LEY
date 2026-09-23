@@ -49,3 +49,41 @@ describe('esperarImagens', () => {
     await expect(espera).resolves.toBeUndefined()
   })
 })
+
+describe('reduzirFotos', () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  // Sem conseguir reduzir (rede fora, formato estranho), a foto vai
+  // original: melhor pesada no papel do que faltando.
+  it('cai na URL original quando não consegue reduzir', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('sem rede')))
+    const { reduzirFotos } = await import('./impressao')
+    expect(await reduzirFotos(['a.jpg', 'b.jpg'])).toEqual({ 'a.jpg': 'a.jpg', 'b.jpg': 'b.jpg' })
+  })
+
+  it('não baixa a mesma foto duas vezes nem tenta URL vazia', async () => {
+    const buscar = vi.fn().mockResolvedValue({ ok: false })
+    vi.stubGlobal('fetch', buscar)
+    const { reduzirFotos } = await import('./impressao')
+    expect(await reduzirFotos(['a.jpg', 'a.jpg', null, ''])).toEqual({ 'a.jpg': 'a.jpg' })
+    expect(buscar).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('liberarFotos', () => {
+  it('só revoga as cópias blob, nunca a URL original', async () => {
+    // O jsdom não implementa revokeObjectURL; põe um no lugar só aqui.
+    const original = URL.revokeObjectURL
+    const revogar = vi.fn()
+    URL.revokeObjectURL = revogar
+    try {
+      const { liberarFotos } = await import('./impressao')
+      liberarFotos({ 'a.jpg': 'blob:x', 'b.jpg': 'b.jpg' })
+      liberarFotos(null)
+      expect(revogar).toHaveBeenCalledTimes(1)
+      expect(revogar).toHaveBeenCalledWith('blob:x')
+    } finally {
+      URL.revokeObjectURL = original
+    }
+  })
+})

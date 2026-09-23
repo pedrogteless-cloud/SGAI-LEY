@@ -22,12 +22,19 @@ export default function ImpressaoRelatorio({ dados }) {
           <h1>{dados.titulo}</h1>
           {dados.subtitulo && <p className="impressao-subtitulo">{dados.subtitulo}</p>}
         </div>
-        {dados.destaqueData && (
-          <div className="impressao-data">
-            <p className="impressao-data-dia">{dados.destaqueData.dia}</p>
-            <p className="impressao-data-numero">{dados.destaqueData.data}</p>
-          </div>
-        )}
+        <div className="impressao-data">
+          {dados.destaqueData && (
+            <>
+              <p className="impressao-data-dia">{dados.destaqueData.dia}</p>
+              <p className="impressao-data-numero">{dados.destaqueData.data}</p>
+            </>
+          )}
+          {/* No cabeçalho e não no pé: no pé, quando a última folha enchia,
+              essa linha sozinha abria uma folha nova quase em branco. */}
+          <p className="impressao-gerado">
+            gerado em {new Date().toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}
+          </p>
+        </div>
       </header>
 
       {dados.tabelas.map((t, i) => (
@@ -55,27 +62,39 @@ export default function ImpressaoRelatorio({ dados }) {
           <h2>{dados.tituloGalerias || 'Fotos'}</h2>
           {dados.galerias.map((g, gi) => (
             <div key={gi} className="impressao-galeria">
-              <h3>
-                {g.titulo}
-                {g.subtitulo && <span> · {g.subtitulo}</span>}
-              </h3>
-              <div className="impressao-fotos">
-                {g.fotos.map((f, fi) => (
-                  <figure key={fi}>
-                    <img src={f.url} alt="" />
-                    {f.legenda && <figcaption>{f.legenda}</figcaption>}
-                  </figure>
-                ))}
-              </div>
+              {emLinhas(g.fotos, 3).map((linha, li) => (
+                // Linha de 3 fotos = bloco indivisível pequeno. O título
+                // vai DENTRO da primeira linha: assim ele nunca fica
+                // sozinho no pé da folha com as fotos na folha seguinte.
+                <div key={li} className="impressao-fotos-linha">
+                  {li === 0 && (
+                    <h3>
+                      {g.titulo}
+                      {g.subtitulo && <span> · {g.subtitulo}</span>}
+                    </h3>
+                  )}
+                  <div className="impressao-fotos">
+                    {linha.map((f, fi) => (
+                      <figure key={fi}>
+                        <img src={f.url} alt="" />
+                        {f.legenda && <figcaption>{f.legenda}</figcaption>}
+                      </figure>
+                    ))}
+                  </div>
+                </div>
+              ))}
             </div>
           ))}
         </section>
       )}
 
-      <p className="impressao-rodape">
-        Gerado por SGAI em {new Date().toLocaleString('pt-BR')}
-      </p>
     </div>,
     document.body
   )
+}
+
+function emLinhas(lista, tamanho) {
+  const linhas = []
+  for (let i = 0; i < lista.length; i += tamanho) linhas.push(lista.slice(i, i + tamanho))
+  return linhas
 }

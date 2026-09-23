@@ -398,6 +398,15 @@ table th {
     inset: 0;
   }
 
+  /* O fundo cinza do app vazava pro papel onde a folha não cobria
+     (sobra da última página). Imprimindo, a página é branca. */
+  html:has(.so-impressao),
+  body:has(.so-impressao) {
+    background: #fff !important;
+    height: auto !important;
+    min-height: 0 !important;
+  }
+
   .etiqueta-folha {
     box-shadow: none !important;
   }
@@ -443,6 +452,8 @@ table th {
      folha procura — "isso é de qual dia?". */
   .impressao-data {
     margin-left: auto;
+    flex-shrink: 0;
+    white-space: nowrap;
     text-align: right;
     line-height: 1.05;
   }
@@ -456,6 +467,12 @@ table th {
   .impressao-data-numero {
     font-size: 13pt;
     font-weight: 700;
+  }
+  .impressao-gerado {
+    margin-top: 3px !important;
+    font-size: 6.5pt;
+    font-style: italic;
+    color: #64748b;
   }
 
   .impressao-secao { break-inside: avoid-page; margin-bottom: 16px; }
@@ -485,23 +502,33 @@ table th {
   .impressao-relatorio tbody tr:nth-child(even) { background: #f1f5f9; }
 
   /* Fotos: três por linha, recortadas no mesmo tamanho pra a grade não
-     ficar torta com foto em pé e deitada misturadas. Cada setor tenta
-     ficar inteiro numa página, e o título nunca fica sozinho no pé. */
+     ficar torta com foto em pé e deitada misturadas.
+     Sem grid e sem "não quebrar o setor inteiro" de propósito: o Safari
+     do iPhone lida mal com as duas coisas na hora de paginar e empurra o
+     bloco pra frente deixando folhas em branco no caminho. Aqui só uma
+     linha de fotos (~6 cm) é indivisível — pequena o bastante pra caber. */
   .impressao-galerias > h2 { font-size: 10.5pt; font-weight: 700; margin: 0 0 6px; }
-  .impressao-galeria { break-inside: avoid; margin-bottom: 12px; }
+  .impressao-galeria { margin-bottom: 10px; }
   .impressao-galeria h3 {
     font-size: 9.5pt;
     font-weight: 700;
     margin: 0 0 4px;
-    break-after: avoid;
+    padding-top: 2px;
+    border-top: 1px solid #cbd5e1;
   }
   .impressao-galeria h3 span { font-weight: 400; color: #475569; }
-  .impressao-fotos {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 6px;
+  .impressao-fotos-linha {
+    break-inside: avoid;
+    page-break-inside: avoid;
   }
-  .impressao-fotos figure { margin: 0; break-inside: avoid; }
+  .impressao-fotos { font-size: 0; }
+  .impressao-fotos figure {
+    display: inline-block;
+    vertical-align: top;
+    width: 32%;
+    margin: 0 2% 6px 0;
+  }
+  .impressao-fotos figure:nth-child(3n) { margin-right: 0; }
   .impressao-fotos img {
     display: block;
     width: 100%;
@@ -515,10 +542,4 @@ table th {
     margin-top: 2px;
   }
 
-  .impressao-rodape {
-    margin-top: 18px;
-    font-size: 7.5pt;
-    font-style: italic;
-    color: #64748b;
-  }
 }

@@ -24,7 +24,7 @@ import GaleriaFotos from '../components/GaleriaFotos'
 import BlocoAcao5S from '../components/BlocoAcao5S'
 import { descartarFotos } from '../lib/fotos'
 import ImpressaoRelatorio from '../components/ImpressaoRelatorio'
-import { esperarImagens } from '../lib/impressao'
+import { esperarImagens, reduzirFotos, liberarFotos } from '../lib/impressao'
 import { diaCurto, horaDe } from '../lib/relatorio5s'
 
 const INVALIDAR = [
@@ -47,6 +47,7 @@ export default function ChaoFabricaDetalhe() {
   const [enviando, setEnviando] = useState(false)
   const [setorEditando, setSetorEditando] = useState(null)
   const [imprimindo, setImprimindo] = useState(false)
+  const [fotosImpressao, setFotosImpressao] = useState(null)
   const [abaDetalhe, setAbaDetalhe] = useState('5s') // '5s' | 'residuos'
 
   const relatorio = useRegistro(
@@ -154,17 +155,29 @@ export default function ChaoFabricaDetalhe() {
     const aoTerminar = () => setImprimindo(false)
     window.addEventListener('afterprint', aoTerminar, { once: true })
     let cancelado = false
-    // Com fotos na folha, imprimir logo depois de montar sai com as
-    // caixas vazias (o Safari não espera a rede): espera elas chegarem.
-    const idTimeout = setTimeout(async () => {
+    let mapa = null
+    ;(async () => {
+      // A folha só é montada depois das cópias reduzidas prontas: se ela
+      // aparecesse antes, o Safari já carregaria as originais de 12 MP —
+      // e é isso que faz o iPhone imprimir folha em branco.
+      mapa = await reduzirFotos(
+        (midiasRelatorio.data || []).filter((m) => m.lancamento_id == null).map((m) => m.url)
+      )
+      if (cancelado) return liberarFotos(mapa)
+      setFotosImpressao(mapa)
+      await new Promise((resolver) => setTimeout(resolver, 100))
+      // O Safari não espera a rede pra imprimir: sem isso as caixas saem vazias.
       await esperarImagens(document.querySelector('.impressao-relatorio'))
       if (!cancelado) window.print()
-    }, 50)
+    })()
     return () => {
       cancelado = true
-      clearTimeout(idTimeout)
       window.removeEventListener('afterprint', aoTerminar)
+      liberarFotos(mapa)
+      setFotosImpressao(null)
     }
+    // Só dispara no clique de imprimir; as mídias já estão carregadas aí.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [imprimindo])
 
   if (relatorio.isLoading) return <Carregando />
@@ -545,7 +558,7 @@ export default function ChaoFabricaDetalhe() {
   // Diferente do PDF de Relatorios.jsx, aqui os dados já estão todos
   // carregados na tela — não precisa buscar de novo, só remontar no
   // formato que ImpressaoRelatorio entende.
-  const dadosImpressao = imprimindo && r ? {
+  const dadosImpressao = imprimindo && r && fotosImpressao ? {
     titulo: `Relatório do Chão de Fábrica · ${r.numero}`,
     subtitulo: [
       r.unidade?.nome,
@@ -612,12 +625,12 @@ export default function ChaoFabricaDetalhe() {
           subtitulo: s.nao_inspecionado
             ? 'não visitado'
             : s.nota != null ? `nota ${numero(s.nota, 1)} · ${labelDaNota5s(s.nota)}` : null,
-          fotos: fotosDoSetorNaImpressao(s.id),
+          fotos: fotosDoSetorNaImpressao(s.id).map((f) => ({ ...f, url: fotosImpressao[f.url] || f.url })),
         }))
         .filter((g) => g.fotos.length > 0),
       ...(fotosGeraisData.length ? [{
         titulo: 'Fotos gerais do relatório',
-        fotos: fotosGeraisData.map((f) => ({ url: f.url })),
+        fotos: fotosGeraisData.map((f) => ({ url: fotosImpressao[f.url] || f.url })),
       }] : []),
     ],
   } : null
