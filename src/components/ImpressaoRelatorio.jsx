@@ -22,6 +22,12 @@ export default function ImpressaoRelatorio({ dados }) {
           <h1>{dados.titulo}</h1>
           {dados.subtitulo && <p className="impressao-subtitulo">{dados.subtitulo}</p>}
         </div>
+        {dados.destaqueData && (
+          <div className="impressao-data">
+            <p className="impressao-data-dia">{dados.destaqueData.dia}</p>
+            <p className="impressao-data-numero">{dados.destaqueData.data}</p>
+          </div>
+        )}
       </header>
 
       {dados.tabelas.map((t, i) => (
@@ -43,6 +49,28 @@ export default function ImpressaoRelatorio({ dados }) {
           )}
         </section>
       ))}
+
+      {(dados.galerias || []).length > 0 && (
+        <section className="impressao-galerias">
+          <h2>{dados.tituloGalerias || 'Fotos'}</h2>
+          {dados.galerias.map((g, gi) => (
+            <div key={gi} className="impressao-galeria">
+              <h3>
+                {g.titulo}
+                {g.subtitulo && <span> · {g.subtitulo}</span>}
+              </h3>
+              <div className="impressao-fotos">
+                {g.fotos.map((f, fi) => (
+                  <figure key={fi}>
+                    <img src={f.url} alt="" />
+                    {f.legenda && <figcaption>{f.legenda}</figcaption>}
+                  </figure>
+                ))}
+              </div>
+            </div>
+          ))}
+        </section>
+      )}
 
       <p className="impressao-rodape">
         Gerado por SGAI em {new Date().toLocaleString('pt-BR')}

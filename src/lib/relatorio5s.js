@@ -32,6 +32,16 @@ export function diaDaSemana(iso) {
   return DIAS[new Date(Date.UTC(ano, mes - 1, dia)).getUTCDay()]
 }
 
+/**
+ * Dia da semana curto e em caixa alta pro destaque do cabeçalho:
+ * "QUARTA", "SÁBADO". O "-feira" sai porque ali o tamanho da letra é
+ * que chama atenção, e a data completa vem logo embaixo.
+ */
+export function diaCurto(iso) {
+  const dia = diaDaSemana(iso)
+  return dia ? dia.split('-')[0].toUpperCase() : null
+}
+
 /** "22 de setembro de 2026 (terça-feira)" */
 export function dataPorExtenso(iso) {
   if (!iso) return '—'

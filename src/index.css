@@ -439,6 +439,25 @@ table th {
   .impressao-cabecalho h1 { margin: 2px 0 0; font-size: 15pt; font-weight: 700; }
   .impressao-subtitulo { margin: 2px 0 0; font-size: 8.5pt; color: #475569; }
 
+  /* Dia da semana grande à direita: é a primeira coisa que quem pega a
+     folha procura — "isso é de qual dia?". */
+  .impressao-data {
+    margin-left: auto;
+    text-align: right;
+    line-height: 1.05;
+  }
+  .impressao-data p { margin: 0; }
+  .impressao-data-dia {
+    font-size: 20pt;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    color: #0284c7;
+  }
+  .impressao-data-numero {
+    font-size: 13pt;
+    font-weight: 700;
+  }
+
   .impressao-secao { break-inside: avoid-page; margin-bottom: 16px; }
   .impressao-secao h2 { font-size: 10.5pt; font-weight: 700; margin: 0 0 6px; }
   .impressao-vazio { font-size: 9pt; font-style: italic; color: #64748b; }
@@ -464,6 +483,37 @@ table th {
     letter-spacing: 0.02em;
   }
   .impressao-relatorio tbody tr:nth-child(even) { background: #f1f5f9; }
+
+  /* Fotos: três por linha, recortadas no mesmo tamanho pra a grade não
+     ficar torta com foto em pé e deitada misturadas. Cada setor tenta
+     ficar inteiro numa página, e o título nunca fica sozinho no pé. */
+  .impressao-galerias > h2 { font-size: 10.5pt; font-weight: 700; margin: 0 0 6px; }
+  .impressao-galeria { break-inside: avoid; margin-bottom: 12px; }
+  .impressao-galeria h3 {
+    font-size: 9.5pt;
+    font-weight: 700;
+    margin: 0 0 4px;
+    break-after: avoid;
+  }
+  .impressao-galeria h3 span { font-weight: 400; color: #475569; }
+  .impressao-fotos {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+  }
+  .impressao-fotos figure { margin: 0; break-inside: avoid; }
+  .impressao-fotos img {
+    display: block;
+    width: 100%;
+    height: 52mm;
+    object-fit: cover;
+    border: 1px solid #cbd5e1;
+  }
+  .impressao-fotos figcaption {
+    font-size: 7.5pt;
+    color: #475569;
+    margin-top: 2px;
+  }
 
   .impressao-rodape {
     margin-top: 18px;

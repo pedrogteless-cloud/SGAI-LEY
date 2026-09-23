@@ -24,6 +24,8 @@ import GaleriaFotos from '../components/GaleriaFotos'
 import BlocoAcao5S from '../components/BlocoAcao5S'
 import { descartarFotos } from '../lib/fotos'
 import ImpressaoRelatorio from '../components/ImpressaoRelatorio'
+import { esperarImagens } from '../lib/impressao'
+import { diaCurto, horaDe } from '../lib/relatorio5s'
 
 const INVALIDAR = [
   'relatorios_chao', 'relatorio_chao_setores', 'relatorio_chao_historico',
@@ -91,6 +93,21 @@ export default function ChaoFabricaDetalhe() {
       (m) => m.setor_avaliacao_id === setorId && m.setor_5s_id == null
     )
 
+  // No papel vão todas as fotos do setor: primeiro as do setor inteiro,
+  // depois as dos itens do checklist, com o item na legenda pra quem lê
+  // saber que aquela foto é o problema apontado no Seiso, no Seiton...
+  const fotosDoSetorNaImpressao = (setorId) => {
+    const doSetor = fotosSalvasDoSetor(setorId).map((f) => ({ url: f.url, legenda: 'Setor' }))
+    const itemPorId = Object.fromEntries((setor5s.data || []).map((x) => [x.id, x.item]))
+    const dosItens = (midiasRelatorio.data || [])
+      .filter((m) => m.setor_avaliacao_id === setorId && m.setor_5s_id != null)
+      .map((f) => ({
+        url: f.url,
+        legenda: ITENS_5S.find((i) => i.item === itemPorId[f.setor_5s_id])?.titulo || 'Item do checklist',
+      }))
+    return [...doSetor, ...dosItens]
+  }
+
   const materiais = useMateriaisResiduo()
   const r = relatorio.data
   const setores = useSetores(r?.unidade_id)
@@ -136,8 +153,15 @@ export default function ChaoFabricaDetalhe() {
     if (!imprimindo) return
     const aoTerminar = () => setImprimindo(false)
     window.addEventListener('afterprint', aoTerminar, { once: true })
-    const idTimeout = setTimeout(() => window.print(), 50)
+    let cancelado = false
+    // Com fotos na folha, imprimir logo depois de montar sai com as
+    // caixas vazias (o Safari não espera a rede): espera elas chegarem.
+    const idTimeout = setTimeout(async () => {
+      await esperarImagens(document.querySelector('.impressao-relatorio'))
+      if (!cancelado) window.print()
+    }, 50)
     return () => {
+      cancelado = true
       clearTimeout(idTimeout)
       window.removeEventListener('afterprint', aoTerminar)
     }
@@ -523,7 +547,13 @@ export default function ChaoFabricaDetalhe() {
   // formato que ImpressaoRelatorio entende.
   const dadosImpressao = imprimindo && r ? {
     titulo: `Relatório do Chão de Fábrica · ${r.numero}`,
-    subtitulo: `${r.unidade?.nome || ''}${r.turno ? ` · ${r.turno}` : ''} · ${fmtDataBr(r.data)} · responsável: ${r.responsavel?.nome || '—'}`,
+    subtitulo: [
+      r.unidade?.nome,
+      r.turno,
+      `responsável: ${r.responsavel?.nome || '—'}`,
+      r.aberta_em && `aberto às ${horaDe(r.aberta_em)}`,
+    ].filter(Boolean).join(' · '),
+    destaqueData: { dia: diaCurto(r.data), data: fmtDataBr(r.data) },
     tabelas: [
       {
         titulo: 'Limpeza por setor — checklist 5S',
@@ -538,11 +568,9 @@ export default function ChaoFabricaDetalhe() {
             comProblema.length === 0
               ? (s.nota != null ? 'Tudo conforme' : '—')
               : comProblema.map((x) => `${ITENS_5S.find((i) => i.item === x.item)?.titulo || x.item}: ${x.descricao_problema || ''}`).join(' · '),
-            // O PDF é papel: não dá pra colar a imagem, mas dizer que
-            // existe foto avisa quem for conferir depois no sistema.
             (() => {
-              const n = fotosSalvasDoSetor(s.id).length
-              return n ? `${n} foto(s)` : '—'
+              const n = fotosDoSetorNaImpressao(s.id).length
+              return n ? `${n} (abaixo)` : '—'
             })(),
           ]
         }),
@@ -574,6 +602,22 @@ export default function ChaoFabricaDetalhe() {
         titulo: 'Conclusão do relatório',
         colunas: ['Situação geral', 'Pontos de atenção', 'Providências'],
         linhas: [[r.conclusao_situacao, r.conclusao_atencao || '—', r.conclusao_providencias || '—']],
+      }] : []),
+    ],
+    tituloGalerias: 'Fotos por setor',
+    galerias: [
+      ...(setoresRel.data || [])
+        .map((s) => ({
+          titulo: s.setor?.nome || '—',
+          subtitulo: s.nao_inspecionado
+            ? 'não visitado'
+            : s.nota != null ? `nota ${numero(s.nota, 1)} · ${labelDaNota5s(s.nota)}` : null,
+          fotos: fotosDoSetorNaImpressao(s.id),
+        }))
+        .filter((g) => g.fotos.length > 0),
+      ...(fotosGeraisData.length ? [{
+        titulo: 'Fotos gerais do relatório',
+        fotos: fotosGeraisData.map((f) => ({ url: f.url })),
       }] : []),
     ],
   } : null

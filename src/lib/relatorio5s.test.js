@@ -1,9 +1,25 @@
 import { describe, it, expect } from 'vitest'
 import {
-  diaDaSemana, dataPorExtenso, horaDe, situacaoDoSetor, resumoDoSetor,
+  diaDaSemana, diaCurto, dataPorExtenso, horaDe, situacaoDoSetor, resumoDoSetor,
   sugestoesDoSetor, orcamentoDeFotos, numerosDoDia,
   fraseDoResumo, fraseDaNotaMedia, fraseDasRessalvas, fraseFotosRestantes,
 } from './relatorio5s'
+
+describe('diaCurto', () => {
+  it('tira o "-feira" e põe em caixa alta', () => {
+    expect(diaCurto('2026-09-23')).toBe('QUARTA')
+    expect(diaCurto('2026-09-24')).toBe('QUINTA')
+  })
+
+  it('mantém o acento de sábado e domingo', () => {
+    expect(diaCurto('2026-09-26')).toBe('SÁBADO')
+    expect(diaCurto('2026-09-27')).toBe('DOMINGO')
+  })
+
+  it('devolve nulo sem data', () => {
+    expect(diaCurto(null)).toBeNull()
+  })
+})
 
 describe('diaDaSemana', () => {
   // new Date('2026-09-22') é meia-noite UTC e, em Fortaleza, volta como
