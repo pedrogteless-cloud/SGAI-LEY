@@ -501,7 +501,7 @@ table th {
   }
   .impressao-relatorio tbody tr:nth-child(even) { background: #f1f5f9; }
 
-  /* Fotos: três por linha, recortadas no mesmo tamanho pra a grade não
+  /* Fotos: três por linha, em quadros do mesmo tamanho pra a grade não
      ficar torta com foto em pé e deitada misturadas.
      Sem grid e sem "não quebrar o setor inteiro" de propósito: o Safari
      do iPhone lida mal com as duas coisas na hora de paginar e empurra o
@@ -529,11 +529,16 @@ table th {
     margin: 0 2% 6px 0;
   }
   .impressao-fotos figure:nth-child(3n) { margin-right: 0; }
+  /* Foto inteira, nunca recortada: quem confere precisa ver o que foi
+     fotografado, não um pedaço. O quadro tem tamanho fixo pra grade
+     ficar alinhada; a foto em pé fica centralizada com faixa clara dos
+     lados, a deitada preenche quase tudo. */
   .impressao-fotos img {
     display: block;
     width: 100%;
     height: 52mm;
-    object-fit: cover;
+    object-fit: contain;
+    background: #f1f5f9;
     border: 1px solid #cbd5e1;
   }
   .impressao-fotos figcaption {
