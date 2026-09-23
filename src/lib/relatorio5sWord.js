@@ -41,6 +41,9 @@ export async function buscarRelatorio5S({ data, unidadeId }) {
     .from('vw_relatorio_chao_resumo')
     .select('*')
     .eq('data', data)
+    // Cancelado não vale como relatório do dia — sem isso o Word sairia
+    // em cima de uma inspeção que foi descartada.
+    .neq('status', 'cancelada')
     .order('aberta_em', { ascending: true })
   if (unidadeId) q = q.eq('unidade_id', unidadeId)
 

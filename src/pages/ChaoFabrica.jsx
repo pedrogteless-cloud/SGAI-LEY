@@ -4,11 +4,11 @@ import {
   Plus, Recycle, ArrowRight, ClipboardList, Target, History, Settings2, Download, Sparkles,
   AlertTriangle, CheckCircle2, MinusCircle,
 } from 'lucide-react'
-import { supabase } from '../lib/supabase'
+import AbrirRelatorioChao from '../components/AbrirRelatorioChao'
 import { gerarEBaixarResiduosChao } from '../lib/relatoriosXlsx'
 import { useAuth } from '../hooks/useAuth'
 import {
-  useTabela, useUnidades, useSetores, useTecnicos, useMateriaisResiduo, useInserir, useInvalidar,
+  useTabela, useUnidades, useSetores, useMateriaisResiduo, useInserir, useInvalidar,
 } from '../hooks/useDados'
 import { data as fmtData, numero } from '../lib/format'
 import { hojeISO } from '../lib/tempo'
@@ -32,20 +32,10 @@ export default function ChaoFabrica() {
   const [aba, setAba] = useState(ABA_INICIAL)
   const [unidadeId, setUnidadeId] = useState(perfil?.unidade_id || '')
   const [abrindo, setAbrindo] = useState(false)
-  const [erro, setErro] = useState(null)
-  const [enviando, setEnviando] = useState(false)
-
-  const [form, setForm] = useState({
-    turno: '', responsavel_id: perfil?.id || '', setores_ids: [],
-    horario_previsto: '', observacao_inicial: '',
-  })
-  const [justificativa, setJustificativa] = useState('')
-  const [pedeJustificativa, setPedeJustificativa] = useState(false)
 
   const unidades = useUnidades()
   const unidadeAtual = unidadeId || unidades.data?.[0]?.id || ''
   const setores = useSetores(unidadeAtual)
-  const tecnicos = useTecnicos()
 
   const [filtroStatus, setFiltroStatus] = useState('')
   const [filtroPeriodoHist, setFiltroPeriodoHist] = useState({ inicio: '', fim: '' })
@@ -91,55 +81,7 @@ export default function ChaoFabrica() {
   })
   const materiais = useMateriaisResiduo()
 
-  const abrirModalNovo = () => {
-    setForm({
-      turno: '', responsavel_id: perfil?.id || '', setores_ids: (setores.data || []).map((s) => s.id),
-      horario_previsto: '', observacao_inicial: '',
-    })
-    setJustificativa('')
-    setPedeJustificativa(false)
-    setErro(null)
-    setAbrindo(true)
-  }
-
-  const alternarSetor = (id) =>
-    setForm((f) => ({
-      ...f,
-      setores_ids: f.setores_ids.includes(id)
-        ? f.setores_ids.filter((s) => s !== id)
-        : [...f.setores_ids, id],
-    }))
-
-  const abrirRelatorio = async () => {
-    setErro(null)
-    setEnviando(true)
-    const { data: linhas, error } = await supabase.rpc('abrir_relatorio_chao', {
-      p_unidade_id: unidadeAtual,
-      p_turno: form.turno.trim() || null,
-      p_responsavel_id: form.responsavel_id || null,
-      p_setores_ids: form.setores_ids,
-      p_horario_previsto: form.horario_previsto || null,
-      p_observacao_inicial: form.observacao_inicial.trim() || null,
-      p_justificativa_duplicidade: justificativa.trim() || null,
-    })
-    setEnviando(false)
-    if (error) {
-      setErro(new Error(error.message))
-      return
-    }
-    const linha = linhas?.[0]
-    if (linha?.mensagem) {
-      if (linha.mensagem.includes('gestor') && !pedeJustificativa) {
-        setPedeJustificativa(true)
-        return
-      }
-      setErro(new Error(linha.mensagem))
-      return
-    }
-    setAbrindo(false)
-    avisar(`Relatório ${linha.numero} aberto.`)
-    navegar(`/desperdicios/${linha.id}`)
-  }
+  const abrirModalNovo = () => setAbrindo(true)
 
   const abas = [
     { valor: 'hoje', rotulo: 'Hoje' },
@@ -322,77 +264,15 @@ export default function ChaoFabrica() {
       )}
 
       {/* -------------------------------------------------------- abertura */}
-      <Modal
+      <AbrirRelatorioChao
         aberto={abrindo}
         aoFechar={() => setAbrindo(false)}
-        titulo="Abrir relatório do dia"
-        rodape={
-          <>
-            <Botao variante="secundario" onClick={() => setAbrindo(false)}>Cancelar</Botao>
-            <Botao onClick={abrirRelatorio} carregando={enviando}>
-              Abrir
-            </Botao>
-          </>
-        }
-      >
-        <div className="space-y-4">
-          <p className="text-sm text-slate-500">
-            Data de hoje ({fmtData(hojeISO())}), preenchida sozinha.
-          </p>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Campo rotulo="Turno" dica="Opcional">
-              <Entrada value={form.turno} onChange={(e) => setForm((f) => ({ ...f, turno: e.target.value }))} placeholder="Ex.: manhã" />
-            </Campo>
-            <Campo rotulo="Responsável">
-              <Selecao value={form.responsavel_id} onChange={(e) => setForm((f) => ({ ...f, responsavel_id: e.target.value }))}>
-                <option value="">—</option>
-                {(tecnicos.data || []).map((t) => (
-                  <option key={t.id} value={t.id}>{t.nome}</option>
-                ))}
-              </Selecao>
-            </Campo>
-          </div>
-          <Campo rotulo="Horário previsto para conclusão" dica="Opcional">
-            <Entrada type="time" value={form.horario_previsto} onChange={(e) => setForm((f) => ({ ...f, horario_previsto: e.target.value }))} />
-          </Campo>
-          <Campo rotulo="Setores a inspecionar">
-            <div className="flex flex-wrap gap-2 rounded-lg bg-slate-50 p-3 ring-1 ring-slate-200 ring-inset">
-              {(setores.data || []).map((s) => (
-                <label
-                  key={s.id}
-                  className={`flex cursor-pointer items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm transition ${
-                    form.setores_ids.includes(s.id)
-                      ? 'border-sky-500 bg-sky-50 text-sky-700'
-                      : 'border-slate-200 bg-white text-slate-600'
-                  }`}
-                >
-                  <input
-                    type="checkbox"
-                    className="hidden"
-                    checked={form.setores_ids.includes(s.id)}
-                    onChange={() => alternarSetor(s.id)}
-                  />
-                  {s.nome}
-                </label>
-              ))}
-            </div>
-          </Campo>
-          <Campo rotulo="Observação inicial" dica="Opcional">
-            <Area rows={2} value={form.observacao_inicial} onChange={(e) => setForm((f) => ({ ...f, observacao_inicial: e.target.value }))} />
-          </Campo>
-
-          {pedeJustificativa && (
-            <Campo
-              rotulo="Já existe relatório pra hoje/unidade/turno — justifique pra abrir outro (só gestor)"
-              erro={!justificativa.trim() ? undefined : undefined}
-            >
-              <Area rows={2} value={justificativa} onChange={(e) => setJustificativa(e.target.value)} placeholder="Por que precisa de um segundo relatório" />
-            </Campo>
-          )}
-
-          <Erro erro={erro} />
-        </div>
-      </Modal>
+        unidadeId={unidadeAtual}
+        aoAbrir={(linha) => {
+          avisar(`Relatório ${linha.numero} aberto.`)
+          navegar(`/desperdicios/${linha.id}`)
+        }}
+      />
     </div>
   )
 }

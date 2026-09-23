@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ClipboardCheck, ArrowRight, Image as IconeFoto } from 'lucide-react'
+import { ClipboardCheck, Plus, Image as IconeFoto } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../hooks/useAuth'
 import { useTabela, useUnidades, useTecnicos, useInvalidar } from '../hooks/useDados'
@@ -13,6 +13,7 @@ import {
   Botao, Cartao, CartaoTitulo, Campo, Entrada, Area, Selecao, Etiqueta, Carregando, Vazio,
   Modal, Erro, useAviso,
 } from '../components/ui'
+import AbrirRelatorioChao from '../components/AbrirRelatorioChao'
 import GaleriaFotos from '../components/GaleriaFotos'
 import BlocoAcao5S from '../components/BlocoAcao5S'
 import { descartarFotos } from '../lib/fotos'
@@ -40,6 +41,10 @@ export default function Chao5S() {
     filtros: [
       ...(unidadeAtual ? [['unidade_id', 'eq', unidadeAtual]] : []),
       ['data', 'eq', data],
+      // Relatório cancelado é relatório que não existe: se ele entrasse na
+      // lista, viraria o "relatório do dia" e a tela travaria num checklist
+      // só de leitura, sem oferecer a abertura de um novo.
+      ['status', 'neq', 'cancelada'],
     ],
     ordem: { coluna: 'aberta_em' },
   })
@@ -80,6 +85,7 @@ export default function Chao5S() {
   const fotosSalvasDoSetor = (setorId) =>
     (midias.data || []).filter((m) => m.setor_avaliacao_id === setorId && m.setor_5s_id == null)
 
+  const [abrindoRelatorio, setAbrindoRelatorio] = useState(false)
   const [setorEditando, setSetorEditando] = useState(null)
   const [modalAberto, setModalAberto] = useState(false)
   const [erro, setErro] = useState(null)
@@ -347,14 +353,14 @@ export default function Chao5S() {
             titulo="Nenhum relatório nesse dia"
             descricao={
               data === hojeISO()
-                ? 'Abra o relatório do dia na tela de Desperdícios pra começar o checklist 5S.'
+                ? 'Abra o relatório do dia pra começar o checklist 5S.'
                 : 'Escolha outra data, ou volte pra hoje.'
             }
             acao={
               data === hojeISO() && (
-                <Link to="/desperdicios">
-                  <Botao>Abrir relatório do dia <ArrowRight size={15} /></Botao>
-                </Link>
+                <Botao onClick={() => setAbrindoRelatorio(true)}>
+                  <Plus size={15} /> Abrir relatório do dia
+                </Botao>
               )
             }
           />
@@ -578,6 +584,17 @@ export default function Chao5S() {
           <Erro erro={erro} />
         </div>
       </Modal>
+
+      <AbrirRelatorioChao
+        aberto={abrindoRelatorio}
+        aoFechar={() => setAbrindoRelatorio(false)}
+        unidadeId={unidadeAtual}
+        aoAbrir={(linha) => {
+          setRelatorioId(linha.id)
+          avisar(`Relatório ${linha.numero} aberto.`)
+          invalidar('vw_relatorio_chao_resumo', 'relatorio_chao_setores')
+        }}
+      />
     </div>
   )
 }

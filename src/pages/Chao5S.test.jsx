@@ -95,4 +95,19 @@ describe('5S do dia', () => {
     renderizar(<Chao5S />)
     expect(screen.queryByText(/ação\(ões\) em aberto/)).toBeNull()
   })
+
+  // Regressão: um relatório cancelado virava o "relatório do dia", a tela
+  // caía num checklist só de leitura e não sobrava caminho pra abrir outro.
+  it('não busca relatório cancelado como relatório do dia', () => {
+    responder({ resumo: consulta([]), setores: consulta([]), itens: consulta([]), acoes: consulta([]) })
+    renderizar(<Chao5S />)
+    const chamada = tabela.mock.calls.find(([nome]) => nome === 'vw_relatorio_chao_resumo')
+    expect(chamada[1].filtros).toContainEqual(['status', 'neq', 'cancelada'])
+  })
+
+  it('oferece abrir o relatório do dia quando não há nenhum', () => {
+    responder({ resumo: consulta([]), setores: consulta([]), itens: consulta([]), acoes: consulta([]) })
+    renderizar(<Chao5S />)
+    expect(screen.getByRole('button', { name: /Abrir relatório do dia/ })).toBeInTheDocument()
+  })
 })
