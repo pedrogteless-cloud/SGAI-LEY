@@ -90,7 +90,7 @@ export function resumoDoSetor(setor, respostas) {
   }
 
   const partes = comRessalva.map((r) => {
-    const titulo = ITENS_5S.find((i) => i.item === r.item)?.titulo || r.item
+    const titulo = ITENS_5S.find((i) => i.item === r.item)?.nome || r.item
     const grau = M_RESPOSTA_5S[r.resposta]?.label?.toLowerCase() || r.resposta
     const problema = (r.descricao_problema || '').trim()
     const onde = (r.quadrante || '').trim()
@@ -222,4 +222,39 @@ export function fraseFotosRestantes(quantas, mostrouAlguma) {
   return mostrouAlguma
     ? `Mais ${fotos} deste setor ${verbo} no sistema.`
     : `${fotos} deste setor ${verbo} no sistema — não ${quantas === 1 ? 'coube' : 'couberam'} nesta página.`
+}
+
+/**
+ * As cinco linhas da tabela de um setor no relatório impresso, sempre na
+ * mesma ordem (1 a 5) e sempre as cinco — até as não respondidas, pra a
+ * folha de todo setor ter a mesma cara e ninguém achar que faltou item.
+ * O texto vem quebrado em partes com rótulo ("Problema", "Onde",
+ * "Sugestão") em vez de uma frase corrida: é o que deixa a leitura fácil
+ * pra quem pega o papel sem ter visto a tela.
+ */
+export function linhasDosSensos(respostas) {
+  const porItem = Object.fromEntries((respostas || []).map((r) => [r.item, r]))
+  return ITENS_5S.map((senso, i) => {
+    const r = porItem[senso.item]
+    const resposta = r?.resposta || null
+    const textos = []
+    if (r) {
+      const problema = (r.descricao_problema || '').trim()
+      const onde = (r.quadrante || '').trim()
+      const sugestao = (r.sugestao || '').trim()
+      if (problema) textos.push({ rotulo: 'Problema', texto: problema })
+      if (onde) textos.push({ rotulo: 'Onde', texto: `quadrante ${onde}` })
+      if (sugestao) textos.push({ rotulo: 'Sugestão', texto: sugestao })
+    }
+    return {
+      numero: i + 1,
+      nome: senso.nome,
+      pergunta: senso.pergunta,
+      resposta,
+      resultado: resposta ? (M_RESPOSTA_5S[resposta]?.label || resposta) : 'Não avaliado',
+      // Tom decide a cor na folha: verde, amarelo, vermelho ou neutro.
+      tom: { conforme: 'ok', parcial: 'atencao', nao_conforme: 'ruim' }[resposta] || 'neutro',
+      textos,
+    }
+  })
 }

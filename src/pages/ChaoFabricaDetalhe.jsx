@@ -25,7 +25,7 @@ import BlocoAcao5S from '../components/BlocoAcao5S'
 import { descartarFotos } from '../lib/fotos'
 import ImpressaoRelatorio from '../components/ImpressaoRelatorio'
 import { esperarImagens, reduzirFotos, liberarFotos } from '../lib/impressao'
-import { diaCurto, horaDe } from '../lib/relatorio5s'
+import { diaCurto, horaDe, linhasDosSensos } from '../lib/relatorio5s'
 
 const INVALIDAR = [
   'relatorios_chao', 'relatorio_chao_setores', 'relatorio_chao_historico',
@@ -98,13 +98,16 @@ export default function ChaoFabricaDetalhe() {
   // depois as dos itens do checklist, com o item na legenda pra quem lê
   // saber que aquela foto é o problema apontado no Seiso, no Seiton...
   const fotosDoSetorNaImpressao = (setorId) => {
-    const doSetor = fotosSalvasDoSetor(setorId).map((f) => ({ url: f.url, legenda: 'Setor' }))
+    const doSetor = fotosSalvasDoSetor(setorId).map((f) => ({ url: f.url, legenda: 'Visão geral do setor' }))
     const itemPorId = Object.fromEntries((setor5s.data || []).map((x) => [x.id, x.item]))
     const dosItens = (midiasRelatorio.data || [])
       .filter((m) => m.setor_avaliacao_id === setorId && m.setor_5s_id != null)
       .map((f) => ({
         url: f.url,
-        legenda: ITENS_5S.find((i) => i.item === itemPorId[f.setor_5s_id])?.titulo || 'Item do checklist',
+        legenda: (() => {
+          const nome = ITENS_5S.find((i) => i.item === itemPorId[f.setor_5s_id])?.nome
+          return nome ? `Problema em ${nome}` : 'Problema apontado'
+        })(),
       }))
     return [...doSetor, ...dosItens]
   }
@@ -569,22 +572,22 @@ export default function ChaoFabricaDetalhe() {
     destaqueData: { dia: diaCurto(r.data), data: fmtDataBr(r.data) },
     tabelas: [
       {
-        titulo: 'Limpeza por setor — checklist 5S',
-        colunas: ['Setor', 'Nota', 'Situação', 'Itens com ressalva', 'Fotos'],
+        // Resumo de uma olhada; o detalhe de cada senso vem mais abaixo,
+        // em "Setor por setor".
+        titulo: 'Resumo do 5S',
+        colunas: ['Setor', 'Nota', 'Situação', 'Pontos com problema', 'Fotos'],
         linhas: (setoresRel.data || []).map((s) => {
           const respostas = (setor5s.data || []).filter((x) => x.setor_avaliacao_id === s.id)
-          const comProblema = respostas.filter((x) => x.resposta === 'parcial' || x.resposta === 'nao_conforme')
+          const comProblema = linhasDosSensos(respostas).filter((l) => l.tom === 'atencao' || l.tom === 'ruim')
+          const n = fotosDoSetorNaImpressao(s.id).length
           return [
             s.setor?.nome || '—',
             s.nota != null ? numero(s.nota, 1) : '—',
-            s.nao_inspecionado ? `Não visitado: ${s.justificativa_nao_inspecionado || '—'}` : labelDaNota5s(s.nota),
-            comProblema.length === 0
-              ? (s.nota != null ? 'Tudo conforme' : '—')
-              : comProblema.map((x) => `${ITENS_5S.find((i) => i.item === x.item)?.titulo || x.item}: ${x.descricao_problema || ''}`).join(' · '),
-            (() => {
-              const n = fotosDoSetorNaImpressao(s.id).length
-              return n ? `${n} (abaixo)` : '—'
-            })(),
+            s.nao_inspecionado ? 'Não visitado' : s.nota != null ? labelDaNota5s(s.nota) : 'Não avaliado',
+            s.nao_inspecionado || s.nota == null
+              ? '—'
+              : comProblema.length ? comProblema.map((l) => l.nome).join(', ') : 'Nenhum',
+            n || '—',
           ]
         }),
       },
@@ -617,22 +620,37 @@ export default function ChaoFabricaDetalhe() {
         linhas: [[r.conclusao_situacao, r.conclusao_atencao || '—', r.conclusao_providencias || '—']],
       }] : []),
     ],
-    tituloGalerias: 'Fotos por setor',
-    galerias: [
-      ...(setoresRel.data || [])
-        .map((s) => ({
+    tituloSetores: 'Setor por setor',
+    ...(() => {
+      const blocos = (setoresRel.data || []).map((s) => {
+        const respostas = (setor5s.data || []).filter((x) => x.setor_avaliacao_id === s.id)
+        const avaliado = respostas.some((x) => x.resposta && x.resposta !== 'nao_inspecionado')
+        return {
+          avaliado: avaliado || s.nao_inspecionado,
           titulo: s.setor?.nome || '—',
-          subtitulo: s.nao_inspecionado
-            ? 'não visitado'
-            : s.nota != null ? `nota ${numero(s.nota, 1)} · ${labelDaNota5s(s.nota)}` : null,
+          nota: s.nota != null ? `Nota ${numero(s.nota, 1)} · ${labelDaNota5s(s.nota)}` : null,
+          aviso: s.nao_inspecionado
+            ? `Setor não visitado.${s.justificativa_nao_inspecionado ? ` Motivo: ${s.justificativa_nao_inspecionado}` : ''}`
+            : null,
+          sensos: linhasDosSensos(respostas),
           fotos: fotosDoSetorNaImpressao(s.id).map((f) => ({ ...f, url: fotosImpressao[f.url] || f.url })),
-        }))
-        .filter((g) => g.fotos.length > 0),
-      ...(fotosGeraisData.length ? [{
-        titulo: 'Fotos gerais do relatório',
-        fotos: fotosGeraisData.map((f) => ({ url: fotosImpressao[f.url] || f.url })),
-      }] : []),
-    ],
+        }
+      })
+      // Setor que ninguém avaliou não ganha bloco (seria meia folha de
+      // "não avaliado"): vai todo junto numa linha no fim.
+      const pendentes = blocos.filter((b) => !b.avaliado && b.fotos.length === 0).map((b) => b.titulo)
+      return {
+        setores: blocos.filter((b) => b.avaliado || b.fotos.length > 0),
+        notaSetores: pendentes.length
+          ? `${pendentes.length === 1 ? 'Setor ainda não avaliado' : 'Setores ainda não avaliados'}: ${pendentes.join(', ')}.`
+          : null,
+      }
+    })(),
+    galerias: fotosGeraisData.length ? [{
+      titulo: 'Fotos gerais do relatório',
+      fotos: fotosGeraisData.map((f) => ({ url: fotosImpressao[f.url] || f.url })),
+    }] : [],
+    tituloGalerias: 'Outras fotos',
   } : null
 
   return (

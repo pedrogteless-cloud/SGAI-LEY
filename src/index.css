@@ -517,6 +517,66 @@ table th {
     border-top: 1px solid #cbd5e1;
   }
   .impressao-galeria h3 span { font-weight: 400; color: #475569; }
+  /* Setor por setor: faixa escura com o nome, tabela dos 5 sensos e as
+     fotos embaixo. Letra um pouco maior que o resto da folha: é a parte
+     que vai ser lida com calma. */
+  /* O detalhe sempre começa numa folha nova: folha 1 é o resumo, as
+     seguintes são setor por setor. Também evita o título da seção
+     sozinho no pé da primeira folha. */
+  .impressao-setores { break-before: page; page-break-before: always; }
+  .impressao-setores > h2 { font-size: 10.5pt; font-weight: 700; margin: 0 0 6px; }
+  .impressao-setor { margin-bottom: 14px; }
+  .impressao-setor-topo { break-inside: avoid; page-break-inside: avoid; }
+  .impressao-setor-titulo {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+    background: #e0f2fe;
+    border-left: 4px solid #0284c7;
+    padding: 4px 8px;
+    margin-bottom: 4px;
+  }
+  .impressao-setor-titulo h3 {
+    margin: 0;
+    font-size: 11pt;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+  .impressao-setor-nota { margin: 0; font-size: 10pt; font-weight: 700; }
+  .impressao-setor-aviso {
+    margin: 0 0 4px;
+    padding: 6px 8px;
+    border: 1px dashed #94a3b8;
+    font-size: 10pt;
+  }
+  .impressao-relatorio table.impressao-sensos { table-layout: fixed; font-size: 9.5pt; }
+  .impressao-sensos td { padding: 4px 6px; }
+  .impressao-senso-nome { font-weight: 700; }
+  .impressao-senso-texto { margin: 0 0 2px; }
+  .impressao-senso-texto:last-child { margin-bottom: 0; }
+  .impressao-sem-texto { color: #64748b; }
+  .impressao-tom {
+    display: inline-block;
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-weight: 700;
+    font-size: 8.5pt;
+  }
+  .impressao-tom-ok { background: #dcfce7; color: #166534; }
+  .impressao-tom-atencao { background: #fef3c7; color: #92400e; }
+  .impressao-tom-ruim { background: #fee2e2; color: #991b1b; }
+  .impressao-tom-neutro { background: #f1f5f9; color: #475569; }
+  .impressao-setor-fotos { margin-top: 6px; }
+  .impressao-setores-nota {
+    margin: 0 0 14px;
+    padding: 6px 8px;
+    border: 1px dashed #94a3b8;
+    font-size: 9.5pt;
+    color: #334155;
+  }
+
   .impressao-fotos-linha {
     break-inside: avoid;
     page-break-inside: avoid;
@@ -525,10 +585,20 @@ table th {
   .impressao-fotos figure {
     display: inline-block;
     vertical-align: top;
-    width: 32%;
+    width: 23.5%;
     margin: 0 2% 6px 0;
   }
-  .impressao-fotos figure:nth-child(3n) { margin-right: 0; }
+  .impressao-fotos figure:nth-child(4n) { margin-right: 0; }
+  /* Galeria genérica (fotos gerais) continua com 3 por linha. */
+  .impressao-galeria .impressao-fotos figure { width: 32%; }
+  .impressao-galeria .impressao-fotos figure:nth-child(4n) { margin-right: 2%; }
+  .impressao-galeria .impressao-fotos figure:nth-child(3n) { margin-right: 0; }
+  .impressao-continuacao {
+    margin: 0 0 3px;
+    font-size: 8pt;
+    font-weight: 700;
+    color: #475569;
+  }
   /* Foto inteira, nunca recortada: quem confere precisa ver o que foi
      fotografado, não um pedaço. O quadro tem tamanho fixo pra grade
      ficar alinhada; a foto em pé fica centralizada com faixa clara dos
@@ -536,7 +606,7 @@ table th {
   .impressao-fotos img {
     display: block;
     width: 100%;
-    height: 52mm;
+    height: 40mm;
     object-fit: contain;
     background: #f1f5f9;
     border: 1px solid #cbd5e1;

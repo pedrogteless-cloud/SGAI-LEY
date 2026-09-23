@@ -147,12 +147,14 @@ export const UNIDADES_MEDIDA_RESIDUO = [
 // cobrança, sem ranking, só o encarregado aprendendo a observar e o
 // setor criando uma linha de base. A nota não é escolhida à mão: sai
 // automática da soma das respostas (ver src/lib/chaoIndicadores.js).
+// `nome` é o que vai pro papel: quem lê o relatório impresso não precisa
+// do termo japonês, só do que está sendo avaliado.
 export const ITENS_5S = [
-  { item: 'seiri', titulo: 'Seiri — Utilização', pergunta: 'Existem materiais, objetos ou resíduos desnecessários no setor?' },
-  { item: 'seiton', titulo: 'Seiton — Organização', pergunta: 'Ferramentas e materiais estão nos locais corretos e identificados?' },
-  { item: 'seiso', titulo: 'Seiso — Limpeza', pergunta: 'Piso, máquinas e bancadas estão limpos?' },
-  { item: 'seiketsu', titulo: 'Seiketsu — Padronização', pergunta: 'Demarcações, placas e padrões estão sendo respeitados?' },
-  { item: 'shitsuke', titulo: 'Shitsuke — Disciplina', pergunta: 'O setor está mantendo a organização sem precisar de cobrança constante?' },
+  { item: 'seiri', titulo: 'Seiri — Utilização', nome: 'Utilização', pergunta: 'Existem materiais, objetos ou resíduos desnecessários no setor?' },
+  { item: 'seiton', titulo: 'Seiton — Organização', nome: 'Organização', pergunta: 'Ferramentas e materiais estão nos locais corretos e identificados?' },
+  { item: 'seiso', titulo: 'Seiso — Limpeza', nome: 'Limpeza', pergunta: 'Piso, máquinas e bancadas estão limpos?' },
+  { item: 'seiketsu', titulo: 'Seiketsu — Padronização', nome: 'Padronização', pergunta: 'Demarcações, placas e padrões estão sendo respeitados?' },
+  { item: 'shitsuke', titulo: 'Shitsuke — Disciplina', nome: 'Disciplina', pergunta: 'O setor está mantendo a organização sem precisar de cobrança constante?' },
 ]
 
 // Plano de ação: o pedaço que faz o problema achado no 5S virar conserto

@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   diaDaSemana, diaCurto, dataPorExtenso, horaDe, situacaoDoSetor, resumoDoSetor,
   sugestoesDoSetor, orcamentoDeFotos, numerosDoDia,
-  fraseDoResumo, fraseDaNotaMedia, fraseDasRessalvas, fraseFotosRestantes,
+  fraseDoResumo, fraseDaNotaMedia, fraseDasRessalvas, fraseFotosRestantes, linhasDosSensos,
 } from './relatorio5s'
 
 describe('diaCurto', () => {
@@ -105,6 +105,12 @@ describe('resumoDoSetor', () => {
     expect(texto).toContain('no quadrante 7C')
     expect(texto).toContain('Retalho na passagem')
     expect(texto).toContain('Pó embaixo da prensa')
+  })
+
+  it('fala o senso em português, sem o termo japonês', () => {
+    const texto = resumoDoSetor({ nota: 4 }, [{ item: 'seiso', resposta: 'parcial', descricao_problema: 'x' }])
+    expect(texto).toContain('Limpeza (parcial)')
+    expect(texto).not.toMatch(/Seiso/i)
   })
 
   it('usa singular quando é uma ressalva só', () => {
@@ -279,5 +285,47 @@ describe('fraseFotosRestantes', () => {
 
   it('cala a boca quando coube tudo', () => {
     expect(fraseFotosRestantes(0, true)).toBeNull()
+  })
+})
+
+describe('linhasDosSensos', () => {
+  it('traz sempre os cinco, na ordem, em português', () => {
+    const linhas = linhasDosSensos([])
+    expect(linhas.map((l) => `${l.numero}. ${l.nome}`)).toEqual([
+      '1. Utilização', '2. Organização', '3. Limpeza', '4. Padronização', '5. Disciplina',
+    ])
+    expect(linhas.every((l) => l.resultado === 'Não avaliado' && l.tom === 'neutro')).toBe(true)
+  })
+
+  it('ordena pelo senso, não pela ordem em que foi respondido', () => {
+    const linhas = linhasDosSensos([
+      { item: 'shitsuke', resposta: 'conforme' },
+      { item: 'seiri', resposta: 'nao_conforme' },
+    ])
+    expect(linhas[0]).toMatchObject({ nome: 'Utilização', resultado: 'Não conforme', tom: 'ruim' })
+    expect(linhas[4]).toMatchObject({ nome: 'Disciplina', resultado: 'Conforme', tom: 'ok' })
+  })
+
+  it('separa problema, onde e sugestão, cada um com rótulo', () => {
+    const [linha] = linhasDosSensos([{
+      item: 'seiri', resposta: 'parcial',
+      descricao_problema: ' Retalho na passagem ', quadrante: '7C', sugestao: 'Recolher no fim do turno',
+    }])
+    expect(linha.tom).toBe('atencao')
+    expect(linha.textos).toEqual([
+      { rotulo: 'Problema', texto: 'Retalho na passagem' },
+      { rotulo: 'Onde', texto: 'quadrante 7C' },
+      { rotulo: 'Sugestão', texto: 'Recolher no fim do turno' },
+    ])
+  })
+
+  it('não inventa rótulo para campo vazio', () => {
+    const [linha] = linhasDosSensos([{ item: 'seiri', resposta: 'conforme', descricao_problema: '  ', quadrante: null }])
+    expect(linha.textos).toEqual([])
+  })
+
+  it('trata "não inspecionado" como item sem julgamento', () => {
+    const [linha] = linhasDosSensos([{ item: 'seiri', resposta: 'nao_inspecionado' }])
+    expect(linha).toMatchObject({ resultado: 'Não inspecionado', tom: 'neutro' })
   })
 })
