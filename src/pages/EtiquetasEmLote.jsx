@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Link } from 'react-router-dom'
 import QRCode from 'qrcode'
 import { ArrowLeft, Printer, QrCode } from 'lucide-react'
 import { useTabela, useSetores, useUnidades } from '../hooks/useDados'
-import { FolhaEtiqueta, FORMATOS, CHAVE, lerSalvo } from '../components/EtiquetaQR'
+import { FolhaEtiqueta, AjustePosicao, FORMATOS, CHAVE, lerSalvo } from '../components/EtiquetaQR'
 import { linkDoQR, origemPublica, enderecoTemporario } from '../lib/urlPublica'
 import { Botao, Cartao, Campo, Entrada, Selecao, Carregando, Vazio, Erro } from '../components/ui'
 
@@ -27,6 +27,12 @@ export default function EtiquetasEmLote() {
   const [formato, setFormato] = useState(salvo.formato || '6082')
   const [larg, setLarg] = useState(salvo.larg || 101.6)
   const [alt, setAlt] = useState(salvo.alt || 33.9)
+  const [deslocX, setDeslocX] = useState(salvo.deslocX ?? 0)
+  const [deslocY, setDeslocY] = useState(salvo.deslocY ?? 0)
+  // Etiqueta que já saiu no teste: se saiu certa, não precisa sair de novo.
+  const [testeId, setTesteId] = useState(null)
+  const [pularTeste, setPularTeste] = useState(true)
+  const [qrExemplo, setQrExemplo] = useState(null)
 
   const [lote, setLote] = useState(null)
   const [preparando, setPreparando] = useState(false)
@@ -72,25 +78,48 @@ export default function EtiquetasEmLote() {
     }
   }
 
-  // Grava a medida escolhida aqui no mesmo lugar da etiqueta avulsa,
-  // sem perder o ajuste de posição que já estava calibrado.
+  // Medida e ajuste ficam no mesmo lugar da etiqueta avulsa: calibrou
+  // num lugar, vale no outro e na próxima vez.
   useEffect(() => {
     try {
-      const atual = lerSalvo() || {}
-      localStorage.setItem(CHAVE, JSON.stringify({ ...atual, formato, larg, alt }))
+      localStorage.setItem(CHAVE, JSON.stringify({ formato, larg, alt, deslocX, deslocY }))
     } catch { /* navegador sem armazenamento: só não lembra da próxima */ }
-  }, [formato, larg, alt])
+  }, [formato, larg, alt, deslocX, deslocY])
 
   let hostDoQR = ''
   try { hostDoQR = new URL(origemPublica()).host } catch { /* sem endereço */ }
   const temporario = enderecoTemporario(hostDoQR)
 
-  const imprimir = async () => {
+  const exemplo = marcados[0]
+
+  // QR de verdade na prévia: é por ela que se confere se cabe no adesivo.
+  useEffect(() => {
+    if (!exemplo) return
+    let vivo = true
+    QRCode.toString(linkDoQR(exemplo.qr_token), { type: 'svg', margin: 0, errorCorrectionLevel: 'M' })
+      .then((svg) => vivo && setQrExemplo(svg))
+      .catch(() => vivo && setQrExemplo(null))
+    return () => { vivo = false }
+  }, [exemplo?.qr_token]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const pulando = testeId && pularTeste && marcados.some((a) => a.id === testeId)
+  const paraImprimir = pulando ? marcados.filter((a) => a.id !== testeId) : marcados
+
+  const imprimirTeste = () => {
+    if (!exemplo) return
+    setTesteId(exemplo.id)
+    setPularTeste(true)
+    gerar([exemplo])
+  }
+
+  const imprimir = () => gerar(paraImprimir)
+
+  const gerar = async (escolhidos) => {
     setErro(null)
     setPreparando(true)
     try {
       const itens = []
-      for (const a of marcados) {
+      for (const a of escolhidos) {
         const svg = await QRCode.toString(linkDoQR(a.qr_token), { type: 'svg', margin: 0, errorCorrectionLevel: 'M' })
         itens.push({ ativo: a, svg })
       }
@@ -116,9 +145,6 @@ export default function EtiquetasEmLote() {
     }
   }, [lote])
 
-  const deslocX = salvo.deslocX ?? 0
-  const deslocY = salvo.deslocY ?? 0
-  const exemplo = marcados[0]
 
   return (
     <div className="entra space-y-5">
@@ -191,41 +217,76 @@ export default function EtiquetasEmLote() {
           )}
         </Cartao>
 
-        <div className="space-y-4">
-          <Cartao className="space-y-4 p-4">
-            <Campo rotulo="Tamanho do adesivo">
-              <Selecao value={formato} onChange={(e) => trocarFormato(e.target.value)}>
-                {FORMATOS.map((f) => <option key={f.id} value={f.id}>{f.nome}</option>)}
-              </Selecao>
-            </Campo>
+        {/* No celular os passos vêm antes da lista: com dezenas de
+            máquinas, eles ficariam perdidos lá no fim da página. */}
+        <div className="order-first space-y-4 lg:order-none">
+          <Cartao className="space-y-3 p-4">
+            <Passo numero={1} titulo="Escolha o tamanho do adesivo" />
+            <Selecao value={formato} onChange={(e) => trocarFormato(e.target.value)}>
+              {FORMATOS.map((f) => <option key={f.id} value={f.id}>{f.nome}</option>)}
+            </Selecao>
             {formato === 'livre' && (
               <div className="grid grid-cols-2 gap-3">
                 <Campo rotulo="Largura (mm)">
-                  <Entrada type="number" step="0.1" min="30" value={larg} onChange={(e) => setLarg(Number(e.target.value) || 0)} />
+                  <Entrada type="number" step="0.1" min="20" value={larg} onChange={(e) => setLarg(Number(e.target.value) || 0)} />
                 </Campo>
                 <Campo rotulo="Altura (mm)">
-                  <Entrada type="number" step="0.1" min="20" value={alt} onChange={(e) => setAlt(Number(e.target.value) || 0)} />
+                  <Entrada type="number" step="0.1" min="15" value={alt} onChange={(e) => setAlt(Number(e.target.value) || 0)} />
                 </Campo>
               </div>
             )}
+          </Cartao>
+
+          <Cartao className="space-y-3 p-4">
+            <Passo numero={2} titulo="Imprima uma de teste e acerte a posição" />
+            <p className="text-sm text-slate-600">
+              Coloque <strong>um adesivo</strong> na impressora e imprima uma só. Se o QR ou o
+              texto sair torto ou cortado, ajuste com as setas e teste de novo até ficar certinho.
+            </p>
             {exemplo && (
-              <div>
-                <p className="mb-2 text-xs font-medium text-slate-500">Prévia da primeira, no tamanho real</p>
-                <div className="flex justify-center overflow-hidden rounded-lg bg-slate-100 p-3">
+              <div className="rounded-lg bg-slate-100 p-3">
+                <CaberNaLargura larguraMm={larg} alturaMm={alt}>
                   <div className="ring-1 ring-slate-300 ring-inset">
-                    <FolhaEtiqueta ativo={exemplo} qrSvg={null} larg={larg} alt={alt} deslocX={deslocX} deslocY={deslocY} />
+                    <FolhaEtiqueta ativo={exemplo} qrSvg={qrExemplo} larg={larg} alt={alt} deslocX={deslocX} deslocY={deslocY} />
                   </div>
-                </div>
+                </CaberNaLargura>
               </div>
             )}
-            <Botao className="w-full" onClick={imprimir} carregando={preparando} disabled={!marcados.length}>
-              <Printer size={15} /> Imprimir {marcados.length} {marcados.length === 1 ? 'etiqueta' : 'etiquetas'}
+            <Botao variante="secundario" className="w-full" onClick={imprimirTeste} carregando={preparando} disabled={!exemplo}>
+              <Printer size={15} /> Imprimir 1 de teste{exemplo ? ` (${exemplo.codigo})` : ''}
+            </Botao>
+            <AjustePosicao
+              deslocX={deslocX}
+              deslocY={deslocY}
+              titulo="Saiu torta? Mova para o lado que falta"
+              aoMudar={(x, y) => {
+                setDeslocX(x)
+                setDeslocY(y)
+              }}
+            />
+          </Cartao>
+
+          <Cartao className="space-y-3 p-4">
+            <Passo numero={3} titulo="Ficou certa? Imprima todas" />
+            {testeId && marcados.some((a) => a.id === testeId) && (
+              <label className="flex cursor-pointer items-start gap-2 text-sm text-slate-700">
+                <input
+                  type="checkbox"
+                  className="mt-0.5 size-4 accent-sky-600"
+                  checked={pularTeste}
+                  onChange={(e) => setPularTeste(e.target.checked)}
+                />
+                <span>Não imprimir de novo a {marcados.find((a) => a.id === testeId)?.codigo} — a do teste saiu boa</span>
+              </label>
+            )}
+            <Botao className="w-full" onClick={imprimir} carregando={preparando} disabled={!paraImprimir.length}>
+              <Printer size={15} /> Imprimir {paraImprimir.length} {paraImprimir.length === 1 ? 'etiqueta' : 'etiquetas'}
             </Botao>
             <Erro erro={erro} />
             <p className="text-xs text-slate-500">
-              Na impressão, deixe a escala em <strong>100%</strong> e desmarque &ldquo;ajustar à
-              página&rdquo;. O ajuste de posição é o mesmo da etiqueta avulsa — se sair
-              deslocado, acerte por lá numa máquina e volte aqui.
+              Na janela da impressora, deixe a escala em <strong>100%</strong> e desmarque
+              &ldquo;ajustar à página&rdquo;. O tamanho e o ajuste ficam guardados neste
+              aparelho para a próxima vez.
             </p>
           </Cartao>
         </div>
@@ -243,6 +304,48 @@ export default function EtiquetasEmLote() {
           </div>,
           document.body
         )}
+    </div>
+  )
+}
+
+function Passo({ numero, titulo }) {
+  return (
+    <p className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+      <span className="flex size-6 items-center justify-center rounded-full bg-sky-600 text-xs font-bold text-white">
+        {numero}
+      </span>
+      {titulo}
+    </p>
+  )
+}
+
+const PX_POR_MM = 96 / 25.4
+
+/**
+ * Encolhe a prévia quando a etiqueta é mais larga que a coluna (no
+ * celular, sempre). Só a prévia: a impressão continua no tamanho real.
+ */
+function CaberNaLargura({ larguraMm, alturaMm, children }) {
+  const caixa = useRef(null)
+  const [disponivel, setDisponivel] = useState(null)
+
+  useEffect(() => {
+    const el = caixa.current
+    if (!el || typeof ResizeObserver === 'undefined') return
+    const obs = new ResizeObserver(([e]) => setDisponivel(e.contentRect.width))
+    obs.observe(el)
+    return () => obs.disconnect()
+  }, [])
+
+  const natural = larguraMm * PX_POR_MM
+  const escala = disponivel ? Math.min(1, disponivel / natural) : 1
+  return (
+    <div ref={caixa} className="w-full">
+      <div className="mx-auto" style={{ width: natural * escala, height: alturaMm * PX_POR_MM * escala }}>
+        <div style={{ width: natural, transform: `scale(${escala})`, transformOrigin: 'top left' }}>
+          {children}
+        </div>
+      </div>
     </div>
   )
 }

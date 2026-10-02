@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { screen, fireEvent, waitFor } from '@testing-library/react'
+import { screen, fireEvent, waitFor, act } from '@testing-library/react'
 import { renderizar, consulta, carregando } from '../teste/utilitarios'
 
 const tabela = vi.fn()
@@ -63,5 +63,40 @@ describe('Etiquetas em lote', () => {
     const links = [...document.querySelectorAll('.etiquetas-lote svg')].map((s) => s.getAttribute('data-link'))
     expect(links[0]).toMatch(/\/reportar\/t1$/)
     expect(links[1]).toMatch(/\/reportar\/t2$/)
+  })
+
+  it('imprime só uma no teste, e depois não repete a do teste', async () => {
+    tabela.mockReturnValue(consulta(ATIVOS))
+    renderizar(<EtiquetasEmLote />)
+    fireEvent.click(screen.getByRole('button', { name: /Imprimir 1 de teste \(MAQ-001\)/ }))
+    await waitFor(() => expect(document.querySelectorAll('.etiquetas-lote .etiqueta-pagina')).toHaveLength(1))
+    act(() => { window.dispatchEvent(new Event('afterprint')) })
+    await waitFor(() => expect(document.querySelector('.etiquetas-lote')).toBeNull())
+
+    // A do teste saiu boa: o "imprimir todas" pula ela.
+    expect(screen.getByText(/Não imprimir de novo a MAQ-001/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /Imprimir 1 etiqueta$/ }))
+    await waitFor(() => expect(document.querySelectorAll('.etiquetas-lote .etiqueta-pagina')).toHaveLength(1))
+    expect(document.querySelector('.etiquetas-lote svg').getAttribute('data-link')).toMatch(/\/reportar\/t2$/)
+  })
+
+  it('desmarcando "não imprimir de novo", a do teste volta pro lote', async () => {
+    tabela.mockReturnValue(consulta(ATIVOS))
+    renderizar(<EtiquetasEmLote />)
+    fireEvent.click(screen.getByRole('button', { name: /Imprimir 1 de teste/ }))
+    await waitFor(() => expect(document.querySelector('.etiquetas-lote')).not.toBeNull())
+    act(() => { window.dispatchEvent(new Event('afterprint')) })
+    fireEvent.click(screen.getByLabelText(/Não imprimir de novo a MAQ-001/))
+    expect(screen.getByRole('button', { name: /Imprimir 2 etiquetas/ })).toBeInTheDocument()
+  })
+
+  it('a seta move a etiqueta e o ajuste fica guardado', () => {
+    localStorage.clear()
+    tabela.mockReturnValue(consulta(ATIVOS))
+    renderizar(<EtiquetasEmLote />)
+    fireEvent.click(screen.getByRole('button', { name: 'Para a direita' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Para baixo' }))
+    expect(screen.getByText(/x 0\.5mm/)).toBeInTheDocument()
+    expect(JSON.parse(localStorage.getItem('sgai:etiqueta'))).toMatchObject({ deslocX: 0.5, deslocY: 0.5 })
   })
 })

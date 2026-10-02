@@ -164,50 +164,14 @@ export default function EtiquetaQR({ aberto, aoFechar, ativo, link }) {
             </div>
           </div>
 
-          <div className="rounded-lg bg-slate-50 p-3 ring-1 ring-slate-200 ring-inset">
-            <div className="flex items-center justify-between">
-              <p className="text-xs font-medium text-slate-600">
-                Saiu deslocado no seu adesivo? Ajuste aqui
-              </p>
-              {(deslocX !== 0 || deslocY !== 0) && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setDeslocX(0)
-                    setDeslocY(0)
-                  }}
-                  className="text-xs font-medium text-sky-600 hover:text-sky-700"
-                >
-                  Zerar
-                </button>
-              )}
-            </div>
-            <div className="mt-2 flex items-center justify-center gap-4">
-              <div className="grid grid-cols-3 grid-rows-3 gap-1">
-                <span />
-                <BotaoSeta rotulo="Para cima" onClick={() => setDeslocY((v) => v - 0.5)}>
-                  ↑
-                </BotaoSeta>
-                <span />
-                <BotaoSeta rotulo="Para a esquerda" onClick={() => setDeslocX((v) => v - 0.5)}>
-                  ←
-                </BotaoSeta>
-                <span />
-                <BotaoSeta rotulo="Para a direita" onClick={() => setDeslocX((v) => v + 0.5)}>
-                  →
-                </BotaoSeta>
-                <span />
-                <BotaoSeta rotulo="Para baixo" onClick={() => setDeslocY((v) => v + 0.5)}>
-                  ↓
-                </BotaoSeta>
-                <span />
-              </div>
-              <span className="font-mono text-xs text-slate-500">
-                x {deslocX.toFixed(1)}mm
-                <br />y {deslocY.toFixed(1)}mm
-              </span>
-            </div>
-          </div>
+          <AjustePosicao
+            deslocX={deslocX}
+            deslocY={deslocY}
+            aoMudar={(x, y) => {
+              setDeslocX(x)
+              setDeslocY(y)
+            }}
+          />
 
           <p className="text-xs text-slate-500">
             Na hora de imprimir, deixe a escala em <strong>100%</strong> e desmarque
@@ -318,6 +282,53 @@ export function FolhaEtiqueta({ ativo, qrSvg, larg, alt, deslocX = 0, deslocY = 
       style={{ width: `${larg}mm`, height: `${alt}mm` }}
     >
       {conteudo}
+    </div>
+  )
+}
+
+/** Setas que empurram o conteúdo da etiqueta meio milímetro por toque. */
+export function AjustePosicao({ deslocX, deslocY, aoMudar, titulo = 'Saiu deslocado no seu adesivo? Ajuste aqui' }) {
+  return (
+    <div className="rounded-lg bg-slate-50 p-3 ring-1 ring-slate-200 ring-inset">
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-medium text-slate-600">
+          {titulo}
+        </p>
+        {(deslocX !== 0 || deslocY !== 0) && (
+          <button
+            type="button"
+            onClick={() => aoMudar(0, 0)}
+            className="text-xs font-medium text-sky-600 hover:text-sky-700"
+          >
+            Zerar
+          </button>
+        )}
+      </div>
+      <div className="mt-2 flex items-center justify-center gap-4">
+        <div className="grid grid-cols-3 grid-rows-3 gap-1">
+          <span />
+          <BotaoSeta rotulo="Para cima" onClick={() => aoMudar(deslocX, deslocY - 0.5)}>
+            ↑
+          </BotaoSeta>
+          <span />
+          <BotaoSeta rotulo="Para a esquerda" onClick={() => aoMudar(deslocX - 0.5, deslocY)}>
+            ←
+          </BotaoSeta>
+          <span />
+          <BotaoSeta rotulo="Para a direita" onClick={() => aoMudar(deslocX + 0.5, deslocY)}>
+            →
+          </BotaoSeta>
+          <span />
+          <BotaoSeta rotulo="Para baixo" onClick={() => aoMudar(deslocX, deslocY + 0.5)}>
+            ↓
+          </BotaoSeta>
+          <span />
+        </div>
+        <span className="font-mono text-xs text-slate-500">
+          x {deslocX.toFixed(1)}mm
+          <br />y {deslocY.toFixed(1)}mm
+        </span>
+      </div>
     </div>
   )
 }
