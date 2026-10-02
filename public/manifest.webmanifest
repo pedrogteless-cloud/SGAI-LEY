@@ -1,0 +1,24 @@
+{
+  "name": "SGAI — Ley Colchões",
+  "short_name": "SGAI",
+  "description": "Sistema de Gestão de Ativos Industriais da Ley Colchões: máquinas, serviços, 5S e desperdícios do chão de fábrica.",
+  "lang": "pt-BR",
+  "dir": "ltr",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#0f172a",
+  "theme_color": "#0f172a",
+  "categories": ["business", "productivity", "utilities"],
+  "icons": [
+    { "src": "/icone-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icone-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icone-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Checklist 5S do dia", "short_name": "5S", "url": "/5s", "icons": [{ "src": "/icone-192.png", "sizes": "192x192" }] },
+    { "name": "Ações do 5S", "short_name": "Ações", "url": "/5s/acoes", "icons": [{ "src": "/icone-192.png", "sizes": "192x192" }] },
+    { "name": "Avisos abertos", "short_name": "Avisos", "url": "/solicitacoes", "icons": [{ "src": "/icone-192.png", "sizes": "192x192" }] }
+  ]
+}
