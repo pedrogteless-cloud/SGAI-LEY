@@ -31,6 +31,7 @@ import Equipe from './pages/Equipe'
 import Auditoria from './pages/Auditoria'
 import ChaoFabricaDetalhe from './pages/ChaoFabricaDetalhe'
 import MateriaisResiduo from './pages/MateriaisResiduo'
+import EtiquetasEmLote from './pages/EtiquetasEmLote'
 
 const cliente = new QueryClient({
   defaultOptions: {
@@ -82,6 +83,7 @@ export default function App() {
                 <Route path="ativos" element={<Ativos />} />
                 <Route path="ativos/novo" element={<AtivoForm />} />
                 <Route path="ativos/importar" element={<ImportarAtivos />} />
+                <Route path="ativos/etiquetas" element={<EtiquetasEmLote />} />
                 <Route path="ativos/:id" element={<AtivoDetalhe />} />
                 <Route path="ativos/:id/editar" element={<AtivoForm />} />
                 <Route path="solicitacoes" element={<Solicitacoes />} />

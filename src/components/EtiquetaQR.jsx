@@ -15,10 +15,10 @@ import { enderecoTemporario } from '../lib/urlPublica'
  * escorregar de posição.
  */
 
-const CHAVE = 'sgai:etiqueta'
+export const CHAVE = 'sgai:etiqueta'
 
 // Medidas de adesivo comuns no Brasil (Pimaco e equivalentes)
-const FORMATOS = [
+export const FORMATOS = [
   { id: '6180', nome: 'Pimaco 6180 · 101,6 × 25,4 mm', l: 101.6, a: 25.4 },
   { id: '6082', nome: 'Pimaco 6082 · 101,6 × 33,9 mm', l: 101.6, a: 33.9 },
   { id: '6087', nome: 'Pimaco 6087 · 101,6 × 50,8 mm', l: 101.6, a: 50.8 },
@@ -39,7 +39,7 @@ const BotaoSeta = ({ rotulo, onClick, children }) => (
   </button>
 )
 
-const lerSalvo = () => {
+export const lerSalvo = () => {
   try {
     return JSON.parse(localStorage.getItem(CHAVE)) || null
   } catch {
@@ -88,88 +88,8 @@ export default function EtiquetaQR({ aberto, aoFechar, ativo, link }) {
 
   if (!ativo) return null
 
-  // Adesivo em faixa comporta o QR ao lado do texto. Quadrado ou em pé não:
-  // sobraria uma tira de poucos milímetros para escrever. Nesses, QR em cima.
-  const deitada = larg / alt >= 1.8
-  // Abaixo de ~30 mm de altura o setor não cabe e as fontes encolhem.
-  const apertada = alt < 30
-
-  const ladoQR = deitada
-    ? Math.min(alt - 6, 46)
-    : Math.min(larg - 6, (alt - 6) * 0.62)
-  const sobra = deitada ? larg - ladoQR - 9 : larg - 6
-
-  const conteudo = (
-    <div
-      className={`flex bg-white p-[3mm] ${
-        deitada ? 'items-center gap-[3mm]' : 'flex-col items-center gap-[1.5mm]'
-      }`}
-      style={{
-        width: `${larg}mm`,
-        height: `${alt}mm`,
-        transform: `translate(${deslocX}mm, ${deslocY}mm)`,
-      }}
-    >
-      {qrSvg && (
-        <div
-          className="shrink-0 [&>svg]:block [&>svg]:h-full [&>svg]:w-full"
-          style={{ width: `${ladoQR}mm`, height: `${ladoQR}mm` }}
-          dangerouslySetInnerHTML={{ __html: qrSvg }}
-        />
-      )}
-      <div
-        className={`flex min-w-0 flex-col ${
-          deitada ? 'h-full justify-between py-[0.5mm]' : 'flex-1 justify-between text-center'
-        }`}
-        style={{ width: `${sobra}mm` }}
-      >
-        <div className="min-w-0">
-          <p
-            className="font-bold text-black uppercase"
-            style={{
-              fontSize: apertada ? '2.7mm' : '3.4mm',
-              lineHeight: 1.1,
-              display: '-webkit-box',
-              WebkitLineClamp: 2,
-              WebkitBoxOrient: 'vertical',
-              overflow: 'hidden',
-            }}
-          >
-            {ativo.nome}
-          </p>
-          <p
-            className="font-mono font-semibold text-black"
-            style={{ fontSize: apertada ? '2.3mm' : '2.9mm', lineHeight: 1.35 }}
-          >
-            {ativo.codigo}
-          </p>
-          {!apertada && (ativo.setor?.nome || ativo.unidade?.nome) && (
-            <p className="truncate text-black" style={{ fontSize: '2.2mm', lineHeight: 1.35 }}>
-              {[ativo.setor?.nome, ativo.unidade?.nome].filter(Boolean).join(' · ')}
-            </p>
-          )}
-        </div>
-
-        <p
-          className="font-bold text-black uppercase"
-          style={{ fontSize: apertada ? '1.9mm' : '2.3mm', lineHeight: 1.15 }}
-        >
-          Problema? Aponte a câmera
-        </p>
-      </div>
-    </div>
-  )
-
-  // A moldura é o papel de verdade — tamanho fixo, corta o que passar da borda
-  // quando o ajuste desloca o conteúdo. Ela é o mesmo tanto na prévia quanto no
-  // que sai impresso, então o que se vê na tela é exatamente o que vai no papel.
   const etiqueta = (
-    <div
-      className="etiqueta-folha overflow-hidden bg-white"
-      style={{ width: `${larg}mm`, height: `${alt}mm` }}
-    >
-      {conteudo}
-    </div>
+    <FolhaEtiqueta ativo={ativo} qrSvg={qrSvg} larg={larg} alt={alt} deslocX={deslocX} deslocY={deslocY} />
   )
 
   return (
@@ -308,5 +228,96 @@ export default function EtiquetaQR({ aberto, aoFechar, ativo, link }) {
           document.body
         )}
     </>
+  )
+}
+
+/**
+ * O adesivo em si. Mora separado do modal porque a impressão em lote
+ * desenha a mesma etiqueta, só que muitas vezes — e tem que sair igual,
+ * com a mesma medida e o mesmo ajuste de posição já calibrados.
+ */
+export function FolhaEtiqueta({ ativo, qrSvg, larg, alt, deslocX = 0, deslocY = 0 }) {
+  // Adesivo em faixa comporta o QR ao lado do texto. Quadrado ou em pé não:
+  // sobraria uma tira de poucos milímetros para escrever. Nesses, QR em cima.
+  const deitada = larg / alt >= 1.8
+  // Abaixo de ~30 mm de altura o setor não cabe e as fontes encolhem.
+  const apertada = alt < 30
+
+  const ladoQR = deitada
+    ? Math.min(alt - 6, 46)
+    : Math.min(larg - 6, (alt - 6) * 0.62)
+  const sobra = deitada ? larg - ladoQR - 9 : larg - 6
+
+  const conteudo = (
+    <div
+      className={`flex bg-white p-[3mm] ${
+        deitada ? 'items-center gap-[3mm]' : 'flex-col items-center gap-[1.5mm]'
+      }`}
+      style={{
+        width: `${larg}mm`,
+        height: `${alt}mm`,
+        transform: `translate(${deslocX}mm, ${deslocY}mm)`,
+      }}
+    >
+      {qrSvg && (
+        <div
+          className="shrink-0 [&>svg]:block [&>svg]:h-full [&>svg]:w-full"
+          style={{ width: `${ladoQR}mm`, height: `${ladoQR}mm` }}
+          dangerouslySetInnerHTML={{ __html: qrSvg }}
+        />
+      )}
+      <div
+        className={`flex min-w-0 flex-col ${
+          deitada ? 'h-full justify-between py-[0.5mm]' : 'flex-1 justify-between text-center'
+        }`}
+        style={{ width: `${sobra}mm` }}
+      >
+        <div className="min-w-0">
+          <p
+            className="font-bold text-black uppercase"
+            style={{
+              fontSize: apertada ? '2.7mm' : '3.4mm',
+              lineHeight: 1.1,
+              display: '-webkit-box',
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: 'vertical',
+              overflow: 'hidden',
+            }}
+          >
+            {ativo.nome}
+          </p>
+          <p
+            className="font-mono font-semibold text-black"
+            style={{ fontSize: apertada ? '2.3mm' : '2.9mm', lineHeight: 1.35 }}
+          >
+            {ativo.codigo}
+          </p>
+          {!apertada && (ativo.setor?.nome || ativo.unidade?.nome) && (
+            <p className="truncate text-black" style={{ fontSize: '2.2mm', lineHeight: 1.35 }}>
+              {[ativo.setor?.nome, ativo.unidade?.nome].filter(Boolean).join(' · ')}
+            </p>
+          )}
+        </div>
+
+        <p
+          className="font-bold text-black uppercase"
+          style={{ fontSize: apertada ? '1.9mm' : '2.3mm', lineHeight: 1.15 }}
+        >
+          Problema? Aponte a câmera
+        </p>
+      </div>
+    </div>
+  )
+
+  // A moldura é o papel de verdade — tamanho fixo, corta o que passar da borda
+  // quando o ajuste desloca o conteúdo. Ela é o mesmo tanto na prévia quanto no
+  // que sai impresso, então o que se vê na tela é exatamente o que vai no papel.
+  return (
+    <div
+      className="etiqueta-folha overflow-hidden bg-white"
+      style={{ width: `${larg}mm`, height: `${alt}mm` }}
+    >
+      {conteudo}
+    </div>
   )
 }

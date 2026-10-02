@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Plus, Search, Upload, Package } from 'lucide-react'
+import { Plus, Search, Upload, Package, QrCode } from 'lucide-react'
 import { useTabela, useCategorias, useSetores, useUnidades } from '../hooks/useDados'
 import { moeda } from '../lib/format'
 import { M_CRITICIDADE, M_SITUACAO, CRITICIDADES, SITUACOES_ATIVO } from '../lib/constants'
@@ -65,7 +65,12 @@ export default function Ativos() {
             {lista.length} {lista.length === 1 ? 'máquina cadastrada' : 'máquinas cadastradas'}
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
+          <Link to="/ativos/etiquetas">
+            <Botao variante="secundario">
+              <QrCode size={15} /> Imprimir etiquetas
+            </Botao>
+          </Link>
           <Link to="/ativos/importar">
             <Botao variante="secundario">
               <Upload size={15} /> Cadastrar pela planilha
