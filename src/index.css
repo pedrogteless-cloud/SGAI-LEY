@@ -411,6 +411,12 @@ table th {
     box-shadow: none !important;
   }
 
+  /* Lote: uma etiqueta por página do tamanho do adesivo, uma atrás da
+     outra — o mesmo que a etiqueta avulsa, repetido. */
+  .etiquetas-lote { position: static; }
+  .etiqueta-pagina { break-after: page; page-break-after: always; }
+  .etiqueta-pagina:last-child { break-after: auto; page-break-after: auto; }
+
   /* Impressora térmica costuma descartar cor de fundo; o QR é preto no branco. */
   * {
     -webkit-print-color-adjust: exact;

@@ -15,10 +15,10 @@ import { enderecoTemporario } from '../lib/urlPublica'
  * escorregar de posição.
  */
 
-const CHAVE = 'sgai:etiqueta'
+export const CHAVE = 'sgai:etiqueta'
 
 // Medidas de adesivo comuns no Brasil (Pimaco e equivalentes)
-const FORMATOS = [
+export const FORMATOS = [
   { id: '6180', nome: 'Pimaco 6180 · 101,6 × 25,4 mm', l: 101.6, a: 25.4 },
   { id: '6082', nome: 'Pimaco 6082 · 101,6 × 33,9 mm', l: 101.6, a: 33.9 },
   { id: '6087', nome: 'Pimaco 6087 · 101,6 × 50,8 mm', l: 101.6, a: 50.8 },
@@ -39,7 +39,7 @@ const BotaoSeta = ({ rotulo, onClick, children }) => (
   </button>
 )
 
-const lerSalvo = () => {
+export const lerSalvo = () => {
   try {
     return JSON.parse(localStorage.getItem(CHAVE)) || null
   } catch {
@@ -88,6 +88,119 @@ export default function EtiquetaQR({ aberto, aoFechar, ativo, link }) {
 
   if (!ativo) return null
 
+  const etiqueta = (
+    <FolhaEtiqueta ativo={ativo} qrSvg={qrSvg} larg={larg} alt={alt} deslocX={deslocX} deslocY={deslocY} />
+  )
+
+  return (
+    <>
+      <Modal
+        aberto={aberto}
+        aoFechar={aoFechar}
+        titulo="Etiqueta para colar na máquina"
+        largura="max-w-lg"
+        rodape={
+          <>
+            <Botao variante="secundario" onClick={aoFechar}>
+              Fechar
+            </Botao>
+            <Botao onClick={imprimir} disabled={!qrSvg}>
+              <Printer size={15} /> Imprimir
+            </Botao>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          {(() => {
+            let host = ''
+            try { host = new URL(link).host } catch { /* link vazio */ }
+            return enderecoTemporario(host) && (
+              <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800 ring-1 ring-amber-200">
+                <strong>Não imprima ainda.</strong> Este QR aponta para um endereço temporário
+                ({host}). A Vercel apaga esse endereço com o tempo e a etiqueta para de funcionar.
+                Abra o sistema pelo endereço oficial e imprima de lá.
+              </p>
+            )
+          })()}
+          <Campo rotulo="Tamanho do seu adesivo">
+            <Selecao value={formato} onChange={(e) => trocarFormato(e.target.value)}>
+              {FORMATOS.map((f) => (
+                <option key={f.id} value={f.id}>
+                  {f.nome}
+                </option>
+              ))}
+            </Selecao>
+          </Campo>
+
+          {formato === 'livre' && (
+            <div className="grid grid-cols-2 gap-3">
+              <Campo rotulo="Largura (mm)">
+                <Entrada
+                  type="number"
+                  step="0.1"
+                  min="30"
+                  value={larg}
+                  onChange={(e) => setLarg(Number(e.target.value) || 0)}
+                />
+              </Campo>
+              <Campo rotulo="Altura (mm)">
+                <Entrada
+                  type="number"
+                  step="0.1"
+                  min="20"
+                  value={alt}
+                  onChange={(e) => setAlt(Number(e.target.value) || 0)}
+                />
+              </Campo>
+            </div>
+          )}
+
+          <div>
+            <p className="mb-2 text-xs font-medium text-slate-500">
+              Prévia no tamanho real — {larg.toFixed(1)} × {alt.toFixed(1)} mm
+            </p>
+            <div className="flex justify-center rounded-lg bg-slate-100 p-4">
+              <div className="ring-1 ring-slate-300 ring-inset">{etiqueta}</div>
+            </div>
+          </div>
+
+          <AjustePosicao
+            deslocX={deslocX}
+            deslocY={deslocY}
+            aoMudar={(x, y) => {
+              setDeslocX(x)
+              setDeslocY(y)
+            }}
+          />
+
+          <p className="text-xs text-slate-500">
+            Na hora de imprimir, deixe a escala em <strong>100%</strong> e desmarque
+            &ldquo;ajustar à página&rdquo; — senão a impressora encolhe e sai fora da medida.
+            Tamanho e ajuste ficam guardados para a próxima.
+          </p>
+        </div>
+      </Modal>
+
+      {/* Vai para fora do #root de propósito: o CSS de impressão esconde os
+          filhos diretos do body, e a etiqueta precisa ser um deles para sobrar. */}
+      {aberto &&
+        createPortal(
+          <div className="so-impressao">
+            <style>{`@page { size: ${larg}mm ${alt}mm; margin: 0; }`}</style>
+            {etiqueta}
+          </div>,
+          document.body
+        )}
+    </>
+  )
+}
+
+/**
+ * O adesivo em si. Mora separado do modal porque a impressão em lote
+ * desenha a mesma etiqueta, só que muitas vezes — e tem que sair igual,
+ * com a mesma medida e o mesmo ajuste de posição já calibrados.
+ */
+export function FolhaEtiqueta({ ativo, qrSvg, larg, alt, deslocX = 0, deslocY = 0 }) {
   // Adesivo em faixa comporta o QR ao lado do texto. Quadrado ou em pé não:
   // sobraria uma tira de poucos milímetros para escrever. Nesses, QR em cima.
   const deitada = larg / alt >= 1.8
@@ -163,7 +276,7 @@ export default function EtiquetaQR({ aberto, aoFechar, ativo, link }) {
   // A moldura é o papel de verdade — tamanho fixo, corta o que passar da borda
   // quando o ajuste desloca o conteúdo. Ela é o mesmo tanto na prévia quanto no
   // que sai impresso, então o que se vê na tela é exatamente o que vai no papel.
-  const etiqueta = (
+  return (
     <div
       className="etiqueta-folha overflow-hidden bg-white"
       style={{ width: `${larg}mm`, height: `${alt}mm` }}
@@ -171,142 +284,51 @@ export default function EtiquetaQR({ aberto, aoFechar, ativo, link }) {
       {conteudo}
     </div>
   )
+}
 
+/** Setas que empurram o conteúdo da etiqueta meio milímetro por toque. */
+export function AjustePosicao({ deslocX, deslocY, aoMudar, titulo = 'Saiu deslocado no seu adesivo? Ajuste aqui' }) {
   return (
-    <>
-      <Modal
-        aberto={aberto}
-        aoFechar={aoFechar}
-        titulo="Etiqueta para colar na máquina"
-        largura="max-w-lg"
-        rodape={
-          <>
-            <Botao variante="secundario" onClick={aoFechar}>
-              Fechar
-            </Botao>
-            <Botao onClick={imprimir} disabled={!qrSvg}>
-              <Printer size={15} /> Imprimir
-            </Botao>
-          </>
-        }
-      >
-        <div className="space-y-4">
-          {(() => {
-            let host = ''
-            try { host = new URL(link).host } catch { /* link vazio */ }
-            return enderecoTemporario(host) && (
-              <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800 ring-1 ring-amber-200">
-                <strong>Não imprima ainda.</strong> Este QR aponta para um endereço temporário
-                ({host}). A Vercel apaga esse endereço com o tempo e a etiqueta para de funcionar.
-                Abra o sistema pelo endereço oficial e imprima de lá.
-              </p>
-            )
-          })()}
-          <Campo rotulo="Tamanho do seu adesivo">
-            <Selecao value={formato} onChange={(e) => trocarFormato(e.target.value)}>
-              {FORMATOS.map((f) => (
-                <option key={f.id} value={f.id}>
-                  {f.nome}
-                </option>
-              ))}
-            </Selecao>
-          </Campo>
-
-          {formato === 'livre' && (
-            <div className="grid grid-cols-2 gap-3">
-              <Campo rotulo="Largura (mm)">
-                <Entrada
-                  type="number"
-                  step="0.1"
-                  min="30"
-                  value={larg}
-                  onChange={(e) => setLarg(Number(e.target.value) || 0)}
-                />
-              </Campo>
-              <Campo rotulo="Altura (mm)">
-                <Entrada
-                  type="number"
-                  step="0.1"
-                  min="20"
-                  value={alt}
-                  onChange={(e) => setAlt(Number(e.target.value) || 0)}
-                />
-              </Campo>
-            </div>
-          )}
-
-          <div>
-            <p className="mb-2 text-xs font-medium text-slate-500">
-              Prévia no tamanho real — {larg.toFixed(1)} × {alt.toFixed(1)} mm
-            </p>
-            <div className="flex justify-center rounded-lg bg-slate-100 p-4">
-              <div className="ring-1 ring-slate-300 ring-inset">{etiqueta}</div>
-            </div>
-          </div>
-
-          <div className="rounded-lg bg-slate-50 p-3 ring-1 ring-slate-200 ring-inset">
-            <div className="flex items-center justify-between">
-              <p className="text-xs font-medium text-slate-600">
-                Saiu deslocado no seu adesivo? Ajuste aqui
-              </p>
-              {(deslocX !== 0 || deslocY !== 0) && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setDeslocX(0)
-                    setDeslocY(0)
-                  }}
-                  className="text-xs font-medium text-sky-600 hover:text-sky-700"
-                >
-                  Zerar
-                </button>
-              )}
-            </div>
-            <div className="mt-2 flex items-center justify-center gap-4">
-              <div className="grid grid-cols-3 grid-rows-3 gap-1">
-                <span />
-                <BotaoSeta rotulo="Para cima" onClick={() => setDeslocY((v) => v - 0.5)}>
-                  ↑
-                </BotaoSeta>
-                <span />
-                <BotaoSeta rotulo="Para a esquerda" onClick={() => setDeslocX((v) => v - 0.5)}>
-                  ←
-                </BotaoSeta>
-                <span />
-                <BotaoSeta rotulo="Para a direita" onClick={() => setDeslocX((v) => v + 0.5)}>
-                  →
-                </BotaoSeta>
-                <span />
-                <BotaoSeta rotulo="Para baixo" onClick={() => setDeslocY((v) => v + 0.5)}>
-                  ↓
-                </BotaoSeta>
-                <span />
-              </div>
-              <span className="font-mono text-xs text-slate-500">
-                x {deslocX.toFixed(1)}mm
-                <br />y {deslocY.toFixed(1)}mm
-              </span>
-            </div>
-          </div>
-
-          <p className="text-xs text-slate-500">
-            Na hora de imprimir, deixe a escala em <strong>100%</strong> e desmarque
-            &ldquo;ajustar à página&rdquo; — senão a impressora encolhe e sai fora da medida.
-            Tamanho e ajuste ficam guardados para a próxima.
-          </p>
-        </div>
-      </Modal>
-
-      {/* Vai para fora do #root de propósito: o CSS de impressão esconde os
-          filhos diretos do body, e a etiqueta precisa ser um deles para sobrar. */}
-      {aberto &&
-        createPortal(
-          <div className="so-impressao">
-            <style>{`@page { size: ${larg}mm ${alt}mm; margin: 0; }`}</style>
-            {etiqueta}
-          </div>,
-          document.body
+    <div className="rounded-lg bg-slate-50 p-3 ring-1 ring-slate-200 ring-inset">
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-medium text-slate-600">
+          {titulo}
+        </p>
+        {(deslocX !== 0 || deslocY !== 0) && (
+          <button
+            type="button"
+            onClick={() => aoMudar(0, 0)}
+            className="text-xs font-medium text-sky-600 hover:text-sky-700"
+          >
+            Zerar
+          </button>
         )}
-    </>
+      </div>
+      <div className="mt-2 flex items-center justify-center gap-4">
+        <div className="grid grid-cols-3 grid-rows-3 gap-1">
+          <span />
+          <BotaoSeta rotulo="Para cima" onClick={() => aoMudar(deslocX, deslocY - 0.5)}>
+            ↑
+          </BotaoSeta>
+          <span />
+          <BotaoSeta rotulo="Para a esquerda" onClick={() => aoMudar(deslocX - 0.5, deslocY)}>
+            ←
+          </BotaoSeta>
+          <span />
+          <BotaoSeta rotulo="Para a direita" onClick={() => aoMudar(deslocX + 0.5, deslocY)}>
+            →
+          </BotaoSeta>
+          <span />
+          <BotaoSeta rotulo="Para baixo" onClick={() => aoMudar(deslocX, deslocY + 0.5)}>
+            ↓
+          </BotaoSeta>
+          <span />
+        </div>
+        <span className="font-mono text-xs text-slate-500">
+          x {deslocX.toFixed(1)}mm
+          <br />y {deslocY.toFixed(1)}mm
+        </span>
+      </div>
+    </div>
   )
 }
