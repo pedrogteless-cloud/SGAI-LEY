@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import QRCode from 'qrcode'
 import { Printer } from 'lucide-react'
 import { Botao, Campo, Entrada, Selecao, Modal } from './ui'
+import { enderecoTemporario } from '../lib/urlPublica'
 
 /**
  * Etiqueta de QR para colar na máquina.
@@ -190,6 +191,17 @@ export default function EtiquetaQR({ aberto, aoFechar, ativo, link }) {
         }
       >
         <div className="space-y-4">
+          {(() => {
+            let host = ''
+            try { host = new URL(link).host } catch { /* link vazio */ }
+            return enderecoTemporario(host) && (
+              <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800 ring-1 ring-amber-200">
+                <strong>Não imprima ainda.</strong> Este QR aponta para um endereço temporário
+                ({host}). A Vercel apaga esse endereço com o tempo e a etiqueta para de funcionar.
+                Abra o sistema pelo endereço oficial e imprima de lá.
+              </p>
+            )
+          })()}
           <Campo rotulo="Tamanho do seu adesivo">
             <Selecao value={formato} onChange={(e) => trocarFormato(e.target.value)}>
               {FORMATOS.map((f) => (

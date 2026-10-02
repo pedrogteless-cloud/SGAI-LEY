@@ -12,6 +12,7 @@ import {
 } from '../components/ui'
 import LancarGasto from '../components/LancarGasto'
 import EtiquetaQR from '../components/EtiquetaQR'
+import { linkDoQR } from '../lib/urlPublica'
 
 const Linha = ({ rotulo, valor }) => (
   <div className="flex justify-between gap-4 border-b border-slate-100 py-2 last:border-0">
@@ -76,7 +77,7 @@ export default function AtivoDetalhe() {
   const r = rav.data?.[0]
   const m = mttr.data?.[0]
 
-  const linkQR = a ? `${window.location.origin}/reportar/${a.qr_token}` : ''
+  const linkQR = a ? linkDoQR(a.qr_token) : ''
 
   if (ativo.isLoading) return <Carregando />
   if (ativo.error || !a) return <Erro erro={ativo.error || new Error('Ativo não encontrado.')} />
