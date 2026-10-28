@@ -8,6 +8,10 @@ vi.mock('../hooks/useDados', () => ({
   useTabela: (...args) => tabela(...args),
   useUnidades: () => consulta([{ id: 'u1', nome: 'Eusébio' }]),
   useTecnicos: () => consulta([{ id: 'p1', nome: 'Fulano' }]),
+  useSetores: () => consulta([
+    { id: 's1', nome: 'Corte' }, { id: 's2', nome: 'Colagem' },
+    { id: 's3', nome: 'Montagem' }, { id: 's4', nome: 'Embalagem' },
+  ]),
   useInvalidar: () => () => {},
 }))
 vi.mock('../hooks/useAuth', () => ({
@@ -109,5 +113,21 @@ describe('5S do dia', () => {
     responder({ resumo: consulta([]), setores: consulta([]), itens: consulta([]), acoes: consulta([]) })
     renderizar(<Chao5S />)
     expect(screen.getByRole('button', { name: /Abrir relatório do dia/ })).toBeInTheDocument()
+  })
+
+  // Regressão: setor desmarcado na abertura ficava fora do dia inteiro.
+  it('oferece incluir o setor que ficou de fora do relatório aberto', () => {
+    responder({ resumo: consulta([RELATORIO]), setores: consulta(SETORES), itens: consulta(ITENS), acoes: consulta([]) })
+    renderizar(<Chao5S />)
+    expect(screen.getByRole('button', { name: /Adicionar setor\s*\(Embalagem está fora\)/ })).toBeInTheDocument()
+  })
+
+  it('não oferece incluir setor em relatório concluído', () => {
+    responder({
+      resumo: consulta([{ ...RELATORIO, status: 'concluida' }]),
+      setores: consulta(SETORES), itens: consulta(ITENS), acoes: consulta([]),
+    })
+    renderizar(<Chao5S />)
+    expect(screen.queryByRole('button', { name: /Adicionar setor/ })).toBeNull()
   })
 })
