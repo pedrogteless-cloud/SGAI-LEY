@@ -14,6 +14,7 @@ import {
   Modal, Erro, useAviso,
 } from '../components/ui'
 import AbrirRelatorioChao from '../components/AbrirRelatorioChao'
+import AdicionarSetores from '../components/AdicionarSetores'
 import GaleriaFotos from '../components/GaleriaFotos'
 import BlocoAcao5S from '../components/BlocoAcao5S'
 import { descartarFotos } from '../lib/fotos'
@@ -441,6 +442,13 @@ export default function Chao5S() {
                 )
               })}
             </ul>
+          )}
+          {podeEditar && (
+            <AdicionarSetores
+              relatorioId={relatorioAtivo.id}
+              unidadeId={relatorioAtivo.unidade_id}
+              jaNoRelatorio={(setoresRel.data || []).map((s) => s.setor_id)}
+            />
           )}
         </Cartao>
       )}

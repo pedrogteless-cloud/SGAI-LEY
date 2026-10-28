@@ -24,6 +24,7 @@ import GaleriaFotos from '../components/GaleriaFotos'
 import BlocoAcao5S from '../components/BlocoAcao5S'
 import { descartarFotos } from '../lib/fotos'
 import ImpressaoRelatorio from '../components/ImpressaoRelatorio'
+import AdicionarSetores from '../components/AdicionarSetores'
 import { esperarImagens, reduzirFotos, liberarFotos } from '../lib/impressao'
 import { diaCurto, horaDe, linhasDosSensos } from '../lib/relatorio5s'
 
@@ -782,6 +783,13 @@ export default function ChaoFabricaDetalhe() {
                     )
                   })}
                 </ul>
+              )}
+              {podeEditar && (
+                <AdicionarSetores
+                  relatorioId={r.id}
+                  unidadeId={r.unidade_id}
+                  jaNoRelatorio={(setoresRel.data || []).map((s) => s.setor_id)}
+                />
               )}
             </Cartao>
           )}

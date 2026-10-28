@@ -40,6 +40,7 @@ function Formulario({ aoFechar, unidadeId, aoAbrir }) {
 
   const todosIds = (setores.data || []).map((s) => s.id)
   const selecionados = setoresIds ?? todosIds
+  const foraDoRelatorio = (setores.data || []).filter((s) => !selecionados.includes(s.id))
 
   const alternarSetor = (id) =>
     setSetoresIds(
@@ -134,6 +135,14 @@ function Formulario({ aoFechar, unidadeId, aoAbrir }) {
               </label>
             ))}
           </div>
+          {/* Desmarcar um setor sem querer já tirou setor do 5S de vários
+              dias seguidos — então fica escrito, bem visível, o que vai
+              ficar de fora. */}
+          {foraDoRelatorio.length > 0 && (
+            <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800 ring-1 ring-amber-200">
+              <strong>Vai ficar de fora:</strong> {foraDoRelatorio.map((s) => s.nome).join(', ')}.
+            </p>
+          )}
         </Campo>
         <Campo rotulo="Observação inicial" dica="Opcional">
           <Area rows={2} value={form.observacao_inicial} onChange={(e) => setForm((f) => ({ ...f, observacao_inicial: e.target.value }))} />
